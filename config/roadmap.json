@@ -1,0 +1,14 @@
+{
+  "title": "PCS Private Landlord roadmap",
+  "project": "HDPI",
+  "jira_url": "https://hmcts.atlassian.net",
+  "start": "2026-11-02",
+  "lanes": [
+    {
+      "title": "Private Landlord",
+      "subtitle": "PrivateLandlord label (HDPI)",
+      "colour": "#1d70b8",
+      "label": "PrivateLandlord"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+---
+title: Short title of the decision
+status: proposed   # proposed | accepted | superseded | rejected
+date: "YYYY-MM-DD"
+---
+## Context
+
+What is the issue, and why does it need a decision?
+
+## Options considered
+
+1. Option one
+2. Option two
+
+## Decision
+
+Which option, and why.
+
+## Consequences
+
+What becomes easier or harder because of this decision.

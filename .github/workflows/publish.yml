@@ -1,0 +1,290 @@
+name: Publish
+
+# Reads the roadmap from Jira, commits the day's snapshot, rebuilds the site and deploys it
+# to GitHub Pages. If Jira can't be read, the site is still built from the last snapshot
+# (with an "out of date" warning), and the run is marked as failed so someone notices.
+#
+# Jira is read through twg, the Atlassian CLI, the same way hmcts/cft-workspace's doc-drift
+# workflow reads Confluence. twg has no runner-friendly credential (its OAuth login is
+# interactive and per-user), so a sign-in made once by hand is kept in Key Vault, restored
+# here, refreshed, and written back. Every refresh rotates the refresh token and spends the
+# old one, so the new value is stored straight after refreshing, and again at the end if
+# twg refreshed itself mid-run. Setup and re-seeding: README.md, "Jira sign-in".
+#
+# This repo is public: nothing here may print auth.conf or any value in it.
+
+on:
+  schedule:
+    - cron: '0 6 * * 1-5' # 06:00 UTC, Monday to Friday
+  workflow_dispatch:
+  push:
+    branches: [master]
+
+permissions:
+  contents: write # commit the daily snapshot
+  pages: write
+  id-token: write # azure/login over OIDC, and deploy-pages
+
+# One run at a time, so two runs never spend the same refresh token.
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+env:
+  TWG_VERSION: '1.3.9' # as .devcontainer/Dockerfile in hmcts/cft-workspace
+  TWG_VAULT: ${{ vars.TWG_KEY_VAULT }}
+  TWG_SECRET: ${{ vars.TWG_SECRET_NAME || 'twg-auth-conf-pcs-progress-tracker' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      fetch: ${{ steps.fetch.outcome }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: ref
+        run: echo "sha=$(cat cft-workspace.ref)" >> "$GITHUB_OUTPUT"
+
+      # hmcts/cft-workspace is private: CFT_WORKSPACE_TOKEN is a read-only token for it.
+      - name: Check out the roadmap generator
+        uses: actions/checkout@v7
+        with:
+          repository: hmcts/cft-workspace
+          ref: ${{ steps.ref.outputs.sha }}
+          path: vendor/cft-workspace
+          token: ${{ secrets.CFT_WORKSPACE_TOKEN }}
+          sparse-checkout: apps/pcs/.claude/scripts/lib/roadmap
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+      - run: npm run vendor
+
+      - name: Install twg
+        run: |
+          set -euo pipefail
+          # Pinned and checksum-verified. ubuntu-latest is x64.
+          twg_bin="twg-linux-x64-v${TWG_VERSION}"
+          cd "$RUNNER_TEMP"
+          curl -fsSL "https://teamwork-graph.atlassian.com/cli/${twg_bin}" -o "${twg_bin}"
+          curl -fsSL "https://teamwork-graph.atlassian.com/cli/SHA256SUMS-v${TWG_VERSION}" -o twg-sha256sums
+          grep " ${twg_bin}\$" twg-sha256sums | sha256sum -c -
+          sudo install -m 0755 "${twg_bin}" /usr/local/bin/twg
+          rm -f "${twg_bin}" twg-sha256sums
+          twg --version
+
+      # The app registration's federated credential covers refs/heads/master only, so a
+      # dispatch from another branch can't reach the vault and builds from the last snapshot.
+      - name: Sign in to Azure for the twg sign-in
+        id: azure-login
+        continue-on-error: true
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.TWG_AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+
+      - name: Restore the twg sign-in
+        id: twg-restore
+        env:
+          AZURE_LOGIN: ${{ steps.azure-login.outcome }}
+        run: |
+          set -euo pipefail
+          # Without Azure there's nowhere to store a rotated token, and refreshing without
+          # storing it breaks the next run for good. So stand down before twg has a file.
+          if [[ "$AZURE_LOGIN" != "success" || -z "$TWG_VAULT" ]]; then
+            echo "::error::could not sign in to Azure (or the TWG_KEY_VAULT variable is unset), so the twg sign-in was left unspent and Jira is skipped"
+            echo "restored=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          umask 077
+          raw="$RUNNER_TEMP/twg-auth.raw"
+          err="$RUNNER_TEMP/twg-kv.err"
+          trap 'rm -f "$raw" "$err"' EXIT
+          kv_code() { grep -oE '\([A-Za-z]+\)' "$err" 2>/dev/null | head -1 | tr -d '()' || true; }
+
+          if ! az keyvault secret show --vault-name "$TWG_VAULT" --name "$TWG_SECRET" \
+              -o tsv --query value > "$raw" 2> "$err"; then
+            code=$(kv_code)
+            echo "::error::could not read $TWG_SECRET from the $TWG_VAULT Key Vault (${code:-no error code}). Seeding it is in README.md"
+            echo "restored=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          refresh=$(tr -d '\r' < "$raw" | sed -n 's/^oauth-refresh-token=//p' | head -1)
+          if [[ -z "$refresh" ]]; then
+            echo "::error::$TWG_SECRET holds no oauth-refresh-token. Re-seed it (README.md)"
+            echo "restored=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "::add-mask::$refresh"
+
+          # Stored without its access token (an hour's life, and most of the file).
+          mkdir -p "$HOME/.config/twg"
+          tr -d '\r' < "$raw" | grep -v '^oauth-access-token=' > "$HOME/.config/twg/auth.conf"
+          # The sha of what the vault holds, so the last step can tell whether twg rotated again.
+          sha256sum < "$HOME/.config/twg/auth.conf" | cut -d' ' -f1 > "$RUNNER_TEMP/twg-auth.sha"
+          echo "restored=true" >> "$GITHUB_OUTPUT"
+
+      - name: Refresh the twg sign-in
+        id: twg
+        if: steps.twg-restore.outputs.restored == 'true'
+        run: |
+          set -uo pipefail
+          conf="$HOME/.config/twg/auth.conf"
+          err="$RUNNER_TEMP/twg-kv.err"
+          pack() { tr -d '\r' < "$conf" | grep -v '^oauth-access-token='; }
+          # From a file, because --value would put the token on a command line, and to
+          # /dev/null, because `secret set` echoes the value it stored.
+          store() {
+            local tmp rc=0
+            tmp=$(mktemp "$RUNNER_TEMP/twg-auth.XXXXXX") || return 1
+            if pack > "$tmp"; then
+              az keyvault secret set --vault-name "$TWG_VAULT" --name "$TWG_SECRET" \
+                --file "$tmp" --encoding utf-8 > /dev/null 2> "$err" || rc=$?
+            else
+              rc=1
+            fi
+            rm -f "$tmp"
+            return "$rc"
+          }
+
+          # Output discarded: nothing twg prints about its credentials belongs in a public log.
+          rc=0
+          twg auth refresh --force >/dev/null 2>&1 || rc=$?
+          if (( rc == 77 )); then
+            # Atlassian rejected the stored token: revoked, 90 days unused, or a lost rotation.
+            touch "$RUNNER_TEMP/twg-rejected"
+            echo "::error::Atlassian rejected the stored twg sign-in (twg auth refresh exit 77). Re-seed $TWG_SECRET as in README.md"
+            echo "signed_in=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if (( rc != 0 )); then
+            echo "::error::twg auth refresh exited $rc, so Jira is skipped this run"
+            echo "signed_in=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          refresh=$(pack | sed -n 's/^oauth-refresh-token=//p' | head -1)
+          if [[ -z "$refresh" ]]; then
+            echo "::error::auth.conf holds no oauth-refresh-token after a refresh"
+            echo "signed_in=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "::add-mask::$refresh"
+
+          # Store the rotated token now, before anything else can fail. If this fails, the
+          # last step retries, and fails the job if it can't.
+          if store; then
+            pack | sha256sum | cut -d' ' -f1 > "$RUNNER_TEMP/twg-auth.sha"
+            echo "stored the rotated twg sign-in"
+          else
+            echo "::error::could not store the rotated twg sign-in. The last step will retry"
+          fi
+          rm -f "$err"
+
+          # Only the one boolean is read, never the report, which names the account.
+          ok=$(twg doctor -o json --output-summary none 2>/dev/null | jq -r '.data.connectivity.ok // false' 2>/dev/null || true)
+          if [[ "$ok" == "true" ]]; then
+            echo "signed_in=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::twg doctor cannot reach Atlassian after a refresh"
+            echo "signed_in=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Read the roadmap from Jira
+        id: fetch
+        if: steps.twg.outputs.signed_in == 'true'
+        continue-on-error: true
+        run: npm run fetch
+
+      - name: Store the twg sign-in if it rotated again
+        if: always() && steps.twg-restore.outputs.restored == 'true'
+        run: |
+          set -uo pipefail
+          conf="$HOME/.config/twg/auth.conf"
+          err="$RUNNER_TEMP/twg-kv.err"
+          pack() { tr -d '\r' < "$conf" | grep -v '^oauth-access-token='; }
+
+          if [[ -f "$RUNNER_TEMP/twg-rejected" || ! -f "$conf" ]]; then
+            echo "nothing to store"
+            exit 0
+          fi
+          refresh=$(pack | sed -n 's/^oauth-refresh-token=//p' | head -1)
+          if [[ -z "$refresh" ]]; then
+            echo "::error::auth.conf lost its refresh token during the run. Re-seed $TWG_SECRET (README.md)"
+            exit 1
+          fi
+          echo "::add-mask::$refresh"
+          if [[ "$(pack | sha256sum | cut -d' ' -f1)" == "$(cat "$RUNNER_TEMP/twg-auth.sha" 2>/dev/null)" ]]; then
+            echo "twg sign-in unchanged since it was stored"
+            exit 0
+          fi
+
+          # Loud on purpose: a rotation that isn't stored leaves the vault holding a spent
+          # token, and the next run's refresh fails with exit 77.
+          tmp=$(mktemp "$RUNNER_TEMP/twg-auth.XXXXXX")
+          rc=0
+          if pack > "$tmp"; then
+            az keyvault secret set --vault-name "$TWG_VAULT" --name "$TWG_SECRET" \
+              --file "$tmp" --encoding utf-8 > /dev/null 2> "$err" || rc=$?
+          else
+            rc=1
+          fi
+          rm -f "$tmp"
+          if (( rc != 0 )); then
+            code=$(grep -oE '\([A-Za-z]+\)' "$err" 2>/dev/null | head -1 | tr -d '()' || true)
+            rm -f "$err"
+            echo "::error::could not store the rotated twg sign-in (${code:-no error code}). The next run will need $TWG_SECRET re-seeded"
+            exit 1
+          fi
+          rm -f "$err"
+          echo "stored the twg sign-in, which rotated again during the run"
+
+      - name: Sign out of Azure and twg
+        if: always()
+        run: |
+          az logout > /dev/null 2>&1 || true
+          rm -rf "$HOME/.azure" "$HOME/.config/twg"
+
+      - name: Commit the snapshot
+        if: steps.fetch.outcome == 'success'
+        run: |
+          git add data/snapshots
+          if git diff --cached --quiet; then exit 0; fi
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit -m "Roadmap snapshot $(date -u +%F)"
+          git pull --rebase --quiet && git push
+
+      - name: Build the site
+        env:
+          PATH_PREFIX: /${{ github.event.repository.name }}/
+        run: npm run build
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
+
+  jira:
+    needs: [build, deploy]
+    runs-on: ubuntu-latest
+    steps:
+      - if: needs.build.outputs.fetch != 'success'
+        run: |
+          echo "::error::Couldn't read the roadmap from Jira, so the site was built from the last snapshot. The build job's log says why."
+          exit 1

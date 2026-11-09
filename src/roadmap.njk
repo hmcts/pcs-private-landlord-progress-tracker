@@ -1,0 +1,50 @@
+---
+layout: page
+title: Roadmap
+description: Epics labelled PrivateLandlord in the HDPI Jira project, with their dates and progress.
+---
+{% include "data-notice.njk" %}
+{% set s = roadmap.latest %}
+{% if not s or not s.totals.epics %}
+<p class="govuk-body">There are no epics labelled <code>PrivateLandlord</code> in HDPI yet. They will appear here the day after they are created.</p>
+{% else %}
+{% if roadmap.pdf %}<p class="govuk-body"><a class="govuk-link" href="/roadmap/roadmap.pdf" download>Download the A3 roadmap poster (PDF)</a></p>{% endif %}
+
+<div class="app-chart">{{ roadmap.svg }}</div>
+<p class="govuk-body-s">Bars run from each epic's start date to its due date, and the dark part shows how many of its child items are done. A dashed bar means the epic has no dates of its own, so its child items' dates are used. A red outline marks a dependency clash.</p>
+
+<h2 class="govuk-heading-l">Epics</h2>
+<table class="govuk-table"><thead class="govuk-table__head"><tr class="govuk-table__row">
+<th scope="col" class="govuk-table__header">Epic</th><th scope="col" class="govuk-table__header">Status</th>
+<th scope="col" class="govuk-table__header">Start</th><th scope="col" class="govuk-table__header">Due</th>
+<th scope="col" class="govuk-table__header govuk-table__header--numeric">Items done</th></tr></thead>
+<tbody class="govuk-table__body">
+{% for r in roadmap.rows %}<tr class="govuk-table__row">
+<td class="govuk-table__cell"><a class="govuk-link" href="{{ r.url }}">{{ r.key }}</a> {{ r.summary }}{% if s.lanes | length > 1 %}<br><span class="govuk-body-s">{{ r.lane }}</span>{% endif %}</td>
+<td class="govuk-table__cell">{{ r.status | statusTag(r.category) }}</td>
+<td class="govuk-table__cell">{{ r.start | date if r.start else "Not set" }}</td>
+<td class="govuk-table__cell">{{ r.due | date if r.due else "Not set" }}{% if r.derived %} <span class="govuk-body-s">(from child items)</span>{% endif %}</td>
+<td class="govuk-table__cell govuk-table__cell--numeric">{{ r.counts.done }} of {{ r.total }}</td></tr>
+{% endfor %}</tbody></table>
+
+{% if s.clashes | length %}
+<h2 class="govuk-heading-l">Dependency clashes</h2>
+<p class="govuk-body">These epics are set to start before the epic they depend on is due to finish.</p>
+<ol class="govuk-list govuk-list--number">
+{% for c in s.clashes %}<li>{{ c.after }} starts on {{ c.afterStart | date }}, but {{ c.before }} is not due until {{ c.beforeDue | date }}.</li>
+{% endfor %}</ol>
+{% endif %}
+
+{% if s.totals.undated %}
+<h2 class="govuk-heading-l">Epics without dates</h2>
+<ul class="govuk-list govuk-list--bullet">
+{% for r in roadmap.rows %}{% if not r.start %}<li><a class="govuk-link" href="{{ r.url }}">{{ r.key }}</a> {{ r.summary }}</li>{% endif %}
+{% endfor %}</ul>
+{% endif %}
+
+{% if roadmap.burnup %}
+<h2 class="govuk-heading-l">Burn-up</h2>
+<p class="govuk-body">Child items across all epics: the dashed line is the total scope and the green line is the number done.</p>
+<div class="app-chart">{{ roadmap.burnup }}</div>
+{% endif %}
+{% endif %}

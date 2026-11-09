@@ -1,0 +1,14 @@
+# RAID log: risks, assumptions, issues and dependencies. Edit through a PR.
+# This site is public: write entries as you would for a public audience.
+#
+# - id: R-001                  # R-, A-, I- or D- then a number; must match type
+#   type: risk                 # risk | assumption | issue | dependency
+#   title: Short statement of the risk
+#   description: Optional detail
+#   owner: Role or team (avoid personal names on a public site)
+#   rag: amber                 # red | amber | green
+#   status: open               # open | closed
+#   raised: "2026-11-09"
+#   review: "2026-11-23"       # required while open
+#   mitigation: What we're doing about it
+[]

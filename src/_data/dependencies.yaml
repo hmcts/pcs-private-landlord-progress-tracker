@@ -1,0 +1,13 @@
+# What the workstream needs from other teams. Edit through a PR.
+# Jira links from PrivateLandlord epics to other projects are added to the page automatically.
+#
+# - id: DEP-001
+#   team: Reference Data (PRD)
+#   need: What we need from them
+#   why: Optional, what it unblocks
+#   jira: RDCC-1234            # optional issue key
+#   needed_by: "2027-01-15"    # optional
+#   owner: Role or team
+#   status: not-started        # not-started | in-progress | blocked | done
+#   rag: amber                 # red | amber | green
+[]

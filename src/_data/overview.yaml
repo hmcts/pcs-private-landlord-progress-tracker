@@ -1,0 +1,10 @@
+# Overall status, shown at the top of the Overview page. Edit through a PR.
+rag: green            # red | amber | green
+updated: "2026-11-09"
+headline: >-
+  The Private Landlord workstream is starting up. Epics are being created in Jira and
+  will appear on the roadmap as they are added.
+milestones: []
+#  - date: "2027-01-15"
+#    title: Private beta starts
+#    status: planned   # free text: planned, on track, at risk, done…

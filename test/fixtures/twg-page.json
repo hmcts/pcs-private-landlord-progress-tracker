@@ -1,0 +1,25 @@
+{
+  "apiVersion": "v2",
+  "command": "jira.workitem.query",
+  "data": {
+    "issues": [
+      {
+        "key": "HDPI-1",
+        "summary": "Landlord registration",
+        "issuetype": { "name": "Epic" },
+        "status": { "name": "In Progress", "statusCategory": { "key": "indeterminate" } },
+        "labels": ["PrivateLandlord"],
+        "url": "https://hmcts.atlassian.net/browse/HDPI-1"
+      },
+      {
+        "key": "HDPI-9",
+        "summary": "Hidden epic",
+        "issuetype": { "name": "Epic" },
+        "status": { "name": "New", "statusCategory": { "key": "new" } },
+        "labels": ["PrivateLandlord", "not-public"],
+        "url": "https://hmcts.atlassian.net/browse/HDPI-9"
+      }
+    ]
+  },
+  "pageInfo": { "hasNextPage": true, "nextCursor": "cursor-2" }
+}

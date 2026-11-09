@@ -1,0 +1,28 @@
+{
+  "name": "pcs-private-landlord-progress-tracker",
+  "private": true,
+  "description": "Stakeholder progress site for the PCS Private Landlord workstream (HDPI).",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "vendor": "scripts/vendor.sh",
+    "fetch": "node --no-warnings scripts/fetch-roadmap.ts",
+    "validate": "node --no-warnings scripts/validate-data.ts",
+    "build": "npm run validate && eleventy",
+    "start": "eleventy --serve",
+    "test": "node --no-warnings --test --test-reporter=spec 'test/**/*.test.ts'",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@11ty/eleventy": "3.1.8",
+    "@x-govuk/govuk-eleventy-plugin": "9.0.2",
+    "js-yaml": "5.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "@types/pdfkit": "0.17.7",
+    "typescript": "7.0.2"
+  }
+}

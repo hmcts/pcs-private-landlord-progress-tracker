@@ -1,0 +1,29 @@
+---
+layout: page
+title: RAID log
+description: Risks, assumptions, issues and dependencies for the Private Landlord workstream.
+---
+{% set groups = [["risk", "Risks"], ["assumption", "Assumptions"], ["issue", "Issues"], ["dependency", "Dependencies"]] %}
+{% if not raid | length %}
+<p class="govuk-body">Nothing has been logged yet.</p>
+{% endif %}
+{% for g in groups %}
+{% set items = raid | selectattr("type", "equalto", g[0]) %}
+{% if items | length %}
+<h2 class="govuk-heading-l">{{ g[1] }}</h2>
+<table class="govuk-table"><thead class="govuk-table__head"><tr class="govuk-table__row">
+<th scope="col" class="govuk-table__header">ID</th><th scope="col" class="govuk-table__header">Description</th>
+<th scope="col" class="govuk-table__header">Owner</th><th scope="col" class="govuk-table__header">RAG</th>
+<th scope="col" class="govuk-table__header">Status</th><th scope="col" class="govuk-table__header">Review</th></tr></thead>
+<tbody class="govuk-table__body">
+{% for i in items | sort(false, false, "id") %}<tr class="govuk-table__row">
+<td class="govuk-table__cell">{{ i.id }}</td>
+<td class="govuk-table__cell"><strong>{{ i.title }}</strong>{% if i.description %}<br>{{ i.description }}{% endif %}{% if i.mitigation %}<br><span class="govuk-body-s">Mitigation: {{ i.mitigation }}</span>{% endif %}</td>
+<td class="govuk-table__cell">{{ i.owner }}</td>
+<td class="govuk-table__cell">{{ i.rag | ragTag }}</td>
+<td class="govuk-table__cell">{{ i.status | capitalize }}</td>
+<td class="govuk-table__cell">{{ i.review | date if i.status == "open" else "" }}</td></tr>
+{% endfor %}</tbody></table>
+{% endif %}
+{% endfor %}
+<p class="govuk-body-s">{{ raid | length }} entries in total. To add or change one, open a pull request that edits <code>src/_data/raid.yaml</code>.</p>
