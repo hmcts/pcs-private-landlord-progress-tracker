@@ -1,0 +1,31 @@
+---
+layout: page
+title: Non-functional requirements
+description: The qualities the service must have, and the standards they come from.
+---
+{% set groups = [["performance", "Performance"], ["accessibility", "Accessibility and usability"], ["security", "Security"], ["reliability", "Reliability and scalability"], ["data", "Audit and data"], ["support", "Monitoring and support"], ["quality", "Quality assurance"], ["engineering", "Engineering"]] %}
+
+<p class="govuk-body">These are the non-functional requirements the Private Landlord work is built and tested against. Each one is a summary: follow the source link for the full wording. Pages on the HMCTS Confluence need an HMCTS account.</p>
+
+<h2 class="govuk-heading-l">Standards</h2>
+<ul class="govuk-list govuk-list--bullet">
+{% for s in nfrs.standards %}<li><a class="govuk-link" href="{{ s.url }}">{{ s.title }}</a>{% if s.note %} ({{ s.note | lower }}){% endif %}</li>
+{% endfor %}</ul>
+
+{% for g in groups %}
+{% set items = nfrs.nfrs | where("category", g[0]) %}
+{% if items | length %}
+<h2 class="govuk-heading-l">{{ g[1] }}</h2>
+<table class="govuk-table"><thead class="govuk-table__head"><tr class="govuk-table__row">
+<th scope="col" class="govuk-table__header">ID</th><th scope="col" class="govuk-table__header">Requirement</th>
+<th scope="col" class="govuk-table__header">Target</th><th scope="col" class="govuk-table__header">Source</th></tr></thead>
+<tbody class="govuk-table__body">
+{% for i in items | sort(false, false, "id") %}{% set s = nfrs.standards | where("id", i.source) | first %}<tr class="govuk-table__row">
+<td class="govuk-table__cell">{{ i.id }}</td>
+<td class="govuk-table__cell">{{ i.requirement }}</td>
+<td class="govuk-table__cell">{{ i.target or "" }}</td>
+<td class="govuk-table__cell"><a class="govuk-link" href="{{ i.url or s.url }}">{{ s.title }}</a>{% if i.ref %}<br><span class="govuk-body-s">{{ i.ref }}</span>{% endif %}</td></tr>
+{% endfor %}</tbody></table>
+{% endif %}
+{% endfor %}
+<p class="govuk-body-s">{{ nfrs.nfrs | length }} requirements in total. To add or change one, open a pull request that edits <code>src/_data/nfrs.yaml</code>.</p>

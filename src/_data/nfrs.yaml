@@ -1,0 +1,290 @@
+# Non-functional requirements (NFRs) and the standards they come from. Edit through a PR.
+# This site is public: summarise each requirement in plain English and link to the source for
+# the full wording. Leave out anything a source still marks as to be confirmed.
+#
+# standards:
+#   - id: pcs-nfrs             # referred to by an NFR's "source"
+#     title: Name of the standard or page
+#     url: https://...
+#     note: Optional, for example "Draft"
+#
+# nfrs:
+#   - id: PERF-01              # category prefix then a number (see NFR_CATEGORIES in scripts/lib/data.ts)
+#     category: performance    # performance | accessibility | security | reliability | data | support | quality | engineering
+#     requirement: What must be true
+#     target: Optional measurable target
+#     ref: PER-05              # optional, the requirement's ID in the source
+#     source: pcs-performance  # a standards id
+#     url: https://...         # optional, a more specific page than the standard's url
+
+standards:
+  - id: pcs-nfrs
+    title: PCS low-level non-functional requirements
+    url: https://hmcts.atlassian.net/wiki/spaces/RRFM/pages/272433247
+  - id: pcs-performance
+    title: PCS performance SLA and NFRs
+    url: https://hmcts.atlassian.net/wiki/spaces/RRFM/pages/272433544
+  - id: pcs-story-nfrs
+    title: PCS standard NFR acceptance criteria for stories
+    url: https://hmcts.atlassian.net/wiki/spaces/RRFM/pages/367755875
+    note: Draft
+  - id: pcs-qa
+    title: PCS QA standards and guidelines
+    url: https://hmcts.atlassian.net/wiki/spaces/RRFM/pages/272433241
+  - id: hmcts-way
+    title: HMCTS engineering standards (The HMCTS Way)
+    url: https://hmcts.github.io/standards/
+
+nfrs:
+  - id: PERF-01
+    category: performance
+    requirement: Screens respond quickly at peak load.
+    target: 90% within 500ms, 95% within 1 second, 99% within 2 seconds
+    ref: PER-05
+    source: pcs-performance
+  - id: PERF-02
+    category: performance
+    requirement: APIs respond quickly at peak load.
+    target: 90% within 350ms, 95% within 500ms
+    ref: PER-06
+    source: pcs-performance
+  - id: PERF-03
+    category: performance
+    requirement: Pages load quickly.
+    target: Within 2 seconds
+    source: pcs-performance
+  - id: PERF-04
+    category: performance
+    requirement: Documents upload and download quickly.
+    target: A 5MB file within 10 seconds
+    source: pcs-performance
+  - id: PERF-05
+    category: performance
+    requirement: Very few requests fail under load.
+    target: Fewer than 1% of requests
+    source: pcs-performance
+  - id: PERF-06
+    category: performance
+    requirement: Servers keep spare capacity under load.
+    target: CPU and memory use at or below 75%
+    source: pcs-performance
+  - id: PERF-07
+    category: performance
+    requirement: The service is tested at peak load, not only normal load.
+    target: 3 times the normal hourly volume for each user journey
+    source: pcs-performance
+  - id: PERF-08
+    category: performance
+    requirement: Citizen-facing services meet the response time targets on a slow connection.
+    target: 1Mbps
+    ref: PER-03
+    source: pcs-nfrs
+  - id: PERF-09
+    category: performance
+    requirement: Welsh journeys meet the same performance targets as English ones.
+    source: pcs-performance
+  - id: PERF-10
+    category: performance
+    requirement: Performance is compared between releases, and any slowdown has a plan to fix it.
+    ref: PER-07
+    source: pcs-nfrs
+
+  - id: A11Y-01
+    category: accessibility
+    requirement: Every screen meets the Web Content Accessibility Guidelines.
+    target: WCAG 2.2 level AA
+    ref: ACC-01
+    source: pcs-nfrs
+  - id: A11Y-02
+    category: accessibility
+    requirement: Public-facing screens can be switched between English and Welsh.
+    ref: ACC-04
+    source: pcs-nfrs
+  - id: A11Y-03
+    category: accessibility
+    requirement: The service works on the browsers and devices that GOV.UK services support.
+    ref: ACC-06
+    source: pcs-nfrs
+  - id: A11Y-04
+    category: accessibility
+    requirement: Codes and abbreviations are shown with a plain-English description.
+    ref: ACC-02
+    source: pcs-nfrs
+  - id: A11Y-05
+    category: accessibility
+    requirement: Error messages say what went wrong and what the user should do next, and the user never sees an unhandled error.
+    ref: ACC-03, USE-01 to USE-03
+    source: pcs-nfrs
+
+  - id: SEC-01
+    category: security
+    requirement: Users sign in through the HMCTS identity service with their own account. There are no shared accounts.
+    ref: SEC-01, SEC-07, SEC-20
+    source: pcs-nfrs
+  - id: SEC-02
+    category: security
+    requirement: Users and systems can only reach the data and functions their role allows.
+    ref: SEC-01, SEC-02, SEC-09 to SEC-11, SEC-22
+    source: pcs-nfrs
+  - id: SEC-03
+    category: security
+    requirement: Sessions end after a period of inactivity.
+    ref: SEC-06
+    source: pcs-nfrs
+  - id: SEC-04
+    category: security
+    requirement: Data sent across untrusted networks is encrypted.
+    ref: SEC-18
+    source: pcs-nfrs
+  - id: SEC-05
+    category: security
+    requirement: Automated emails contain no confidential or personal information.
+    ref: SEC-14
+    source: pcs-nfrs
+  - id: SEC-06
+    category: security
+    requirement: Uploaded files are checked for type and size and stored through the HMCTS document store.
+    ref: FILE-01
+    source: pcs-story-nfrs
+
+  - id: REL-01
+    category: reliability
+    requirement: The service has no single point of failure.
+    ref: REL-02, AVL-09
+    source: pcs-nfrs
+  - id: REL-02
+    category: reliability
+    requirement: A failed or interrupted transaction never loses or duplicates data.
+    ref: REL-01, AVL-08, DAT-06
+    source: pcs-nfrs
+  - id: REL-03
+    category: reliability
+    requirement: The service scales up and down automatically, through configuration alone, and still meets the performance targets.
+    ref: SCA-01, SCA-03
+    source: pcs-nfrs
+  - id: REL-04
+    category: reliability
+    requirement: There is a tested disaster recovery plan, including recovery to another Azure region.
+    ref: AVL-03 to AVL-05, SER-01, SER-02
+    source: pcs-nfrs
+  - id: REL-05
+    category: reliability
+    requirement: Maintenance causes no downtime during working hours.
+    ref: MNT-02
+    source: pcs-nfrs
+
+  - id: DAT-01
+    category: data
+    requirement: Every create, update and delete is audited with who made it, when, and what changed.
+    ref: AUD-02, AUD-04
+    source: pcs-nfrs
+  - id: DAT-02
+    category: data
+    requirement: Failed sign-ins and unauthorised actions are recorded.
+    ref: AUD-03
+    source: pcs-nfrs
+  - id: DAT-03
+    category: data
+    requirement: Data is validated when it's entered or received, and invalid data is rejected with a reason.
+    ref: DAT-02, DAT-03
+    source: pcs-nfrs
+  - id: DAT-04
+    category: data
+    requirement: Times are stored in UTC and shown in UK time. Date calculations allow for bank holidays, leap years and British Summer Time.
+    ref: INT-02, OPR-4
+    source: pcs-nfrs
+  - id: DAT-05
+    category: data
+    requirement: Personal data is handled in line with UK GDPR.
+    ref: DAT-01, DAT-08
+    source: pcs-nfrs
+
+  - id: SUP-01
+    category: support
+    requirement: Key components are monitored, and support staff are alerted automatically when a threshold is crossed.
+    ref: SUP-04, SUP-07, SUP-14
+    source: pcs-nfrs
+  - id: SUP-02
+    category: support
+    requirement: Calls between services can be traced from end to end.
+    ref: SUP-15
+    source: pcs-nfrs
+  - id: SUP-03
+    category: support
+    requirement: Logs are searchable and categorised by severity.
+    ref: SUP-06, SUP-08
+    source: pcs-nfrs
+  - id: SUP-04
+    category: support
+    requirement: Performance metrics are kept for trend analysis.
+    target: 6 months
+    ref: SUP-12
+    source: pcs-nfrs
+
+  - id: QA-01
+    category: quality
+    requirement: For each story, the developer, tester and a business representative agree what will be tested at each layer (unit, integration, contract, functional and end to end) before work starts.
+    source: pcs-qa
+  - id: QA-02
+    category: quality
+    requirement: Test cases are recorded in Zephyr and linked to the story they test.
+    source: pcs-qa
+  - id: QA-03
+    category: quality
+    requirement: Automated tests for anything in regression scope are written before the story closes, and merged together with the code.
+    source: pcs-qa
+  - id: QA-04
+    category: quality
+    requirement: Before sign-off, each story has a summary of its manual, automated and accessibility testing.
+    source: pcs-qa
+  - id: QA-05
+    category: quality
+    requirement: Defects follow the QA defect workflow.
+    source: pcs-qa
+    url: https://hmcts.atlassian.net/wiki/spaces/RRFM/pages/272439809
+  - id: QA-06
+    category: quality
+    requirement: Tests are automated, reliable, fast and repeatable. Most are unit tests, fewer are integration tests, and a small number are end-to-end tests.
+    source: hmcts-way
+    url: https://hmcts.github.io/standards/principles/test.html
+
+  - id: ENG-01
+    category: engineering
+    requirement: Java code follows the HMCTS Java standard.
+    source: hmcts-way
+    url: https://hmcts.github.io/standards/standards/java.html
+  - id: ENG-02
+    category: engineering
+    requirement: TypeScript code follows the HMCTS TypeScript standard.
+    source: hmcts-way
+    url: https://hmcts.github.io/standards/standards/typescript.html
+  - id: ENG-03
+    category: engineering
+    requirement: Sign-in and service-to-service calls follow the HMCTS authentication and authorisation standard.
+    source: hmcts-way
+    url: https://hmcts.github.io/standards/standards/authentication-and-authorization.html
+  - id: ENG-04
+    category: engineering
+    requirement: Frontends follow the HMCTS frontend web performance standard.
+    source: hmcts-way
+    url: https://hmcts.github.io/standards/standards/frontend-web-performance.html
+  - id: ENG-05
+    category: engineering
+    requirement: APIs follow the HMCTS API practices, including an OpenAPI description.
+    source: hmcts-way
+    url: https://hmcts.github.io/standards/practices/apis.html
+  - id: ENG-06
+    category: engineering
+    requirement: Build pipelines are deterministic, fail fast, and can be run locally.
+    source: hmcts-way
+    url: https://hmcts.github.io/standards/principles/pipeline-best-practices.html
+  - id: ENG-07
+    category: engineering
+    requirement: Pipelines use least privilege, no long-lived personal credentials, and pinned dependencies.
+    source: hmcts-way
+    url: https://hmcts.github.io/standards/practices/ci-cd-security.html
+  - id: ENG-08
+    category: engineering
+    requirement: Code is developed in the open.
+    source: hmcts-way
+    url: https://hmcts.github.io/standards/principles/coding-in-the-open.html

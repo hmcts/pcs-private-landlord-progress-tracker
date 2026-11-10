@@ -8,6 +8,7 @@ const NAV = [
   ['Roadmap', '/roadmap/'],
   ['Quality assurance', '/quality/'],
   ['Performance', '/performance/'],
+  ['NFRs', '/nfrs/'],
   ['RAID log', '/raid/'],
   ['Dependencies', '/dependencies/'],
   ['ADRs', '/adr/'],
@@ -39,6 +40,8 @@ export default function (eleventyConfig) {
   // Dates stay strings in YAML, so templates can compare and format them.
   eleventyConfig.addDataExtension('yaml', (contents, path) => loadYaml(path))
 
+  // Nunjucks' selectattr only tests truthiness, so it can't match on a value.
+  eleventyConfig.addFilter('where', (items, key, value) => (items ?? []).filter((i) => i[key] === value))
   eleventyConfig.addFilter('date', (iso) => (iso ? fmtDate(String(iso)) : ''))
   eleventyConfig.addFilter('ragTag', (rag) =>
     `<strong class="govuk-tag ${RAG_TAG[rag] ?? 'govuk-tag--grey'}">${String(rag ?? 'unknown').toUpperCase()}</strong>`)

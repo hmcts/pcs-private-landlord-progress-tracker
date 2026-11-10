@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { loadYaml, validateDependencies, validateOverview, validateRaid } from '../scripts/lib/data.ts'
+import { loadYaml, validateDependencies, validateNfrs, validateOverview, validateRaid } from '../scripts/lib/data.ts'
 
 const risk = { id: 'R-001', type: 'risk', title: 'A risk', owner: 'Delivery manager', rag: 'amber', status: 'open',
   raised: '2026-11-09', review: '2026-11-23' }
@@ -36,6 +36,28 @@ describe('validateDependencies', () => {
   })
 })
 
+const standard = { id: 'pcs-nfrs', title: 'PCS NFRs', url: 'https://example.org/nfrs' }
+const nfr = { id: 'PERF-01', category: 'performance', requirement: 'Fast screens', source: 'pcs-nfrs' }
+
+describe('validateNfrs', () => {
+  test('accepts valid entries and an empty list', () => {
+    assert.deepEqual(validateNfrs({ standards: [standard], nfrs: [nfr] }), [])
+    assert.deepEqual(validateNfrs({ standards: [], nfrs: [] }), [])
+  })
+  test('needs the id prefix to match the category', () => {
+    assert.match(validateNfrs({ standards: [standard], nfrs: [{ ...nfr, id: 'QA-01' }] }).join(), /must look like PERF-01/)
+  })
+  test('needs the source to be a listed standard', () => {
+    assert.match(validateNfrs({ standards: [standard], nfrs: [{ ...nfr, source: 'unknown' }] }).join(), /"source" must be one of/)
+  })
+  test('rejects bad values and duplicate ids', () => {
+    const errors = validateNfrs({ standards: [{ ...standard, url: 'not a link' }], nfrs: [{ ...nfr, category: 'speed' }, nfr, nfr] }).join('\n')
+    assert.match(errors, /"url" must be an https link/)
+    assert.match(errors, /"category" must be one of/)
+    assert.match(errors, /duplicate id PERF-01/)
+  })
+})
+
 describe('validateOverview', () => {
   test('checks the overall status', () => {
     assert.deepEqual(validateOverview({ rag: 'green', headline: 'Going well', updated: '2026-11-09', milestones: [] }), [])
@@ -47,4 +69,5 @@ test('the committed data files are valid', () => {
   assert.deepEqual(validateOverview(loadYaml('src/_data/overview.yaml')), [])
   assert.deepEqual(validateRaid(loadYaml('src/_data/raid.yaml')), [])
   assert.deepEqual(validateDependencies(loadYaml('src/_data/dependencies.yaml')), [])
+  assert.deepEqual(validateNfrs(loadYaml('src/_data/nfrs.yaml')), [])
 })

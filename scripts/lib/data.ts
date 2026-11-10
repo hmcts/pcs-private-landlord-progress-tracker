@@ -39,6 +39,33 @@ export interface DependencyEntry {
   rag: 'red' | 'amber' | 'green'
 }
 
+export const NFR_CATEGORIES = {
+  performance: 'PERF', accessibility: 'A11Y', security: 'SEC', reliability: 'REL',
+  data: 'DAT', support: 'SUP', quality: 'QA', engineering: 'ENG',
+} as const
+
+export interface NfrStandard {
+  id: string
+  title: string
+  url: string
+  note?: string
+}
+
+export interface NfrEntry {
+  id: string // PERF-01, QA-01, ...
+  category: keyof typeof NFR_CATEGORIES
+  requirement: string
+  target?: string
+  ref?: string // the requirement's ID in the source
+  source: string // a standard's id
+  url?: string
+}
+
+export interface Nfrs {
+  standards: NfrStandard[]
+  nfrs: NfrEntry[]
+}
+
 export interface Overview {
   rag: 'red' | 'amber' | 'green'
   headline: string
@@ -102,6 +129,35 @@ export function validateDependencies(doc: unknown): string[] {
     if (o.jira !== undefined && !/^[A-Z][A-Z0-9]+-\d+$/.test(String(o.jira))) errors.push(`${where}: "jira" must be an issue key`)
   })
   uniqueIds(errors, 'dependencies', items)
+  return errors
+}
+
+const URL = /^https:\/\/\S+$/
+
+export function validateNfrs(doc: unknown): string[] {
+  const errors: string[] = []
+  if (!doc || typeof doc !== 'object' || Array.isArray(doc)) return ['nfrs: expected a mapping']
+  const o = doc as Rec
+  const standards = list(errors, 'nfrs.standards', o.standards)
+  standards.forEach((s, n) => {
+    const where = `nfrs.standards[${n}] ${s.id ?? ''}`.trim()
+    check(errors, where, s, ['id', 'title', 'url'], [], {})
+    if (str(s, 'url') && !URL.test(String(s.url))) errors.push(`${where}: "url" must be an https link`)
+  })
+  uniqueIds(errors, 'nfrs.standards', standards)
+  const known = new Set(standards.map((s) => String(s.id)))
+  const items = list(errors, 'nfrs.nfrs', o.nfrs)
+  items.forEach((i, n) => {
+    const where = `nfrs.nfrs[${n}] ${i.id ?? ''}`.trim()
+    check(errors, where, i, ['id', 'category', 'requirement', 'source'], [], { category: Object.keys(NFR_CATEGORIES) })
+    const prefix = NFR_CATEGORIES[i.category as keyof typeof NFR_CATEGORIES]
+    if (prefix && !new RegExp(`^${prefix}-\\d{2,}$`).test(String(i.id ?? ''))) {
+      errors.push(`${where}: "id" must look like ${prefix}-01 for category "${i.category}"`)
+    }
+    if (str(i, 'source') && !known.has(String(i.source))) errors.push(`${where}: "source" must be one of the standards' ids`)
+    if (i.url !== undefined && !URL.test(String(i.url))) errors.push(`${where}: "url" must be an https link`)
+  })
+  uniqueIds(errors, 'nfrs.nfrs', items)
   return errors
 }
 
