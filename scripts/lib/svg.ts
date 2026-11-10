@@ -1,6 +1,6 @@
 // Inline SVG charts for the site, drawn from snapshots: the roadmap timeline and the burn-up.
 //
-// Self-contained (no vendored generator), so the site builds from committed snapshots alone.
+// Independent of the generator, so the site builds from committed snapshots alone.
 // Each chart is decorative-plus-summary (role="img" with a title and description); the page
 // puts the same data in a table beside it, which is the accessible version.
 

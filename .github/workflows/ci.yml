@@ -9,25 +9,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - id: ref
-        run: echo "sha=$(cat cft-workspace.ref)" >> "$GITHUB_OUTPUT"
-
-      - name: Check out the roadmap generator
-        uses: actions/checkout@v7
-        with:
-          repository: hmcts/cft-workspace
-          ref: ${{ steps.ref.outputs.sha }}
-          path: vendor/cft-workspace
-          token: ${{ secrets.CFT_WORKSPACE_TOKEN }}
-          sparse-checkout: apps/pcs/.claude/scripts/lib/roadmap
-
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
 
       - run: npm ci
-      - run: npm run vendor
       - run: npm run typecheck
       - run: npm test
       - run: npm run build

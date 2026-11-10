@@ -19,13 +19,12 @@ GitHub Pages and rebuilt every weekday morning.
 
 `.github/workflows/publish.yml` runs at 06:00 UTC, Monday to Friday (and on every push to `master`):
 
-1. Checks out the PCS roadmap generator from `hmcts/cft-workspace`, at the commit in
-   `cft-workspace.ref`. This is the generator behind the `/pcs:roadmap` poster.
-2. Reads the epics and their child items from Jira with `twg`, the Atlassian CLI that
-   cft-workspace uses (`npm run fetch`). It saves
+1. Reads the epics and their child items from Jira with `twg`, the Atlassian CLI that
+   cft-workspace uses (`npm run fetch`). It uses `scripts/lib/roadmap-runner.ts`, a copy of
+   the generator behind cft-workspace's `/pcs:roadmap` poster. It saves
    `data/snapshots/<date>.json` and commits it. The site is built only from these
    snapshots, and together they give the burn-up chart.
-3. Builds the site with Eleventy and the [GOV.UK Eleventy plugin](https://govuk-eleventy-plugin.x-govuk.org/),
+2. Builds the site with Eleventy and the [GOV.UK Eleventy plugin](https://govuk-eleventy-plugin.x-govuk.org/),
    and deploys it to GitHub Pages.
 
 If Jira can't be read, the site is still built from the last snapshot and shows an
@@ -59,14 +58,12 @@ CI (`.github/workflows/ci.yml`) validates the data files and builds the site on 
 
 ## Running it locally
 
-You need Node 24, a checkout of `hmcts/cft-workspace`, and
+You need Node 24 and
 [`twg`](https://developer.atlassian.com/platform/teamwork-graph/twg-cli/) logged in to
 `hmcts.atlassian.net` (`twg login --site hmcts`).
 
 ```sh
 npm ci
-CFT_WORKSPACE=~/path/to/cft-workspace npm run vendor   # links the roadmap generator
-
 npm run fetch   # read Jira with your twg login
 npm start       # http://localhost:8080
 npm test
@@ -83,7 +80,6 @@ npm run typecheck
 
 | Secret | What it is |
 |---|---|
-| `CFT_WORKSPACE_TOKEN` | A fine-grained token with read-only Contents access to `hmcts/cft-workspace` |
 | `TWG_AZURE_CLIENT_ID` | Client ID of the app registration the workflow signs in to Azure as |
 | `AZURE_TENANT_ID` | The HMCTS Azure tenant ID |
 
@@ -92,8 +88,9 @@ npm run typecheck
 | `TWG_KEY_VAULT` | The Key Vault holding the twg sign-in |
 | `TWG_SECRET_NAME` | Optional. The secret's name. Defaults to `twg-auth-conf-pcs-progress-tracker` |
 
-To pick up a newer version of the roadmap generator, put the new `hmcts/cft-workspace`
-commit in `cft-workspace.ref`.
+To pick up a newer version of the roadmap generator, copy
+`apps/pcs/.claude/scripts/lib/roadmap/roadmap-runner.ts` from `hmcts/cft-workspace` over
+`scripts/lib/roadmap-runner.ts`, keeping its header comment, and update the commit there.
 
 ## Jira sign-in
 

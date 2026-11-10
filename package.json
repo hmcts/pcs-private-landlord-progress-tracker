@@ -7,7 +7,6 @@
     "node": ">=24"
   },
   "scripts": {
-    "vendor": "scripts/vendor.sh",
     "fetch": "node --no-warnings scripts/fetch-roadmap.ts",
     "validate": "node --no-warnings scripts/validate-data.ts",
     "build": "npm run validate && eleventy",
@@ -18,7 +17,8 @@
   "dependencies": {
     "@11ty/eleventy": "3.1.8",
     "@x-govuk/govuk-eleventy-plugin": "9.0.2",
-    "js-yaml": "5.5.0"
+    "js-yaml": "5.5.0",
+    "pdfkit": "0.20.2"
   },
   "devDependencies": {
     "@types/node": "24.19.2",

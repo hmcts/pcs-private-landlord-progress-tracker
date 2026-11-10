@@ -1,4 +1,4 @@
-// Runs the real vendored generator's buildModel, so `npm run vendor` must have been run.
+// Runs the real generator's buildModel.
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { buildModel, type Config, type Issue } from '../scripts/lib/roadmap-runner.ts'
