@@ -1,5 +1,5 @@
 // Roadmap data for the templates, from the committed daily snapshots in data/snapshots/.
-// The latest snapshot drives the Roadmap, Overview and Dependencies pages; all of them
+// The latest snapshot drives the Roadmap and Overview pages; all of them
 // together give the burn-up.
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { burnupSvg, roadmapSvg } from '../../scripts/lib/svg.ts'

@@ -1,7 +1,8 @@
 # PCS Private Landlord progress tracker
 
 A public site where stakeholders can follow the Possession Claims Service (PCS) Private Landlord
-workstream: roadmap, RAID log, dependencies and architecture decisions. It's published with
+workstream: roadmap, RAID log (including dependencies on other teams), non-functional
+requirements and architecture decisions. It's published with
 GitHub Pages and rebuilt every weekday morning.
 
 | Page | Where the content comes from |
@@ -12,7 +13,6 @@ GitHub Pages and rebuilt every weekday morning.
 | Performance | Not live yet: waiting for the performance tests to run in Jenkins |
 | NFRs | `src/_data/nfrs.yaml`: PCS NFRs, QA standards and HMCTS engineering standards |
 | RAID log | `src/_data/raid.yaml` |
-| Dependencies | `src/_data/dependencies.yaml`, plus Jira links from our epics to other projects |
 | ADRs | `src/adr/*.md` |
 
 ## How it works
@@ -38,7 +38,7 @@ This is a public site.
   counts, plus the key and status of any linked issue in another project. Descriptions,
   comments and child item summaries are never kept.
 - Any issue labelled `not-public` is left out.
-- The RAID log, dependencies, NFRs and ADRs change only through pull requests, so a person reviews
+- The RAID log, NFRs and ADRs change only through pull requests, so a person reviews
   everything before it's published. Write entries for a public audience, and use roles
   rather than people's names.
 
@@ -46,7 +46,7 @@ This is a public site.
 
 - **Overall status and milestones:** edit `src/_data/overview.yaml`.
 - **RAID log:** add an entry to `src/_data/raid.yaml`. The file explains the fields.
-- **Dependencies:** add an entry to `src/_data/dependencies.yaml`.
+- **Dependencies on other teams:** add a `dependency` entry (`D-001`) to `src/_data/raid.yaml`.
 - **Non-functional requirements:** add an entry to `src/_data/nfrs.yaml`, citing one of its
   `standards`. The file explains the fields.
 - **Architecture decision:** copy `src/adr/template.md.txt` to the next number, for example

@@ -27,18 +27,6 @@ export interface RaidEntry {
   mitigation?: string
 }
 
-export interface DependencyEntry {
-  id: string // DEP-001
-  team: string
-  need: string
-  why?: string
-  jira?: string
-  needed_by?: string
-  owner: string
-  status: 'not-started' | 'in-progress' | 'blocked' | 'done'
-  rag: 'red' | 'amber' | 'green'
-}
-
 export const NFR_CATEGORIES = {
   performance: 'PERF', accessibility: 'A11Y', security: 'SEC', reliability: 'REL',
   data: 'DAT', support: 'SUP', quality: 'QA', engineering: 'ENG',
@@ -115,20 +103,6 @@ export function validateRaid(doc: unknown): string[] {
     if (o.status === 'open' && !str(o, 'review')) errors.push(`${where}: open entries need a "review" date`)
   })
   uniqueIds(errors, 'raid', items)
-  return errors
-}
-
-export function validateDependencies(doc: unknown): string[] {
-  const errors: string[] = []
-  const items = list(errors, 'dependencies', doc)
-  items.forEach((o, n) => {
-    const where = `dependencies[${n}] ${o.id ?? ''}`.trim()
-    check(errors, where, o, ['id', 'team', 'need', 'owner', 'status', 'rag'], ['needed_by'],
-      { rag: RAGS, status: ['not-started', 'in-progress', 'blocked', 'done'] })
-    if (!/^DEP-\d{3,}$/.test(String(o.id ?? ''))) errors.push(`${where}: "id" must look like DEP-001`)
-    if (o.jira !== undefined && !/^[A-Z][A-Z0-9]+-\d+$/.test(String(o.jira))) errors.push(`${where}: "jira" must be an issue key`)
-  })
-  uniqueIds(errors, 'dependencies', items)
   return errors
 }
 

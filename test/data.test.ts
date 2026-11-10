@@ -1,10 +1,9 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { loadYaml, validateDependencies, validateNfrs, validateOverview, validateRaid } from '../scripts/lib/data.ts'
+import { loadYaml, validateNfrs, validateOverview, validateRaid } from '../scripts/lib/data.ts'
 
 const risk = { id: 'R-001', type: 'risk', title: 'A risk', owner: 'Delivery manager', rag: 'amber', status: 'open',
   raised: '2026-11-09', review: '2026-11-23' }
-const dep = { id: 'DEP-001', team: 'PRD', need: 'An API', owner: 'Tech lead', status: 'not-started', rag: 'green' }
 
 describe('validateRaid', () => {
   test('accepts a valid entry and an empty log', () => {
@@ -24,15 +23,6 @@ describe('validateRaid', () => {
     assert.match(errors, /"rag" must be one of/)
     assert.match(errors, /"raised" must be YYYY-MM-DD/)
     assert.match(errors, /duplicate id R-001/)
-  })
-})
-
-describe('validateDependencies', () => {
-  test('accepts a valid entry', () => assert.deepEqual(validateDependencies([dep]), []))
-  test('checks the jira key and status', () => {
-    const errors = validateDependencies([{ ...dep, jira: 'not a key', status: 'waiting' }]).join('\n')
-    assert.match(errors, /"jira" must be an issue key/)
-    assert.match(errors, /"status" must be one of/)
   })
 })
 
@@ -68,6 +58,5 @@ describe('validateOverview', () => {
 test('the committed data files are valid', () => {
   assert.deepEqual(validateOverview(loadYaml('src/_data/overview.yaml')), [])
   assert.deepEqual(validateRaid(loadYaml('src/_data/raid.yaml')), [])
-  assert.deepEqual(validateDependencies(loadYaml('src/_data/dependencies.yaml')), [])
   assert.deepEqual(validateNfrs(loadYaml('src/_data/nfrs.yaml')), [])
 })
