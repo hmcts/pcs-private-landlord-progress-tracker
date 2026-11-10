@@ -8,7 +8,7 @@ description: Risks, assumptions, issues and dependencies for the Private Landlor
 <p class="govuk-body">Nothing has been logged yet.</p>
 {% endif %}
 {% for g in groups %}
-{% set items = raid | selectattr("type", "equalto", g[0]) %}
+{% set items = raid | where("type", g[0]) %}
 {% if items | length %}
 <h2 class="govuk-heading-l">{{ g[1] }}</h2>
 <table class="govuk-table"><thead class="govuk-table__head"><tr class="govuk-table__row">

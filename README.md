@@ -100,8 +100,8 @@ hand and stored in Key Vault as twg's `auth.conf`, minus its hour-long access to
 restores it, runs `twg auth refresh`, and writes the rotated refresh token straight back.
 Every refresh spends the previous token, so:
 
-- **This workflow needs its own sign-in.** Don't reuse another job's secret, and don't seed it
-  from your own `~/.config/twg`. Whichever copy refreshed first would sign the others out.
+- **This workflow needs its own sign-in.** Don't reuse another job's secret, and don't keep using
+  a sign-in after you've stored it. Whichever copy refreshed first would sign the others out.
 - **Runs must not overlap.** The workflow's `concurrency` group ensures that.
 - Jira is read as whoever seeded the secret, so the roadmap shows what that account can see.
 
@@ -109,24 +109,40 @@ The workflow reaches the vault with `azure/login` over OIDC. It needs:
 
 - an app registration (defined in
   [`hmcts/azure-github-federation-config`](https://github.com/hmcts/azure-github-federation-config))
-  with a federated credential for `repo:hmcts/pcs-private-landlord-progress-tracker:ref:refs/heads/master`.
+  with a federated credential for
+  `repo:hmcts@22817111/pcs-private-landlord-progress-tracker@1451103556:ref:refs/heads/master`.
+  GitHub puts the org and repo IDs in the subject for repos created after 15 July 2026.
   Runs from other branches can't reach the vault, so they build from the last snapshot.
 - a Key Vault access policy for that app with secrets **Get** and **Set**, and no other roles.
 
 **Seed the secret**, or re-seed it when a run reports `twg auth refresh` exit 77 (Atlassian
-rejected the token, typically after 90 days unused). A separate config directory starts a
-separate token chain, so your own twg login is never spent:
+rejected the token, typically after 90 days unused). `twg login` always writes its token to
+`~/.config/twg/auth.conf`. `TWG_CONFIG_DIR` moves only the profile files, so it can't keep a
+seed login apart from your own. Instead, hand your sign-in over to the workflow, then sign in
+again:
 
-```bash
-d=$(mktemp -d); TWG_CONFIG_DIR=$d twg login --site hmcts
-f=$(mktemp); grep -v '^oauth-access-token=' "$d/auth.conf" > "$f"
-az keyvault secret set --vault-name <TWG_KEY_VAULT> --name twg-auth-conf-pcs-progress-tracker \
-  --file "$f" --encoding utf-8 >/dev/null
-rm -rf "$d" "$f"
-```
+1. Sign in as the account the roadmap should read Jira as. `twg login` needs a terminal, and
+   its device code expires quickly, so approve it as soon as it appears.
 
-`>/dev/null` matters, because `az keyvault secret set` prints the value it stored. The device
-code from `twg login` expires quickly, so approve it as soon as it appears.
+   ```bash
+   twg login --force --site hmcts
+   ```
+
+2. Store it, without its access token:
+
+   ```bash
+   f=$(mktemp); grep -v '^oauth-access-token=' ~/.config/twg/auth.conf > "$f"
+   az keyvault secret set --vault-name <TWG_KEY_VAULT> --name twg-auth-conf-pcs-progress-tracker \
+     --file "$f" --encoding utf-8 >/dev/null
+   rm -f "$f"
+   ```
+
+   `>/dev/null` matters, because `az keyvault secret set` prints the value it stored.
+
+3. Before you use twg again, run the Publish workflow from `master` (Actions → Publish → Run
+   workflow), and check that its log says "stored the rotated twg sign-in". That refresh spends
+   the copy on your machine, so it can never sign the workflow out.
+4. Sign in again for your own use: `twg login --force --site hmcts`.
 
 If the sign-in fails, the site is still published from the last snapshot with an "out of date"
 warning, and the run fails so someone notices.
