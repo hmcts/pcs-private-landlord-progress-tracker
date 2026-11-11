@@ -1,6 +1,6 @@
 {
   "date": "2026-11-11",
-  "generatedAt": "2026-11-11T21:15:38.241Z",
+  "generatedAt": "2026-11-11T21:26:59.570Z",
   "title": "PCS Private Landlord roadmap",
   "project": "HDPI",
   "jiraUrl": "https://hmcts.atlassian.net",
@@ -28,7 +28,299 @@
             "indeterminate": 0,
             "new": 29
           },
-          "clashes": []
+          "clashes": [],
+          "items": [
+            {
+              "key": "HDPI-10042",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10042",
+              "summary": "1. Start page, sign-in, and the private landlord and trespass checks",
+              "status": "New",
+              "category": "new",
+              "start": "2026-11-02",
+              "due": "2026-11-06",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10043",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10043",
+              "summary": "2. Property address and eligibility check",
+              "status": "New",
+              "category": "new",
+              "start": "2026-11-07",
+              "due": "2026-11-11",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10044",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10044",
+              "summary": "3. Create the claim and tell the claimant they're eligible",
+              "status": "New",
+              "category": "new",
+              "start": "2026-11-12",
+              "due": "2026-11-16",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10045",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10045",
+              "summary": "4. Task list showing each section of the claim and its status",
+              "status": "New",
+              "category": "new",
+              "start": "2026-11-17",
+              "due": "2026-11-21",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10046",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10046",
+              "summary": "5. Save for later, without overwriting changes made in another tab",
+              "status": "New",
+              "category": "new",
+              "start": "2026-11-22",
+              "due": "2026-11-26",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10047",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10047",
+              "summary": "6. Your details: individual or company, and the claimant's name",
+              "status": "New",
+              "category": "new",
+              "start": "2026-11-27",
+              "due": "2026-12-01",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10048",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10048",
+              "summary": "7. Contact details: postal address, email, telephone and text message",
+              "status": "New",
+              "category": "new",
+              "start": "2026-12-02",
+              "due": "2026-12-06",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10049",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10049",
+              "summary": "8. Other claimants and check your answers for About you",
+              "status": "New",
+              "category": "new",
+              "start": "2026-12-07",
+              "due": "2026-12-11",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10050",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10050",
+              "summary": "9. Defendant names and addresses for service",
+              "status": "New",
+              "category": "new",
+              "start": "2026-12-12",
+              "due": "2026-12-16",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10051",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10051",
+              "summary": "10. Add, remove and check the defendants",
+              "status": "New",
+              "category": "new",
+              "start": "2026-12-17",
+              "due": "2026-12-21",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10052",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10052",
+              "summary": "11. Tenancy or licence type, start date and agreement upload",
+              "status": "New",
+              "category": "new",
+              "start": "2026-12-22",
+              "due": "2026-12-26",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10053",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10053",
+              "summary": "12. Grounds for possession",
+              "status": "New",
+              "category": "new",
+              "start": "2026-12-27",
+              "due": "2026-12-31",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10054",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10054",
+              "summary": "13. Reason for each ground and check your answers for tenancy and grounds",
+              "status": "New",
+              "category": "new",
+              "start": "2027-01-01",
+              "due": "2027-01-05",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10055",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10055",
+              "summary": "14. Notice served, notice type, date and method",
+              "status": "New",
+              "category": "new",
+              "start": "2027-01-06",
+              "due": "2027-01-10",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10056",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10056",
+              "summary": "15. Upload the notice and check your answers for notice",
+              "status": "New",
+              "category": "new",
+              "start": "2027-01-11",
+              "due": "2027-01-15",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10057",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10057",
+              "summary": "16. Rent amount, how often it is paid and the rent due day",
+              "status": "New",
+              "category": "new",
+              "start": "2027-01-16",
+              "due": "2027-01-20",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10058",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10058",
+              "summary": "17. Rent arrears on the notice date and today, and how they are proved",
+              "status": "New",
+              "category": "new",
+              "start": "2027-01-21",
+              "due": "2027-01-25",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10059",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10059",
+              "summary": "18. Ledger rent history: add, check and remove transactions",
+              "status": "New",
+              "category": "new",
+              "start": "2027-01-26",
+              "due": "2027-01-30",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10060",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10060",
+              "summary": "19. Table rent history: statement period, rent periods and payments",
+              "status": "New",
+              "category": "new",
+              "start": "2027-01-31",
+              "due": "2027-02-04",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10061",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10061",
+              "summary": "20. Money judgment, steps to recover the arrears and check your answers",
+              "status": "New",
+              "category": "new",
+              "start": "2027-02-05",
+              "due": "2027-02-09",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10062",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10062",
+              "summary": "21. Defendant and claimant circumstances",
+              "status": "New",
+              "category": "new",
+              "start": "2027-02-10",
+              "due": "2027-02-14",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10063",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10063",
+              "summary": "22. Sub-tenants and mortgage lenders, and check your answers for circumstances",
+              "status": "New",
+              "category": "new",
+              "start": "2027-02-15",
+              "due": "2027-02-19",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10064",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10064",
+              "summary": "23. Upload files and other information",
+              "status": "New",
+              "category": "new",
+              "start": "2027-02-20",
+              "due": "2027-02-24",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10065",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10065",
+              "summary": "24. Hand-offs to Your Support and the PCQ equality questions",
+              "status": "New",
+              "category": "new",
+              "start": "2027-02-25",
+              "due": "2027-03-01",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10066",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10066",
+              "summary": "25. Check your answers, statement of truth and submit",
+              "status": "New",
+              "category": "new",
+              "start": "2027-03-02",
+              "due": "2027-03-06",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10067",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10067",
+              "summary": "26. Pay the claim fee and the claim submitted page",
+              "status": "New",
+              "category": "new",
+              "start": "2027-03-07",
+              "due": "2027-03-11",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10068",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10068",
+              "summary": "27. The claimant can still see and return to their claim after submission",
+              "status": "New",
+              "category": "new",
+              "start": "2027-03-12",
+              "due": "2027-03-16",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10069",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10069",
+              "summary": "28. A claimant who needs a general application can make one within 24 hours",
+              "status": "New",
+              "category": "new",
+              "start": "2027-03-17",
+              "due": "2027-03-21",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10070",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10070",
+              "summary": "29. Help with Fees for the claim fee",
+              "status": "New",
+              "category": "new",
+              "start": "2027-03-22",
+              "due": "2027-03-31",
+              "forecast": true
+            }
+          ]
         }
       ]
     }
