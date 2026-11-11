@@ -1,6 +1,6 @@
 {
   "date": "2026-11-11",
-  "generatedAt": "2026-11-11T14:46:38.620Z",
+  "generatedAt": "2026-11-11T21:09:21.048Z",
   "title": "PCS Private Landlord roadmap",
   "project": "HDPI",
   "jiraUrl": "https://hmcts.atlassian.net",
@@ -22,11 +22,11 @@
           "start": null,
           "due": null,
           "derived": 0,
-          "total": 0,
+          "total": 29,
           "counts": {
             "done": 0,
             "indeterminate": 0,
-            "new": 0
+            "new": 29
           },
           "clashes": []
         }
@@ -39,7 +39,7 @@
   "totals": {
     "epics": 1,
     "epicsDone": 0,
-    "items": 0,
+    "items": 29,
     "itemsDone": 0,
     "undated": 1
   }
