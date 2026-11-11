@@ -353,3 +353,38 @@
   title: Welsh translations
   decision: Find out whether the private landlord journeys need Welsh translations.
   outcome: open-question
+
+- id: DEC-044
+  date: "2026-11-11"
+  area: other
+  title: What goes in the defendant's claim pack
+  decision: Decide whether the claimant's uploads (the tenancy agreement, the notice, the rent statement and other files) go into the claim pack posted to the defendants. Today the pack holds only the claim form, the access code letter and the blank forms.
+  outcome: open-question
+
+- id: DEC-045
+  date: "2026-11-11"
+  area: about-you
+  title: Text message updates
+  decision: The journey asks whether the claimant wants updates by text message and collects a mobile number, but the service sends no text messages. Decide whether to send text updates or remove the question.
+  outcome: open-question
+
+- id: DEC-046
+  date: "2026-11-11"
+  area: other
+  title: Posted claimant pack for a self-represented claimant
+  decision: Decide whether a self-represented private landlord should be posted the claimant pack after their claim is issued.
+  outcome: open-question
+
+- id: DEC-047
+  date: "2026-11-11"
+  area: pay
+  title: Claims whose fee is never paid
+  decision: Decide what happens to a submitted claim whose fee payment failed or was never made, including retries, reminders, expiry and the state the case is left in.
+  outcome: open-question
+
+- id: DEC-048
+  date: "2026-11-11"
+  area: other
+  title: Work allocation tasks for self-represented claims
+  decision: Agree with work allocation and operations whether a self-represented private landlord's claim raises the same caseworker tasks as a claim made by a legal representative, or new ones, for example a review of a claim made without a legal representative.
+  outcome: open-question
