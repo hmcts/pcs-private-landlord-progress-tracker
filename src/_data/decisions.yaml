@@ -346,3 +346,10 @@
   decision: The sentence about general applications on the confirmation page reflects whatever the claimant answered. We'll keep this.
   outcome: keep
   ref: OBS-42
+
+- id: DEC-043
+  date: "2026-11-11"
+  area: journey
+  title: Welsh translations
+  decision: Find out whether the private landlord journeys need Welsh translations.
+  outcome: open-question
