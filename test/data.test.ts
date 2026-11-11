@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { loadYaml, validateNfrs, validateOverview, validateRaid } from '../scripts/lib/data.ts'
+import { loadYaml, validateDecisions, validateNfrs, validateOverview, validateRaid } from '../scripts/lib/data.ts'
 
 const risk = { id: 'R-001', type: 'risk', title: 'A risk', owner: 'Delivery manager', rag: 'amber', status: 'open',
   raised: '2026-11-09', review: '2026-11-23' }
@@ -23,6 +23,28 @@ describe('validateRaid', () => {
     assert.match(errors, /"rag" must be one of/)
     assert.match(errors, /"raised" must be YYYY-MM-DD/)
     assert.match(errors, /duplicate id R-001/)
+  })
+})
+
+const decision = { id: 'DEC-001', date: '2026-11-11', area: 'journey', title: 'A decision',
+  decision: 'What was decided.', outcome: 'fix', ref: 'OBS-1' }
+
+describe('validateDecisions', () => {
+  test('accepts valid entries and an empty log', () => {
+    const { ref: _ref, ...noRef } = decision
+    assert.deepEqual(validateDecisions([decision, { ...noRef, id: 'DEC-002', outcome: 'open-question' }]), [])
+    assert.deepEqual(validateDecisions([]), [])
+  })
+  test('needs a DEC- id', () => {
+    assert.match(validateDecisions([{ ...decision, id: 'D-001' }]).join(), /must look like DEC-001/)
+    assert.match(validateDecisions([{ ...decision, id: 'DEC-1' }]).join(), /must look like DEC-001/)
+  })
+  test('rejects bad values and duplicate ids', () => {
+    const errors = validateDecisions([{ ...decision, outcome: 'maybe', area: 'elsewhere', date: '11 Nov' }, decision]).join('\n')
+    assert.match(errors, /"outcome" must be one of/)
+    assert.match(errors, /"area" must be one of/)
+    assert.match(errors, /"date" must be YYYY-MM-DD/)
+    assert.match(errors, /duplicate id DEC-001/)
   })
 })
 
@@ -59,4 +81,5 @@ test('the committed data files are valid', () => {
   assert.deepEqual(validateOverview(loadYaml('src/_data/overview.yaml')), [])
   assert.deepEqual(validateRaid(loadYaml('src/_data/raid.yaml')), [])
   assert.deepEqual(validateNfrs(loadYaml('src/_data/nfrs.yaml')), [])
+  assert.deepEqual(validateDecisions(loadYaml('src/_data/decisions.yaml')), [])
 })

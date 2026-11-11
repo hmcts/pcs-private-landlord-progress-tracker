@@ -10,6 +10,7 @@ const NAV = [
   ['Performance', '/performance/'],
   ['NFRs', '/nfrs/'],
   ['RAID log', '/raid/'],
+  ['Decisions', '/decisions/'],
   ['ADRs', '/adr/'],
 ]
 

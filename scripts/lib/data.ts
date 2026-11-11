@@ -27,6 +27,23 @@ export interface RaidEntry {
   mitigation?: string
 }
 
+export const DECISION_AREAS = [
+  'eligibility', 'about-you', 'defendants', 'tenancy-and-grounds', 'notice',
+  'rent-arrears', 'check-and-submit', 'pay', 'journey', 'other',
+] as const
+
+export const DECISION_OUTCOMES = ['fix', 'keep', 'open-question'] as const
+
+export interface DecisionEntry {
+  id: string // DEC-001
+  date: string
+  area: (typeof DECISION_AREAS)[number]
+  title: string
+  decision: string
+  outcome: (typeof DECISION_OUTCOMES)[number]
+  ref?: string // the team's own tracking reference, such as OBS-14
+}
+
 export const NFR_CATEGORIES = {
   performance: 'PERF', accessibility: 'A11Y', security: 'SEC', reliability: 'REL',
   data: 'DAT', support: 'SUP', quality: 'QA', engineering: 'ENG',
@@ -103,6 +120,19 @@ export function validateRaid(doc: unknown): string[] {
     if (o.status === 'open' && !str(o, 'review')) errors.push(`${where}: open entries need a "review" date`)
   })
   uniqueIds(errors, 'raid', items)
+  return errors
+}
+
+export function validateDecisions(doc: unknown): string[] {
+  const errors: string[] = []
+  const items = list(errors, 'decisions', doc)
+  items.forEach((o, n) => {
+    const where = `decisions[${n}] ${o.id ?? ''}`.trim()
+    check(errors, where, o, ['id', 'date', 'area', 'title', 'decision', 'outcome'], ['date'],
+      { area: [...DECISION_AREAS], outcome: [...DECISION_OUTCOMES] })
+    if (!/^DEC-\d{3,}$/.test(String(o.id ?? ''))) errors.push(`${where}: "id" must look like DEC-001`)
+  })
+  uniqueIds(errors, 'decisions', items)
   return errors
 }
 

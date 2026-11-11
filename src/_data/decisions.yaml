@@ -1,0 +1,348 @@
+# Decisions log: product and design decisions about how the private landlord claim journey
+# should behave. Edit through a PR. Architecture decisions go in src/adr/ instead.
+# This site is public: write entries as you would for a public audience.
+#
+# - id: DEC-001                # DEC- then a number (D- is taken by RAID dependencies)
+#   date: "2026-11-11"         # when the decision was made
+#   area: journey              # eligibility | about-you | defendants | tenancy-and-grounds | notice |
+#                              # rent-arrears | check-and-submit | pay | journey | other
+#   title: Short, plain statement of what the decision is about
+#   decision: One or two sentences saying what was decided
+#   outcome: fix               # fix | keep | open-question
+#   ref: OBS-1                 # optional: a short reference for the team's own tracking
+
+- id: DEC-001
+  date: "2026-11-11"
+  area: about-you
+  title: Adding another claimant
+  decision: Answering Yes to adding another claimant shows a page saying the service can't be used yet, but the About you section still shows as done. We'll keep this and make it explicit, because the claim is refused at submission.
+  outcome: keep
+  ref: OBS-1
+
+- id: DEC-002
+  date: "2026-11-11"
+  area: defendants
+  title: Back links when adding more defendants
+  decision: Back links on the pages for a second or later defendant lose the claimant's place. They'll be fixed to return to the right page.
+  outcome: fix
+  ref: OBS-2
+
+- id: DEC-003
+  date: "2026-11-11"
+  area: notice
+  title: Checking the email address a notice was sent to
+  decision: The email address a notice was sent to isn't checked. We'll check that it's a valid email address.
+  outcome: fix
+  ref: OBS-3
+
+- id: DEC-004
+  date: "2026-11-11"
+  area: journey
+  title: Saving a blank optional page
+  decision: An optional page left blank counts as answered even when the claimant chooses "Save for later". Only "Save and continue" on a blank optional page will count as answered; "Save for later" will leave it unanswered.
+  outcome: fix
+  ref: OBS-4
+
+- id: DEC-005
+  date: "2026-11-11"
+  area: journey
+  title: Changing an answer from a summary page
+  decision: After changing an answer from a check your answers page, the claimant carries on through the section instead of going back to the summary. They'll be returned to the summary.
+  outcome: fix
+  ref: OBS-5
+
+- id: DEC-006
+  date: "2026-11-11"
+  area: rent-arrears
+  title: Removing a payment from the rent statement table
+  decision: In the table version of the rent statement, a payment can't be removed once it's added. We'll add a way to remove a payment.
+  outcome: fix
+  ref: OBS-6
+
+- id: DEC-007
+  date: "2026-11-11"
+  area: journey
+  title: "\"Available\" status on the task list"
+  decision: The task list labels sections that can be started as "Available". We'll keep this, because it matches the defendant's journey.
+  outcome: keep
+  ref: OBS-7
+
+- id: DEC-008
+  date: "2026-11-11"
+  area: other
+  title: Equality questions after submission
+  decision: The equality questions page says there will be questions after submission, but they aren't asked yet. We'll keep the page as it is for now.
+  outcome: keep
+  ref: OBS-8
+
+- id: DEC-009
+  date: "2026-11-11"
+  area: other
+  title: Guidance on general applications after submission
+  decision: The hint about general applications says guidance will be given after submission, but it isn't given yet. We haven't decided what to do about this.
+  outcome: open-question
+  ref: OBS-9
+
+- id: DEC-010
+  date: "2026-11-11"
+  area: journey
+  title: Court staff opening the journey
+  decision: Court staff who open the claim journey are sent to the case management system instead of seeing a "page not found" message. We'll keep this.
+  outcome: keep
+  ref: OBS-10
+
+- id: DEC-011
+  date: "2026-11-11"
+  area: check-and-submit
+  title: Saying which answer to fix when a claim is refused
+  decision: Some refusals at submission, such as for the rent amount, arrears at the time of the notice, rent statement rows and uploads, don't say which answer to change. They'll point the claimant to the answer to fix.
+  outcome: fix
+  ref: OBS-11
+
+- id: DEC-012
+  date: "2026-11-11"
+  area: pay
+  title: Declined and failed payments
+  decision: A declined card and a failed payment show the same message. Each will have its own message.
+  outcome: fix
+  ref: OBS-12
+
+- id: DEC-013
+  date: "2026-11-11"
+  area: journey
+  title: Seeing the claim once it's issued
+  decision: After the claim is issued, the claimant may not be able to see it. We haven't decided how this should work.
+  outcome: open-question
+  ref: OBS-13
+
+- id: DEC-014
+  date: "2026-11-11"
+  area: journey
+  title: "\"Error:\" in page titles"
+  decision: When a page shows errors, its title doesn't begin with "Error:". It will, as GOV.UK guidance says.
+  outcome: fix
+  ref: OBS-14
+
+- id: DEC-015
+  date: "2026-11-11"
+  area: journey
+  title: When a section shows as done
+  decision: A section can show as done before the claimant reaches its check your answers page. A section will show as done only after the claimant continues from its check your answers page.
+  outcome: fix
+  ref: OBS-15
+
+- id: DEC-016
+  date: "2026-11-11"
+  area: journey
+  title: Entering an address manually
+  decision: The "Enter the address manually" section stays closed even when it holds an address. It will be open when it holds one.
+  outcome: fix
+  ref: OBS-16
+
+- id: DEC-017
+  date: "2026-11-11"
+  area: journey
+  title: Saving for later from the address finder
+  decision: The address finder stops the claimant using "Save for later" when no address has been chosen. They'll be able to save for later without choosing one.
+  outcome: fix
+  ref: OBS-17
+
+- id: DEC-018
+  date: "2026-11-11"
+  area: journey
+  title: Error messages for unsupported characters
+  decision: Error messages about unsupported characters repeat the whole question. They'll use a short name for the field instead.
+  outcome: fix
+  ref: OBS-18
+
+- id: DEC-019
+  date: "2026-11-11"
+  area: journey
+  title: File size in the "file too big" message
+  decision: The message for a file that's too big doesn't give a unit for the size limit. We'll keep it as it is.
+  outcome: keep
+  ref: OBS-19
+
+- id: DEC-020
+  date: "2026-11-11"
+  area: eligibility
+  title: Starting again with a draft claim
+  decision: Going back and starting again can create a second draft claim. If the claimant already has a draft claim, they'll be taken to it instead of a new one being created.
+  outcome: fix
+  ref: OBS-20
+
+- id: DEC-021
+  date: "2026-11-11"
+  area: eligibility
+  title: Title of the "property not covered" page
+  decision: The title of the page saying the property isn't covered by the service differs from its heading. We'll keep it as it is.
+  outcome: keep
+  ref: OBS-21
+
+- id: DEC-022
+  date: "2026-11-11"
+  area: defendants
+  title: "Position of \"Defendants you've added\""
+  decision: The list of defendants you've added appears above the page heading. It will be moved below the heading.
+  outcome: fix
+  ref: OBS-22
+
+- id: DEC-023
+  date: "2026-11-11"
+  area: defendants
+  title: Removing a defendant that no longer exists
+  decision: Trying to remove a defendant that has already gone shows "Persons unknown". This will be fixed.
+  outcome: fix
+  ref: OBS-23
+
+- id: DEC-024
+  date: "2026-11-11"
+  area: tenancy-and-grounds
+  title: Back from the tenancy summary page
+  decision: Going back from the tenancy check your answers page goes to the reason for the first ground, not the last. It will go to the last one.
+  outcome: fix
+  ref: OBS-24
+
+- id: DEC-025
+  date: "2026-11-11"
+  area: tenancy-and-grounds
+  title: Reason pages for grounds that weren't chosen
+  decision: Opening the reason page for a ground the claimant didn't choose shows a broken heading. This will be fixed.
+  outcome: fix
+  ref: OBS-25
+
+- id: DEC-026
+  date: "2026-11-11"
+  area: notice
+  title: Notice date errors
+  decision: Errors about the date a notice was served don't say which method of serving the date belongs to. They will.
+  outcome: fix
+  ref: OBS-26
+
+- id: DEC-027
+  date: "2026-11-11"
+  area: rent-arrears
+  title: Rent statement kept after a design change
+  decision: A rent statement entered in the table design stays saved if the design changes to the ledger. We'll keep this.
+  outcome: keep
+  ref: OBS-27
+
+- id: DEC-028
+  date: "2026-11-11"
+  area: rent-arrears
+  title: Proof options that aren't offered
+  decision: A choice of proof of arrears that isn't offered in the current design is accepted. It will be rejected.
+  outcome: fix
+  ref: OBS-28
+
+- id: DEC-029
+  date: "2026-11-11"
+  area: rent-arrears
+  title: Back from a ledger transaction
+  decision: Going back from a transaction in the ledger goes to the choice of proof, not the transaction history. It will go to the transaction history.
+  outcome: fix
+  ref: OBS-29
+
+- id: DEC-030
+  date: "2026-11-11"
+  area: rent-arrears
+  title: Numbering transactions for screen readers
+  decision: The hidden link text read out by screen readers numbers transactions in the order they were added, not the order shown. It will follow the order shown.
+  outcome: fix
+  ref: OBS-30
+
+- id: DEC-031
+  date: "2026-11-11"
+  area: rent-arrears
+  title: Cancelling removal of a transaction
+  decision: Choosing Cancel when removing a transaction goes to the task list. It will return to the transaction history.
+  outcome: fix
+  ref: OBS-31
+
+- id: DEC-032
+  date: "2026-11-11"
+  area: rent-arrears
+  title: Rent statement end date
+  decision: The end date of the rent statement can be in the future. It will have to be today or in the past.
+  outcome: fix
+  ref: OBS-32
+
+- id: DEC-033
+  date: "2026-11-11"
+  area: rent-arrears
+  title: Remembering the statement period
+  decision: The rent statement period is only remembered for the current session. We'll keep this.
+  outcome: keep
+  ref: OBS-33
+
+- id: DEC-034
+  date: "2026-11-11"
+  area: rent-arrears
+  title: Very long statement periods
+  decision: A very long rent statement period is cut short without warning. The claimant will see an error instead.
+  outcome: fix
+  ref: OBS-34
+
+- id: DEC-035
+  date: "2026-11-11"
+  area: rent-arrears
+  title: Payment dates and rent periods
+  decision: A payment's date isn't checked against the rent period it's recorded under. It will be.
+  outcome: fix
+  ref: OBS-35
+
+- id: DEC-036
+  date: "2026-11-11"
+  area: rent-arrears
+  title: Links to rent periods outside the statement
+  decision: A link to a rent period that isn't in the statement shows a broken page. It will show an error instead.
+  outcome: fix
+  ref: OBS-36
+
+- id: DEC-037
+  date: "2026-11-11"
+  area: check-and-submit
+  title: Statement of truth after "Save for later"
+  decision: Answers to the statement of truth aren't shown again when the claimant comes back after "Save for later". They will be.
+  outcome: fix
+  ref: OBS-37
+
+- id: DEC-038
+  date: "2026-11-11"
+  area: check-and-submit
+  title: Eligibility refusals at submission
+  decision: Some refusals at submission because of eligibility only show a general error. The claimant will be taken to the right page or shown the right message.
+  outcome: fix
+  ref: OBS-38
+
+- id: DEC-039
+  date: "2026-11-11"
+  area: check-and-submit
+  title: Wording of the general application summary row
+  decision: The wording of the general application row on the summary page differs from the question. We'll keep it as it is.
+  outcome: keep
+  ref: OBS-39
+
+- id: DEC-040
+  date: "2026-11-11"
+  area: check-and-submit
+  title: Opening check your answers too early
+  decision: The final check your answers page can be opened before every section is done. The claimant will be sent to the first question they haven't answered.
+  outcome: fix
+  ref: OBS-40
+
+- id: DEC-041
+  date: "2026-11-11"
+  area: pay
+  title: Unrecognised payment statuses
+  decision: A payment status the service doesn't recognise is treated as pending. We'll keep this.
+  outcome: keep
+  ref: OBS-41
+
+- id: DEC-042
+  date: "2026-11-11"
+  area: pay
+  title: General application sentence on the confirmation page
+  decision: The sentence about general applications on the confirmation page reflects whatever the claimant answered. We'll keep this.
+  outcome: keep
+  ref: OBS-42

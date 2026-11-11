@@ -16,6 +16,8 @@ description: Progress, risks and decisions for the Possession Claims Service Pri
 <dd class="govuk-summary-list__value">{% if t and t.items %}{{ t.itemsDone }} of {{ t.items }} ({{ (t.itemsDone / t.items * 100) | round }}%){% else %}No work items yet{% endif %}</dd></div>
 <div class="govuk-summary-list__row"><dt class="govuk-summary-list__key">Open risks and issues</dt>
 <dd class="govuk-summary-list__value">{{ raid | where("status", "open") | length }} (<a class="govuk-link" href="/raid/">RAID log</a>)</dd></div>
+<div class="govuk-summary-list__row"><dt class="govuk-summary-list__key">Product and design decisions</dt>
+<dd class="govuk-summary-list__value">{{ decisions | length }}, {{ decisions | where("outcome", "open-question") | length }} still open (<a class="govuk-link" href="/decisions/">Decisions log</a>)</dd></div>
 <div class="govuk-summary-list__row"><dt class="govuk-summary-list__key">Non-functional requirements</dt>
 <dd class="govuk-summary-list__value">{{ nfrs.nfrs | length }} (<a class="govuk-link" href="/nfrs/">NFRs</a>)</dd></div>
 <div class="govuk-summary-list__row"><dt class="govuk-summary-list__key">Dependency clashes</dt>
