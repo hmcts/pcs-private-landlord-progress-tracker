@@ -1,6 +1,6 @@
 {
   "date": "2026-11-11",
-  "generatedAt": "2026-11-11T11:14:42.364Z",
+  "generatedAt": "2026-11-11T14:04:07.876Z",
   "title": "PCS Private Landlord roadmap",
   "project": "HDPI",
   "jiraUrl": "https://hmcts.atlassian.net",
@@ -12,17 +12,35 @@
       "subtitle": "PrivateLandlord label (HDPI)",
       "colour": "#1d70b8",
       "rule": "PrivateLandlord",
-      "rows": []
+      "rows": [
+        {
+          "key": "HDPI-10019",
+          "url": "https://hmcts.atlassian.net/browse/HDPI-10019",
+          "summary": "CUI Private Landlord - Make a possession claim online",
+          "status": "New",
+          "category": "new",
+          "start": null,
+          "due": null,
+          "derived": 0,
+          "total": 0,
+          "counts": {
+            "done": 0,
+            "indeterminate": 0,
+            "new": 0
+          },
+          "clashes": []
+        }
+      ]
     }
   ],
   "clashes": [],
   "withdrawn": [],
   "dependencies": [],
   "totals": {
-    "epics": 0,
+    "epics": 1,
     "epicsDone": 0,
     "items": 0,
     "itemsDone": 0,
-    "undated": 0
+    "undated": 1
   }
 }
