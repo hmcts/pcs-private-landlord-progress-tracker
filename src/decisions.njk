@@ -11,14 +11,7 @@ description: Product and design decisions about how the private landlord claim j
 {% set outcomes = {
   "fix": ["Fix", "govuk-tag--blue"], "keep": ["Keep as is", "govuk-tag--grey"], "open-question": ["Open question", "govuk-tag--yellow"]
 } %}
-<p class="govuk-body">These are product and design decisions about how the private landlord claim journey should behave, recorded as they're made. Architecture decisions are on the <a class="govuk-link" href="/adr/">ADRs</a> page.</p>
-{% if not decisions | length %}
-<p class="govuk-body">No decisions have been recorded yet.</p>
-{% endif %}
-{% for g in groups %}
-{% set items = decisions | where("area", g[0]) %}
-{% if items | length %}
-<h2 class="govuk-heading-l">{{ g[1] }}</h2>
+{% macro decisionTable(items) %}
 <table class="govuk-table"><thead class="govuk-table__head"><tr class="govuk-table__row">
 <th scope="col" class="govuk-table__header">ID</th><th scope="col" class="govuk-table__header">Decision</th>
 <th scope="col" class="govuk-table__header">Outcome</th><th scope="col" class="govuk-table__header">Date</th></tr></thead>
@@ -29,6 +22,22 @@ description: Product and design decisions about how the private landlord claim j
 <td class="govuk-table__cell"><strong class="govuk-tag {{ o[1] }}">{{ o[0] }}</strong></td>
 <td class="govuk-table__cell app-nowrap">{{ i.date | date }}</td></tr>
 {% endfor %}</tbody></table>
+{% endmacro %}
+{% if not decisions | length %}
+<p class="govuk-body">No decisions have been recorded yet.</p>
+{% endif %}
+{% set open = decisions | where("outcome", "open-question") %}
+<h2 class="govuk-heading-l">Open decisions</h2>
+{% if open | length %}
+{{ decisionTable(open) }}
+{% else %}
+<p class="govuk-body">There are no open decisions.</p>
+{% endif %}
+{% for g in groups %}
+{% set items = decisions | where("area", g[0]) | whereNot("outcome", "open-question") %}
+{% if items | length %}
+<h2 class="govuk-heading-l">{{ g[1] }}</h2>
+{{ decisionTable(items) }}
 {% endif %}
 {% endfor %}
 <p class="govuk-body-s">{{ decisions | length }} decisions in total. To add or change one, open a pull request that edits <code>src/_data/decisions.yaml</code>.</p>

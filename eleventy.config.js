@@ -45,6 +45,7 @@ export default function (eleventyConfig) {
 
   // Nunjucks' selectattr only tests truthiness, so it can't match on a value.
   eleventyConfig.addFilter('where', (items, key, value) => (items ?? []).filter((i) => i[key] === value))
+  eleventyConfig.addFilter('whereNot', (items, key, value) => (items ?? []).filter((i) => i[key] !== value))
   eleventyConfig.addFilter('date', (iso) => (iso ? fmtDate(String(iso)) : ''))
   eleventyConfig.addFilter('ragTag', (rag) =>
     `<strong class="govuk-tag ${RAG_TAG[rag] ?? 'govuk-tag--grey'}">${String(rag ?? 'unknown').toUpperCase()}</strong>`)
