@@ -1,0 +1,9 @@
+/* The plugin caps prose at 38em but skips lists with a class, which every Markdown list has. */
+.app-prose-scope ul,
+.app-prose-scope ol {
+  max-width: 38em;
+}
+
+.app-nowrap {
+  white-space: nowrap;
+}

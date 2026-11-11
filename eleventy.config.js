@@ -31,6 +31,7 @@ export default function (eleventyConfig) {
     footer: { logo: false, copyright: { text: '© HM Courts & Tribunals Service' } },
     showBreadcrumbs: false,
     templates: { error404: true, sitemap: false },
+    stylesheets: ['/assets/application.css', '/assets/tracker.css'],
     // The plugin defaults to breaks: true, which turns every wrapped line in a .md page into a <br>.
     markdown: { breaks: false },
   })

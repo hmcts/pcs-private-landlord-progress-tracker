@@ -21,7 +21,7 @@ description: The qualities the service must have, and the standards they come fr
 <th scope="col" class="govuk-table__header">Target</th><th scope="col" class="govuk-table__header">Source</th></tr></thead>
 <tbody class="govuk-table__body">
 {% for i in items | sort(false, false, "id") %}{% set s = nfrs.standards | where("id", i.source) | first %}<tr class="govuk-table__row">
-<td class="govuk-table__cell">{{ i.id }}</td>
+<td class="govuk-table__cell app-nowrap">{{ i.id }}</td>
 <td class="govuk-table__cell">{{ i.requirement }}</td>
 <td class="govuk-table__cell">{{ i.target or "" }}</td>
 <td class="govuk-table__cell"><a class="govuk-link" href="{{ i.url or s.url }}">{{ s.title }}</a>{% if i.ref %}<br><span class="govuk-body-s">{{ i.ref }}</span>{% endif %}</td></tr>

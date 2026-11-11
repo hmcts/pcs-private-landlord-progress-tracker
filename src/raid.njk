@@ -17,7 +17,7 @@ description: Risks, assumptions, issues and dependencies for the Private Landlor
 <th scope="col" class="govuk-table__header">Status</th><th scope="col" class="govuk-table__header">Review</th></tr></thead>
 <tbody class="govuk-table__body">
 {% for i in items | sort(false, false, "id") %}<tr class="govuk-table__row">
-<td class="govuk-table__cell">{{ i.id }}</td>
+<td class="govuk-table__cell app-nowrap">{{ i.id }}</td>
 <td class="govuk-table__cell"><strong>{{ i.title }}</strong>{% if i.description %}<br>{{ i.description }}{% endif %}{% if i.mitigation %}<br><span class="govuk-body-s">Mitigation: {{ i.mitigation }}</span>{% endif %}</td>
 <td class="govuk-table__cell">{{ i.owner }}</td>
 <td class="govuk-table__cell">{{ i.rag | ragTag }}</td>
