@@ -1,6 +1,6 @@
 {
   "date": "2026-11-11",
-  "generatedAt": "2026-11-11T21:44:09.471Z",
+  "generatedAt": "2026-11-11T22:03:47.921Z",
   "title": "PCS Private Landlord roadmap",
   "project": "HDPI",
   "jiraUrl": "https://hmcts.atlassian.net",
@@ -22,11 +22,11 @@
           "start": "2026-11-11",
           "due": "2027-03-31",
           "derived": 0,
-          "total": 29,
+          "total": 36,
           "counts": {
             "done": 0,
             "indeterminate": 0,
-            "new": 29
+            "new": 36
           },
           "clashes": [],
           "items": [
@@ -37,7 +37,7 @@
               "status": "New",
               "category": "new",
               "start": "2026-11-02",
-              "due": "2026-11-06",
+              "due": "2026-11-05",
               "forecast": true
             },
             {
@@ -46,8 +46,8 @@
               "summary": "2. Property address and eligibility check",
               "status": "New",
               "category": "new",
-              "start": "2026-11-07",
-              "due": "2026-11-11",
+              "start": "2026-11-06",
+              "due": "2026-11-09",
               "forecast": true
             },
             {
@@ -56,8 +56,8 @@
               "summary": "3. Create the claim and tell the claimant they're eligible",
               "status": "New",
               "category": "new",
-              "start": "2026-11-12",
-              "due": "2026-11-16",
+              "start": "2026-11-10",
+              "due": "2026-11-13",
               "forecast": true
             },
             {
@@ -66,8 +66,8 @@
               "summary": "4. Task list showing each section of the claim and its status",
               "status": "New",
               "category": "new",
-              "start": "2026-11-17",
-              "due": "2026-11-21",
+              "start": "2026-11-14",
+              "due": "2026-11-17",
               "forecast": true
             },
             {
@@ -76,8 +76,8 @@
               "summary": "5. Save for later, without overwriting changes made in another tab",
               "status": "New",
               "category": "new",
-              "start": "2026-11-22",
-              "due": "2026-11-26",
+              "start": "2026-11-18",
+              "due": "2026-11-21",
               "forecast": true
             },
             {
@@ -86,8 +86,8 @@
               "summary": "6. Your details: individual or company, and the claimant's name",
               "status": "New",
               "category": "new",
-              "start": "2026-11-27",
-              "due": "2026-12-01",
+              "start": "2026-11-22",
+              "due": "2026-11-25",
               "forecast": true
             },
             {
@@ -96,8 +96,8 @@
               "summary": "7. Contact details: postal address, email, telephone and text message",
               "status": "New",
               "category": "new",
-              "start": "2026-12-02",
-              "due": "2026-12-06",
+              "start": "2026-11-26",
+              "due": "2026-11-29",
               "forecast": true
             },
             {
@@ -106,8 +106,8 @@
               "summary": "8. Other claimants and check your answers for About you",
               "status": "New",
               "category": "new",
-              "start": "2026-12-07",
-              "due": "2026-12-11",
+              "start": "2026-11-30",
+              "due": "2026-12-03",
               "forecast": true
             },
             {
@@ -116,8 +116,8 @@
               "summary": "9. Defendant names and addresses for service",
               "status": "New",
               "category": "new",
-              "start": "2026-12-12",
-              "due": "2026-12-16",
+              "start": "2026-12-04",
+              "due": "2026-12-07",
               "forecast": true
             },
             {
@@ -126,8 +126,8 @@
               "summary": "10. Add, remove and check the defendants",
               "status": "New",
               "category": "new",
-              "start": "2026-12-17",
-              "due": "2026-12-21",
+              "start": "2026-12-08",
+              "due": "2026-12-11",
               "forecast": true
             },
             {
@@ -136,8 +136,8 @@
               "summary": "11. Tenancy or licence type, start date and agreement upload",
               "status": "New",
               "category": "new",
-              "start": "2026-12-22",
-              "due": "2026-12-26",
+              "start": "2026-12-12",
+              "due": "2026-12-15",
               "forecast": true
             },
             {
@@ -146,8 +146,8 @@
               "summary": "12. Grounds for possession",
               "status": "New",
               "category": "new",
-              "start": "2026-12-27",
-              "due": "2026-12-31",
+              "start": "2026-12-16",
+              "due": "2026-12-19",
               "forecast": true
             },
             {
@@ -156,8 +156,8 @@
               "summary": "13. Reason for each ground and check your answers for tenancy and grounds",
               "status": "New",
               "category": "new",
-              "start": "2027-01-01",
-              "due": "2027-01-05",
+              "start": "2026-12-20",
+              "due": "2026-12-23",
               "forecast": true
             },
             {
@@ -166,8 +166,8 @@
               "summary": "14. Notice served, notice type, date and method",
               "status": "New",
               "category": "new",
-              "start": "2027-01-06",
-              "due": "2027-01-10",
+              "start": "2026-12-24",
+              "due": "2026-12-27",
               "forecast": true
             },
             {
@@ -176,8 +176,8 @@
               "summary": "15. Upload the notice and check your answers for notice",
               "status": "New",
               "category": "new",
-              "start": "2027-01-11",
-              "due": "2027-01-15",
+              "start": "2026-12-28",
+              "due": "2026-12-31",
               "forecast": true
             },
             {
@@ -186,8 +186,8 @@
               "summary": "16. Rent amount, how often it is paid and the rent due day",
               "status": "New",
               "category": "new",
-              "start": "2027-01-16",
-              "due": "2027-01-20",
+              "start": "2027-01-01",
+              "due": "2027-01-04",
               "forecast": true
             },
             {
@@ -196,8 +196,8 @@
               "summary": "17. Rent arrears on the notice date and today, and how they are proved",
               "status": "New",
               "category": "new",
-              "start": "2027-01-21",
-              "due": "2027-01-25",
+              "start": "2027-01-05",
+              "due": "2027-01-08",
               "forecast": true
             },
             {
@@ -206,8 +206,8 @@
               "summary": "18. Ledger rent history: add, check and remove transactions",
               "status": "New",
               "category": "new",
-              "start": "2027-01-26",
-              "due": "2027-01-30",
+              "start": "2027-01-09",
+              "due": "2027-01-12",
               "forecast": true
             },
             {
@@ -216,8 +216,8 @@
               "summary": "19. Table rent history: statement period, rent periods and payments",
               "status": "New",
               "category": "new",
-              "start": "2027-01-31",
-              "due": "2027-02-04",
+              "start": "2027-01-13",
+              "due": "2027-01-16",
               "forecast": true
             },
             {
@@ -226,8 +226,8 @@
               "summary": "20. Money judgment, steps to recover the arrears and check your answers",
               "status": "New",
               "category": "new",
-              "start": "2027-02-05",
-              "due": "2027-02-09",
+              "start": "2027-01-17",
+              "due": "2027-01-20",
               "forecast": true
             },
             {
@@ -236,8 +236,8 @@
               "summary": "21. Defendant and claimant circumstances",
               "status": "New",
               "category": "new",
-              "start": "2027-02-10",
-              "due": "2027-02-14",
+              "start": "2027-01-21",
+              "due": "2027-01-24",
               "forecast": true
             },
             {
@@ -246,8 +246,8 @@
               "summary": "22. Sub-tenants and mortgage lenders, and check your answers for circumstances",
               "status": "New",
               "category": "new",
-              "start": "2027-02-15",
-              "due": "2027-02-19",
+              "start": "2027-01-25",
+              "due": "2027-01-28",
               "forecast": true
             },
             {
@@ -256,8 +256,8 @@
               "summary": "23. Upload files and other information",
               "status": "New",
               "category": "new",
-              "start": "2027-02-20",
-              "due": "2027-02-24",
+              "start": "2027-01-29",
+              "due": "2027-02-01",
               "forecast": true
             },
             {
@@ -266,8 +266,8 @@
               "summary": "24. Hand-offs to Your Support and the PCQ equality questions",
               "status": "New",
               "category": "new",
-              "start": "2027-02-25",
-              "due": "2027-03-01",
+              "start": "2027-02-02",
+              "due": "2027-02-05",
               "forecast": true
             },
             {
@@ -276,8 +276,8 @@
               "summary": "25. Check your answers, statement of truth and submit",
               "status": "New",
               "category": "new",
-              "start": "2027-03-02",
-              "due": "2027-03-06",
+              "start": "2027-02-06",
+              "due": "2027-02-09",
               "forecast": true
             },
             {
@@ -286,8 +286,8 @@
               "summary": "26. Pay the claim fee and the claim submitted page",
               "status": "New",
               "category": "new",
-              "start": "2027-03-07",
-              "due": "2027-03-11",
+              "start": "2027-02-10",
+              "due": "2027-02-13",
               "forecast": true
             },
             {
@@ -296,8 +296,8 @@
               "summary": "27. The claimant can still see and return to their claim after submission",
               "status": "New",
               "category": "new",
-              "start": "2027-03-12",
-              "due": "2027-03-16",
+              "start": "2027-02-14",
+              "due": "2027-02-17",
               "forecast": true
             },
             {
@@ -306,14 +306,84 @@
               "summary": "28. A claimant who needs a general application can make one within 24 hours",
               "status": "New",
               "category": "new",
-              "start": "2027-03-17",
-              "due": "2027-03-21",
+              "start": "2027-02-18",
+              "due": "2027-02-21",
               "forecast": true
             },
             {
               "key": "HDPI-10070",
               "url": "https://hmcts.atlassian.net/browse/HDPI-10070",
               "summary": "29. Help with Fees for the claim fee",
+              "status": "New",
+              "category": "new",
+              "start": "2027-02-22",
+              "due": "2027-02-25",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10071",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10071",
+              "summary": "30. Change an answer from a check your answers page",
+              "status": "New",
+              "category": "new",
+              "start": "2027-02-26",
+              "due": "2027-03-01",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10072",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10072",
+              "summary": "31. Pages opened out of order or from an old link",
+              "status": "New",
+              "category": "new",
+              "start": "2027-03-02",
+              "due": "2027-03-05",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10073",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10073",
+              "summary": "Update the claim form template for a self-represented private landlord",
+              "status": "New",
+              "category": "new",
+              "start": "2027-03-06",
+              "due": "2027-03-09",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10074",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10074",
+              "summary": "Add the rent history to the claim pack",
+              "status": "New",
+              "category": "new",
+              "start": "2027-03-10",
+              "due": "2027-03-13",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10075",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10075",
+              "summary": "Citizen \"claim issued\" email that links to the citizen service",
+              "status": "New",
+              "category": "new",
+              "start": "2027-03-14",
+              "due": "2027-03-17",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10076",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10076",
+              "summary": "Citizen \"claim saved for later\" email",
+              "status": "New",
+              "category": "new",
+              "start": "2027-03-18",
+              "due": "2027-03-21",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10077",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10077",
+              "summary": "\"Claim submitted / payment received\" and \"payment failed\" emails",
               "status": "New",
               "category": "new",
               "start": "2027-03-22",
@@ -331,7 +401,7 @@
   "totals": {
     "epics": 1,
     "epicsDone": 0,
-    "items": 29,
+    "items": 36,
     "itemsDone": 0,
     "undated": 0
   }
