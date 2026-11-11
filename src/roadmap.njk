@@ -1,7 +1,7 @@
 ---
 layout: page
 title: Roadmap
-description: Epics labelled PrivateLandlord in the HDPI Jira project, with their dates and progress.
+description: The tickets in the epics labelled PrivateLandlord in the HDPI Jira project, with their status and dates, or a forecast where Jira has no dates yet.
 ---
 {% include "data-notice.njk" %}
 {% set s = roadmap.latest %}
@@ -11,21 +11,34 @@ description: Epics labelled PrivateLandlord in the HDPI Jira project, with their
 {% if roadmap.pdf %}<p class="govuk-body"><a class="govuk-link" href="/roadmap/roadmap.pdf" download>Download the A3 roadmap poster (PDF)</a></p>{% endif %}
 
 <div class="app-chart">{{ roadmap.svg }}</div>
-<p class="govuk-body-s">Bars run from each epic's start date to its due date, and the dark part shows how many of its child items are done. A dashed bar means the epic has no dates of its own, so its child items' dates are used. A red outline marks a dependency clash.</p>
+<p class="govuk-body-s">Each epic is followed by its tickets. Epic bars run from the epic's start date to its due date, and the dark part shows how many of its child items are done; a dashed epic bar means its dates come from its child items. Ticket bars are shaded by status: solid for done, mid-tone for in progress and pale for to do. A red outline marks a dependency clash.</p>
+<div class="govuk-inset-text">Tickets drawn with a <strong>dashed outline and a paler fill</strong> are a <strong>forecast</strong>, not a plan. They have no start and due dates in Jira yet, so they are spread evenly, end to end and in ticket-number order, across the whole timeline ({{ s.start | date }} to {{ s.end | date }}). They will move to their real dates once those are set in Jira.</div>
 
-<h2 class="govuk-heading-l">Epics</h2>
-<table class="govuk-table"><thead class="govuk-table__head"><tr class="govuk-table__row">
-<th scope="col" class="govuk-table__header">Epic</th><th scope="col" class="govuk-table__header">Status</th>
-<th scope="col" class="govuk-table__header">Start</th><th scope="col" class="govuk-table__header">Due</th>
-<th scope="col" class="govuk-table__header govuk-table__header--numeric">Items done</th></tr></thead>
+<h2 class="govuk-heading-l">Tickets</h2>
+{% for r in roadmap.rows %}
+<h3 class="govuk-heading-m"><a class="govuk-link" href="{{ r.url }}">{{ r.key }}</a> {{ r.summary }}</h3>
+<p class="govuk-body">{{ r.status | statusTag(r.category) }} {{ r.counts.done }} of {{ r.total }} items done.
+{% if r.start %}Runs from {{ r.start | date }} to {{ r.due | date }}{% if r.derived %} (from its tickets' dates){% endif %}.{% else %}The epic has no dates in Jira.{% endif %}{% if s.lanes | length > 1 %} {{ r.lane }}.{% endif %}</p>
+{% if r.items | length %}
+<table class="govuk-table"><caption class="govuk-table__caption govuk-visually-hidden">Tickets in {{ r.key }}</caption>
+<thead class="govuk-table__head"><tr class="govuk-table__row">
+<th scope="col" class="govuk-table__header">Ticket</th><th scope="col" class="govuk-table__header">Status</th>
+<th scope="col" class="govuk-table__header">Start</th><th scope="col" class="govuk-table__header">End</th></tr></thead>
 <tbody class="govuk-table__body">
-{% for r in roadmap.rows %}<tr class="govuk-table__row">
-<td class="govuk-table__cell"><a class="govuk-link" href="{{ r.url }}">{{ r.key }}</a> {{ r.summary }}{% if s.lanes | length > 1 %}<br><span class="govuk-body-s">{{ r.lane }}</span>{% endif %}</td>
-<td class="govuk-table__cell">{{ r.status | statusTag(r.category) }}</td>
-<td class="govuk-table__cell">{{ r.start | date if r.start else "Not set" }}</td>
-<td class="govuk-table__cell">{{ r.due | date if r.due else "Not set" }}{% if r.derived %} <span class="govuk-body-s">(from child items)</span>{% endif %}</td>
-<td class="govuk-table__cell govuk-table__cell--numeric">{{ r.counts.done }} of {{ r.total }}</td></tr>
+{% for i in r.items %}<tr class="govuk-table__row">
+<td class="govuk-table__cell"><a class="govuk-link app-nowrap" href="{{ i.url }}">{{ i.key }}</a> {{ i.summary }}</td>
+<td class="govuk-table__cell">{{ i.status | statusTag(i.category) }}</td>
+{% if i.forecast %}<td class="govuk-table__cell app-nowrap"><span class="app-forecast">Forecast</span><br>{{ i.start | date }}</td>
+<td class="govuk-table__cell app-nowrap"><span class="app-forecast">Forecast</span><br>{{ i.due | date }}</td>
+{% else %}<td class="govuk-table__cell app-nowrap">{{ i.start | date }}</td>
+<td class="govuk-table__cell app-nowrap">{{ i.due | date }}</td>
+{% endif %}</tr>
 {% endfor %}</tbody></table>
+{% if r.items | where("forecast", true) | length %}<p class="govuk-body-s">Forecast dates are not set in Jira. They are an even spread of the undated tickets across the timeline.</p>{% endif %}
+{% else %}
+<p class="govuk-body">No tickets are listed for this epic.</p>
+{% endif %}
+{% endfor %}
 
 {% if s.clashes | length %}
 <h2 class="govuk-heading-l">Dependency clashes</h2>

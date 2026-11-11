@@ -23,6 +23,6 @@ export default function () {
     pdf: existsSync('build/roadmap.pdf'),
     svg: latest.totals.epics ? roadmapSvg(latest, today) : '',
     burnup: points.length > 1 && points.some((p) => p.items) ? burnupSvg(points) : '',
-    rows: latest.lanes.flatMap((l) => l.rows.map((r) => ({ ...r, lane: l.title }))),
+    rows: latest.lanes.flatMap((l) => l.rows.map((r) => ({ ...r, items: r.items ?? [], lane: l.title }))),
   }
 }

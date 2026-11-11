@@ -4,7 +4,7 @@
 // Each chart is decorative-plus-summary (role="img" with a title and description); the page
 // puts the same data in a table beside it, which is the accessible version.
 
-import type { EpicRow, Snapshot } from './snapshot.ts'
+import type { EpicRow, ItemRow, Snapshot } from './snapshot.ts'
 
 const DAY = 86_400_000
 const INK = '#0b0c0c'
@@ -35,6 +35,14 @@ function tint(hex: string, f: number): string {
   return `#${[16, 8, 0].map((s) => ch(s).toString(16).padStart(2, '0')).join('')}`
 }
 
+/** Ticket bar fill by status category; a forecast is paler and dashed. */
+function itemStyle(colour: string, category: string, forecast: boolean): string {
+  const f = { done: 0, indeterminate: 0.45, new: 0.75 }[category] ?? 0.75
+  return forecast
+    ? `fill="${tint(colour, 0.25 + f * 0.75)}" stroke="${colour}" stroke-width="1.5" stroke-dasharray="4 3"`
+    : `fill="${tint(colour, f)}" stroke="${colour}" stroke-width="1"`
+}
+
 function progressText(r: EpicRow): string {
   return r.total ? `${r.counts.done} of ${r.total} items done · ${r.status}` : `No child items · ${r.status}`
 }
@@ -45,14 +53,36 @@ export function roadmapSvg(s: Snapshot, today: string): string {
   const TOP = 36
   const LANE_H = 30
   const ROW_H = 40
+  const ITEM_H = 28
+  const LEGEND_H = 34
   const right = W - 12
   const span = t(s.end) + DAY - t(s.start)
   const x = (d: string) => LABEL + ((t(d) - t(s.start)) / span) * (right - LABEL)
   const clampX = (d: string) => Math.min(right, Math.max(LABEL, x(d)))
 
-  const rows = s.lanes.reduce((n, L) => n + L.rows.length, 0)
-  const H = TOP + s.lanes.length * LANE_H + rows * ROW_H + 8
+  const rows = s.lanes.flatMap((L) => L.rows)
+  const items = rows.flatMap((r) => r.items ?? [])
+  const bottom = TOP + s.lanes.length * LANE_H + rows.length * ROW_H + items.length * ITEM_H + 8
+  const H = bottom + (items.length ? LEGEND_H : 0)
   const out: string[] = []
+
+  function itemRow(i: ItemRow, y: number, colour: string): string {
+    const mid = y + ITEM_H / 2
+    const parts = [`<line x1="0" y1="${y + ITEM_H}" x2="${W}" y2="${y + ITEM_H}" stroke="#f3f2f1"/>`,
+      `<text x="28" y="${mid + 4}" font-size="12" fill="${INK}"><tspan font-weight="bold">${esc(i.key)}</tspan> ` +
+      `${esc(truncate(i.summary, 38))}</text>`]
+    const tip = `<title>${esc(`${i.key} ${i.summary} · ${i.status} · ${i.forecast ? 'Forecast ' : ''}` +
+      `${fmtDate(i.start)} to ${fmtDate(i.due)}`)}</title>`
+    if (t(i.due) < t(s.start)) {
+      parts.push(`<text x="${LABEL + 6}" y="${mid + 4}" font-size="11" fill="${SUB}">Ended ${fmtDate(i.due)}</text>`)
+    } else {
+      const x0 = clampX(i.start)
+      const x1 = Math.max(x0 + 4, clampX(iso(t(i.due) + DAY)))
+      parts.push(`<rect x="${x0}" y="${mid - 7}" width="${x1 - x0}" height="14" rx="2" ` +
+        `${itemStyle(colour, i.category, i.forecast)}>${tip}</rect>`)
+    }
+    return parts.join('')
+  }
 
   // Month header and grid
   const first = new Date(t(s.start))
@@ -61,7 +91,7 @@ export function roadmapSvg(s: Snapshot, today: string): string {
     const next = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)
     const x0 = clampX(iso(m))
     const x1 = clampX(iso(next))
-    out.push(`<line x1="${x0}" y1="${TOP - 6}" x2="${x0}" y2="${H}" stroke="${GRID}" stroke-width="1"/>`)
+    out.push(`<line x1="${x0}" y1="${TOP - 6}" x2="${x0}" y2="${bottom}" stroke="${GRID}" stroke-width="1"/>`)
     if (x1 - x0 > 30) {
       const label = d.getUTCMonth() === 0 || m === Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), 1)
         ? `${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}` : MONTHS[d.getUTCMonth()]
@@ -109,17 +139,36 @@ export function roadmapSvg(s: Snapshot, today: string): string {
           `font-size="12" font-weight="bold" fill="${RED}">${r.clashes.map((n) => `⚠${n}`).join(' ')}</text>`)
       }
       y += ROW_H
+      for (const i of r.items ?? []) {
+        out.push(itemRow(i, y, L.colour))
+        y += ITEM_H
+      }
+    }
+  }
+
+  if (items.length) {
+    const c = s.lanes[0].colour
+    const ly = bottom + 12
+    let lx = 14
+    for (const [label, cat, forecast] of [['Done', 'done', false], ['In progress', 'indeterminate', false],
+      ['To do', 'new', false], ['Forecast: no dates in Jira yet', 'new', true]] as const) {
+      out.push(`<rect x="${lx}" y="${ly}" width="22" height="12" rx="2" ${itemStyle(c, cat, forecast)}/>`,
+        `<text x="${lx + 28}" y="${ly + 10}" font-size="12" fill="${INK}">${label}</text>`)
+      lx += 28 + label.length * 7 + 20
     }
   }
 
   if (t(today) >= t(s.start) && t(today) <= t(s.end) + DAY) {
     const tx = x(today)
-    out.push(`<line x1="${tx}" y1="${TOP - 4}" x2="${tx}" y2="${H}" stroke="${RED}" stroke-width="2"/>`,
+    out.push(`<line x1="${tx}" y1="${TOP - 4}" x2="${tx}" y2="${bottom}" stroke="${RED}" stroke-width="2"/>`,
       `<text x="${tx + 4}" y="${TOP - 2}" font-size="11" font-weight="bold" fill="${RED}">Today</text>`)
   }
 
-  const desc = `${s.totals.epics} epics from ${fmtDate(s.start)} to ${fmtDate(s.end)}; ` +
-    `${s.totals.epicsDone} done, ${s.totals.undated} without dates, ${s.clashes.length} dependency clashes.`
+  const forecasts = items.filter((i) => i.forecast).length
+  const desc = `${s.totals.epics} epics and ${items.length} tickets from ${fmtDate(s.start)} to ${fmtDate(s.end)}; ` +
+    `${s.totals.epicsDone} epics done, ${s.totals.undated} epics without dates, ${s.clashes.length} dependency clashes.` +
+    (items.length ? ` ${items.filter((i) => i.category === 'done').length} of ${items.length} tickets done; ` +
+      `${forecasts} placed by a forecast because they have no dates in Jira.` : '')
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" role="img" ` +
     `aria-labelledby="roadmap-title roadmap-desc" ${FONT}>` +
     `<title id="roadmap-title">${esc(s.title)}</title><desc id="roadmap-desc">${esc(desc)}</desc>` +

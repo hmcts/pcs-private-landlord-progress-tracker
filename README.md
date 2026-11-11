@@ -36,8 +36,12 @@ If Jira can't be read, the site is still built from the last snapshot and shows 
 This is a public site.
 
 - From Jira, a snapshot keeps only each epic's key, summary, status, dates and child-item
-  counts, plus the key and status of any linked issue in another project. Descriptions,
-  comments and child item summaries are never kept.
+  counts; each child ticket's key, summary (title), status, status category and start and due
+  dates (Tests are left out); and the key and status of any linked issue in another project.
+  Descriptions, comments, assignees and every other field are never kept.
+- A ticket without both a start and a due date in Jira gets a forecast instead: the undated
+  tickets in an epic are laid end to end, in the order of the number their summary starts with,
+  across the whole timeline. The site marks these as a forecast, never as Jira dates.
 - Any issue labelled `not-public` is left out.
 - The RAID log, decisions log, NFRs and ADRs change only through pull requests, so a person reviews
   everything before it's published. Write entries for a public audience, and use roles
@@ -57,6 +61,8 @@ This is a public site.
 - **Roadmap:** change Jira. Label an HDPI epic `PrivateLandlord` and give it a start and due
   date. Swimlanes are set in `config/roadmap.json`, along with the timeline's `start` and
   `end`. The timeline runs to `end`, or further if an epic is due later.
+  Each of its tickets gets its own row; give a ticket a start and due date in Jira to replace
+  its forecast.
 
 CI (`.github/workflows/ci.yml`) validates the data files and builds the site on every pull request.
 
