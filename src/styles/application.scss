@@ -12,6 +12,11 @@
   max-width: 38em;
 }
 
+// The page title isn't capped at all. 15em is the plugin's own width for an h1 in prose.
+.app-document-header > h1 {
+  max-width: 15em;
+}
+
 .app-nowrap {
   white-space: nowrap;
 }
