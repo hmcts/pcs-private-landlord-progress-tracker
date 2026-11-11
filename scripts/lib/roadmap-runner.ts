@@ -1,6 +1,7 @@
 // Copied from hmcts/cft-workspace apps/pcs/.claude/scripts/lib/roadmap/roadmap-runner.ts (ccba10d),
 // the generator behind the /pcs:roadmap poster. Copy changes across by hand. Changed here since:
-// the optional config "end", the earliest date the timeline runs to.
+// the optional config "end", the earliest date the timeline runs to; and the start date falling
+// back to customfield_10269 (see twgQuery).
 //
 // Release roadmap poster for HDPI epics: one row per epic, in rule-based swimlanes.
 //
@@ -64,6 +65,7 @@ export interface Issue {
   parent?: { key: string } | null
   duedate?: string | null
   customfield_10015?: string | null
+  customfield_10269?: string | null
   issuelinks?: IssueLink[]
 }
 
@@ -101,7 +103,7 @@ export interface Model {
   withdrawn: string[]
 }
 
-export const FIELDS = 'summary,status,issuetype,parent,duedate,customfield_10015,components,issuelinks,labels'
+export const FIELDS = 'summary,status,issuetype,parent,duedate,customfield_10015,customfield_10269,components,issuelinks,labels'
 
 // ------------------------------------------------------------------ dates (UTC, ISO strings)
 
@@ -261,6 +263,9 @@ export function twgQuery(jql: string, run: TwgRunner = defaultRunner): Issue[] {
     } catch (e) {
       throw new Error(`twg failed for: ${jql}\n${(e as Error).message}`)
     }
+    // HDPI has two fields named "Start date". Most epics use customfield_10015, but the one on
+    // the HDPI screens is customfield_10269, so use it when customfield_10015 is empty.
+    for (const i of page.data.issues) i.customfield_10015 = i.customfield_10015 || i.customfield_10269 || null
     out.push(...page.data.issues)
     if (!page.pageInfo?.hasNextPage || !page.pageInfo.nextCursor) return out
     cursor = page.pageInfo.nextCursor

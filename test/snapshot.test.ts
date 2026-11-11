@@ -1,7 +1,7 @@
 // Runs the real generator's buildModel.
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildModel, type Config, type Issue } from '../scripts/lib/roadmap-runner.ts'
+import { buildModel, twgQuery, type Config, type Issue } from '../scripts/lib/roadmap-runner.ts'
 import { itemRows, toSnapshot } from '../scripts/lib/snapshot.ts'
 
 const CFG: Config = {
@@ -141,5 +141,17 @@ describe('timeline end', () => {
     assert.equal(buildModel({ ...CFG, end: '2027-03-31' }, backlog(), '2026-11-20').end, '2027-03-31')
     assert.equal(buildModel({ ...CFG, end: '2026-12-15' }, backlog(), '2026-11-20').end, '2027-01-31')
     assert.equal(buildModel(CFG, [], '2026-11-20').end, '2027-01-31')
+  })
+})
+
+describe('start date fallback', () => {
+  test('uses customfield_10269 when customfield_10015 is empty', () => {
+    const page = (issues: object[]) => JSON.stringify({ data: { issues } })
+    const [a, b] = twgQuery('key in (HDPI-1, HDPI-2)', () => page([
+      { key: 'HDPI-1', customfield_10015: null, customfield_10269: '2026-11-11' },
+      { key: 'HDPI-2', customfield_10015: '2026-11-02', customfield_10269: '2026-12-01' },
+    ]))
+    assert.equal(a.customfield_10015, '2026-11-11')
+    assert.equal(b.customfield_10015, '2026-11-02')
   })
 })
