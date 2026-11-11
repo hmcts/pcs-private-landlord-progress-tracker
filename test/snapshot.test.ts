@@ -76,3 +76,11 @@ describe('toSnapshot', () => {
     assert.deepEqual(empty.lanes[0].rows, [])
   })
 })
+
+describe('timeline end', () => {
+  test('runs to the configured end, or a later due date', () => {
+    assert.equal(buildModel({ ...CFG, end: '2027-03-31' }, backlog(), '2026-11-20').end, '2027-03-31')
+    assert.equal(buildModel({ ...CFG, end: '2026-12-15' }, backlog(), '2026-11-20').end, '2027-01-31')
+    assert.equal(buildModel(CFG, [], '2026-11-20').end, '2027-01-31')
+  })
+})

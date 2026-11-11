@@ -55,7 +55,8 @@ This is a public site.
 - **Architecture decision:** copy `src/adr/template.md.txt` to the next number, for example
   `src/adr/0003-choose-x.md`.
 - **Roadmap:** change Jira. Label an HDPI epic `PrivateLandlord` and give it a start and due
-  date. Swimlanes are set in `config/roadmap.json`.
+  date. Swimlanes are set in `config/roadmap.json`, along with the timeline's `start` and
+  `end`. The timeline runs to `end`, or further if an epic is due later.
 
 CI (`.github/workflows/ci.yml`) validates the data files and builds the site on every pull request.
 

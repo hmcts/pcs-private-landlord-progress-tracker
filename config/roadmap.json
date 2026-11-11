@@ -3,6 +3,7 @@
   "project": "HDPI",
   "jira_url": "https://hmcts.atlassian.net",
   "start": "2026-11-02",
+  "end": "2027-03-31",
   "lanes": [
     {
       "title": "Private Landlord",

@@ -1,5 +1,6 @@
 // Copied from hmcts/cft-workspace apps/pcs/.claude/scripts/lib/roadmap/roadmap-runner.ts (ccba10d),
-// the generator behind the /pcs:roadmap poster. Copy changes across by hand.
+// the generator behind the /pcs:roadmap poster. Copy changes across by hand. Changed here since:
+// the optional config "end", the earliest date the timeline runs to.
 //
 // Release roadmap poster for HDPI epics: one row per epic, in rule-based swimlanes.
 //
@@ -48,6 +49,7 @@ export interface Config {
   project: string
   jira_url: string
   start: string
+  end?: string
   lanes: Lane[]
 }
 
@@ -142,6 +144,7 @@ export function loadConfig(path: string): Config {
     if (cfg[k] === undefined) throw new Error(`config ${path} is missing "${k}"`)
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(cfg.start)) throw new Error(`config "start" must be YYYY-MM-DD, got "${cfg.start}"`)
+  if (cfg.end !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(cfg.end)) throw new Error(`config "end" must be YYYY-MM-DD, got "${cfg.end}"`)
   if (!Array.isArray(cfg.lanes) || cfg.lanes.length === 0) throw new Error('config needs at least one lane')
   for (const l of cfg.lanes) {
     if (!l.title || !l.label || !l.colour) throw new Error(`each lane needs title, label and colour: ${JSON.stringify(l)}`)
@@ -215,7 +218,7 @@ export function buildModel(cfg: Config, all: Issue[], today: string): Model {
   })
 
   const dueDates = [...dates.values()].map((d) => d.due).filter((d): d is string => !!d)
-  const last = [...dueDates, addDays(cfg.start, 89)].sort().at(-1)!
+  const last = [...dueDates, cfg.end ?? addDays(cfg.start, 89)].sort().at(-1)!
   const end = endOfMonth(last)
 
   const fsSet = new Set<string>()
