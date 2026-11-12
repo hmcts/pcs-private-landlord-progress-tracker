@@ -299,9 +299,9 @@ To pick up a newer version of the roadmap generator, copy
 
 `twg` has no credential designed for CI: its login is OAuth in a browser. So the workflow
 uses the same arrangement as cft-workspace's doc-drift workflow. A sign-in is made once by
-hand and stored in Key Vault as twg's `auth.conf`, minus its hour-long access token. Each run
-restores it, runs `twg auth refresh`, and writes the rotated refresh token straight back.
-Every refresh spends the previous token, so:
+hand and stored in Key Vault as an archive of twg's whole config directory. Each run restores
+it, runs `twg auth refresh`, and writes the rotated sign-in straight back, in the format it came
+in. Every refresh spends the previous token, so:
 
 - **Each job needs its own sign-in.** The `build` job (the roadmap) uses
   `twg-auth-conf-pcs-progress-tracker`, and the `qa-report` job (the QA readiness reports) uses
@@ -324,37 +324,45 @@ The workflow reaches the vault with `azure/login` over OIDC. It needs:
 - a Key Vault access policy for that app with secrets **Get** and **Set**, and no other roles.
 
 **Seed a secret**, or re-seed it when a run reports `twg auth refresh` exit 77 (Atlassian
-rejected the token, typically after 90 days unused). `twg login` always writes its token to
-`~/.config/twg/auth.conf`. `TWG_CONFIG_DIR` moves only the profile files, so it can't keep a
-seed login apart from your own. Instead, hand your sign-in over to the workflow, then sign in
-again:
+rejected the token, typically after 90 days unused). Make the seed login in a throwaway home,
+so it never touches your own:
 
-1. Sign in as the account that job should read Jira as (and, for the QA secret, edit the reports as). `twg login` needs a terminal, and
-   its device code expires quickly, so approve it as soon as it appears.
+1. Sign in, in a temporary directory, as the account that job should read Jira as (and, for
+   the QA secret, edit the reports as). `twg login` needs a terminal, and its device code
+   expires quickly, so approve it as soon as it appears.
 
    ```bash
-   twg login --force --site hmcts
+   d=$(mktemp -d)
+   HOME="$d" XDG_CONFIG_HOME="$d/.config" twg login --force --site hmcts
    ```
 
-2. Store it, without its access token:
+   `HOME="$d" XDG_CONFIG_HOME="$d/.config" twg auth storage status` should report the `file`
+   backend: a sign-in kept in the system keychain isn't in the directory, so it can't be stored.
+
+2. Pack the whole `twg` config directory, store it, and delete the temporary directory:
 
    ```bash
-   f=$(mktemp); grep -v '^oauth-access-token=' ~/.config/twg/auth.conf > "$f"
+   f="$d/secret"
+   { printf 'twg-config-tgz:v1:'
+     tar -C "$d/.config" --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -czf - twg \
+       | base64 -w0; } > "$f"
    az keyvault secret set --vault-name <TWG_KEY_VAULT> --name <secret name> \
      --file "$f" --encoding utf-8 >/dev/null
-   rm -f "$f"
+   rm -rf "$d"
    ```
 
    `<secret name>` is `twg-auth-conf-pcs-progress-tracker` for the roadmap, or
    `twg-auth-conf-pcs-progress-tracker-qa` for the QA reports. `>/dev/null` matters, because
-   `az keyvault secret set` prints the value it stored.
+   `az keyvault secret set` prints the value it stored. This needs GNU `tar` and `base64`, and
+   Key Vault takes up to 25 KB, which a run also checks before it stores the sign-in back.
 
-3. Before you use twg again, run the Publish workflow from `master` (Actions → Publish → Run
-   workflow), and check that the log of the job that uses the secret (`build` or `qa-report`)
-   says "stored the rotated twg sign-in". That refresh spends the copy on your machine, so it can
-   never sign the workflow out. Seed the two secrets one at a time, each with its own login: the
-   same sign-in stored twice would be two copies of one token.
-4. Sign in again for your own use: `twg login --force --site hmcts`.
+That's all: there's no need to run the workflow first, or to sign in again yourself. The seed
+was its own login, so it never shares a token with yours, and neither can sign the other out.
+Seed the two secrets one at a time, each with its own login: the same sign-in stored twice
+would be two copies of one token.
+
+Secrets seeded the old way, as twg's `auth.conf` without its `oauth-access-token=` line, still
+restore, and are stored back in that format.
 
 If the roadmap's sign-in fails, the site is still published from the last snapshot with an "out
 of date" warning, and the run fails so someone notices. If the QA sign-in isn't seeded or fails,
