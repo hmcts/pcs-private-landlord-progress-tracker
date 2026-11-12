@@ -63,90 +63,104 @@ interface Cell {
   before?: string
 }
 
+/** What a merge has decided so far. */
+interface Merging {
+  page: string
+  edits: Edit[]
+  changes: CellChange[]
+  splices: { start: number; end: number; text: string }[]
+}
+
+type TableName = 'info' | 'checklist'
+
+/** A generator cell against the page's cell, and what stops it being replaced, if anything. */
+function cellOf(page: string, table: TableName, key: string, gen: GenCell, td: El | undefined, n: number): Cell {
+  const base = { table, key, cell: gen.name! }
+  if (!td) return { gen, base, held: { ...base, action: 'skipped', why: `the row has no column ${n + 1}` } }
+  const before = textOf(td)
+  const re = new RegExp(`^qa-auto-${escRe(markerRow(table, key))}-${gen.name}-`)
+  const marker = markers(td).find((m) => re.test(m))
+  const hash = marker ? MARKER.exec(marker)?.[3] : undefined
+  let held: CellChange | undefined
+  if (!marker) held = { ...base, action: 'keep-human', before }
+  else if (hash !== shortHash(cellText(page.slice(td.start, td.end)))) held = { ...base, action: 'keep-edited', before }
+  else if (hash === gen.hash) held = { ...base, action: 'unchanged' }
+  else if (!td.attrs['data-local-id']) held = { ...base, action: 'skipped', why: 'the cell has no local id' }
+  return { gen, td, base, held, before }
+}
+
+function replaceCell(m: Merging, c: Cell): void {
+  const td = c.td!
+  const inner = c.gen.html.replace(/^<td[^>]*>/, '').replace(/<\/td>$/, '')
+  const html = `<${td.tag}${attrsOf(td)}>${inner}</${td.tag}>`
+  m.edits.push({ name: 'replaceNode', localId: td.attrs['data-local-id'], value: html })
+  m.splices.push({ start: td.start, end: td.end, text: html })
+  m.changes.push({ ...c.base, action: c.gen.judged ? 'judgement' : 'update', before: c.before, after: textOf(parse(html)) })
+}
+
+function mergeRow(m: Merging, table: TableName, r: GenRow, tr: El): void {
+  const tds = cellsOf(tr)
+  const cells = r.cells.flatMap((gen, n) => (gen.name ? [cellOf(m.page, table, r.key, gen, tds[n], n)] : []))
+  // A row's status and comment are replaced together or not at all, so a person's answer is
+  // never left beside a comment that disagrees with it. A judgement also waits for a row it
+  // can write whole.
+  const personal = (c: Cell) => c.held?.action === 'keep-human' || c.held?.action === 'keep-edited'
+  const blocked = cells.some(personal) || cells.some((c) => c.gen.judged && c.held)
+  for (const c of cells) {
+    if (c.held) m.changes.push(c.gen.judged && !c.held.why ? { ...c.held, why: 'the judgement was not written' } : c.held)
+    else if (blocked) m.changes.push({ ...c.base, action: 'skipped', why: 'a person has written the rest of this row' })
+    else replaceCell(m, c)
+  }
+}
+
+/** Merges one table's rows into the page's table; returns false when the page has no such table. */
+function mergeTable(m: Merging, root: El, table: TableName, spec: LayoutTable, mine: GenRow[]): boolean {
+  const el = tableAfterHeading(root, new RegExp(`^${escRe(spec.heading)}$`, 'i'))
+  if (!el) return false
+  const trs = rowsOf(el)
+  const firsts = trs.map((tr) => ({ tr, text: cellsOf(tr)[0] ? textOf(cellsOf(tr)[0]) : '' }))
+  const rowFor = (key: string) => {
+    const match = spec.rows.find((x) => x.key === key)?.match
+    return (firsts.find((f) => f.text === key) ?? (match ? firsts.find((f) => new RegExp(match, 'i').test(f.text)) : undefined))?.tr
+  }
+  let after: { id?: string; end: number } | null = trs.length ? { id: trs[0].attrs['data-local-id'], end: trs[0].end } : null
+  const inserts = new Map<number, string[]>()
+  for (const r of mine) {
+    const tr = rowFor(r.key)
+    if (tr) {
+      after = { id: tr.attrs['data-local-id'], end: tr.end }
+      mergeRow(m, table, r, tr)
+    } else if (!after?.id) {
+      m.changes.push({ table, key: r.key, cell: null, action: 'skipped', why: 'no row with a local id to add it after' })
+    } else {
+      const id = newId(`${table}:${r.key}`)
+      const html = rowHtml(r).replace(/^<tr>/, `<tr data-local-id="${id}">`)
+      m.edits.push({ name: 'insertNodeAfter', localId: after.id, value: html })
+      inserts.set(after.end, [...(inserts.get(after.end) ?? []), html])
+      after = { id, end: after.end }
+      m.changes.push({ table, key: r.key, cell: null, action: 'add-row', after: textOf(parse(html)) })
+    }
+  }
+  for (const [at, html] of inserts) m.splices.push({ start: at, end: at, text: html.join('') })
+  return true
+}
+
 export function merge(page: string, layout: Layout, rows: GenRow[]): MergeResult {
   const root = parse(page)
-  const edits: Edit[] = []
-  const changes: CellChange[] = []
-  const splices: { start: number; end: number; text: string }[] = []
+  const m: Merging = { page, edits: [], changes: [], splices: [] }
   const appended: string[] = []
-
-  const tables: [('info' | 'checklist'), LayoutTable | undefined][] = [['info', layout.info], ['checklist', layout.checklist]]
+  const tables: [TableName, LayoutTable | undefined][] = [['info', layout.info], ['checklist', layout.checklist]]
   for (const [name, spec] of tables) {
     if (!spec) continue
     const mine = rows.filter((r) => r.table === name)
-    const table = tableAfterHeading(root, new RegExp(`^${escRe(spec.heading)}$`, 'i'))
-    if (!table) {
-      const html = tableHtml(spec, mine, name === 'checklist' ? 1 : 2)
-      edits.push({ name: 'appendNodeToEnd', value: html })
-      appended.push(html)
-      for (const r of mine) changes.push({ table: name, key: r.key, cell: null, action: 'add-table' })
-      continue
-    }
-
-    const trs = rowsOf(table)
-    const firsts = trs.map((tr) => ({ tr, text: cellsOf(tr)[0] ? textOf(cellsOf(tr)[0]) : '' }))
-    const rowFor = (key: string) => {
-      const match = spec.rows.find((x) => x.key === key)?.match
-      return (firsts.find((f) => f.text === key) ?? (match ? firsts.find((f) => new RegExp(match, 'i').test(f.text)) : undefined))?.tr
-    }
-    let after: { id?: string; end: number } | null = trs.length ? { id: trs[0].attrs['data-local-id'], end: trs[0].end } : null
-    const inserts = new Map<number, string[]>()
-
-    for (const r of mine) {
-      const tr = rowFor(r.key)
-      if (!tr) {
-        if (!after?.id) {
-          changes.push({ table: name, key: r.key, cell: null, action: 'skipped', why: 'no row with a local id to add it after' })
-          continue
-        }
-        const id = newId(`${name}:${r.key}`)
-        const html = rowHtml(r).replace(/^<tr>/, `<tr data-local-id="${id}">`)
-        edits.push({ name: 'insertNodeAfter', localId: after.id, value: html })
-        inserts.set(after.end, [...(inserts.get(after.end) ?? []), html])
-        after = { id, end: after.end }
-        changes.push({ table: name, key: r.key, cell: null, action: 'add-row', after: textOf(parse(html)) })
-        continue
-      }
-      after = { id: tr.attrs['data-local-id'], end: tr.end }
-      const tds = cellsOf(tr)
-      const cells = r.cells.flatMap((gen, n): Cell[] => {
-        if (!gen.name) return []
-        const td = tds[n]
-        const base = { table: name, key: r.key, cell: gen.name }
-        if (!td) return [{ gen, base, held: { ...base, action: 'skipped', why: `the row has no column ${n + 1}` } }]
-        const before = textOf(td)
-        const re = new RegExp(`^qa-auto-${escRe(markerRow(name, r.key))}-${gen.name}-`)
-        const marker = markers(td).find((m) => re.test(m))
-        const hash = marker ? MARKER.exec(marker)?.[3] : undefined
-        const held: CellChange | undefined = !marker ? { ...base, action: 'keep-human', before }
-          : hash !== shortHash(cellText(page.slice(td.start, td.end))) ? { ...base, action: 'keep-edited', before }
-            : hash === gen.hash ? { ...base, action: 'unchanged' }
-              : !td.attrs['data-local-id'] ? { ...base, action: 'skipped', why: 'the cell has no local id' }
-                : undefined
-        return [{ gen, td, base, held, before }]
-      })
-      // A row's status and comment are replaced together or not at all, so a person's answer is
-      // never left beside a comment that disagrees with it. A judgement also waits for a row it
-      // can write whole.
-      const personal = (c: Cell) => c.held?.action === 'keep-human' || c.held?.action === 'keep-edited'
-      const blocked = cells.some(personal) || cells.some((c) => c.gen.judged && c.held)
-      for (const c of cells) {
-        if (c.held) changes.push(c.gen.judged && !c.held.why ? { ...c.held, why: 'the judgement was not written' } : c.held)
-        else if (blocked) changes.push({ ...c.base, action: 'skipped', why: 'a person has written the rest of this row' })
-        else {
-          const td = c.td!
-          const inner = c.gen.html.replace(/^<td[^>]*>/, '').replace(/<\/td>$/, '')
-          const html = `<${td.tag}${attrsOf(td)}>${inner}</${td.tag}>`
-          edits.push({ name: 'replaceNode', localId: td.attrs['data-local-id'], value: html })
-          splices.push({ start: td.start, end: td.end, text: html })
-          changes.push({ ...c.base, action: c.gen.judged ? 'judgement' : 'update', before: c.before, after: textOf(parse(html)) })
-        }
-      }
-    }
-    for (const [at, html] of inserts) splices.push({ start: at, end: at, text: html.join('') })
+    if (mergeTable(m, root, name, spec, mine)) continue
+    const html = tableHtml(spec, mine, name === 'checklist' ? 1 : 2)
+    m.edits.push({ name: 'appendNodeToEnd', value: html })
+    appended.push(html)
+    for (const r of mine) m.changes.push({ table: name, key: r.key, cell: null, action: 'add-table' })
   }
-  const html = splice(page, splices) + (appended.length ? `\n${appended.join('\n')}` : '')
-  return { html, edits, changes }
+  const html = splice(page, m.splices) + (appended.length ? `\n${appended.join('\n')}` : '')
+  return { html, edits: m.edits, changes: m.changes }
 }
 
 export interface Counts {

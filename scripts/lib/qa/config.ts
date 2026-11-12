@@ -69,7 +69,7 @@ export interface Layout {
 export const CHECKLIST_RULES = [
   'sonar-coverage', 'sonar-quality-gate', 'sonar-security', 'integration-contract', 'functional',
   'deployed-aat', 'yarn-audit', 'dependency-check', 'ignored-tests', 'test-complete', 'high-defects',
-  'perf-signoff', 'perf-required', 'security-signoff', 'human',
+  'uv-audit', 'perf-signoff', 'perf-required', 'security-signoff', 'human',
 ] as const
 
 export const INFO_RULES = ['release', 'dashboards', 'outstanding-bugs', 'repos', 'revisions', 'human'] as const
@@ -120,82 +120,92 @@ export function validateLayout(doc: unknown, name = 'layout'): string[] {
   return errors
 }
 
-export function validateRelease(doc: unknown, name = 'release', layout?: Layout): string[] {
-  const errors: string[] = []
-  if (!isRec(doc)) return [`${name}: expected a mapping`]
-  for (const k of ['release', 'layout', 'jql']) if (!nonEmpty(doc[k])) errors.push(`${name}: "${k}" is required`)
-  if (nonEmpty(doc.release) && !RELEASE_NAME.test(doc.release)) errors.push(`${name}: "release" may have only letters, digits, dots, dashes and underscores`)
-  if (typeof doc.active !== 'boolean') errors.push(`${name}: "active" must be true or false`)
-  for (const k of ['report_page', 'ria_page']) {
-    if (doc[k] !== undefined && !PAGE_ID.test(str(doc[k]))) errors.push(`${name}: "${k}" must be a Confluence page id`)
-  }
-  if (doc.coverage_threshold !== undefined && !(typeof doc.coverage_threshold === 'number' && doc.coverage_threshold >= 0 && doc.coverage_threshold <= 100)) {
-    errors.push(`${name}: "coverage_threshold" must be a percentage`)
-  }
-  if (doc.test_complete_pattern !== undefined && !isRegex(doc.test_complete_pattern, 'i')) {
-    errors.push(`${name}: "test_complete_pattern" is not a valid regular expression`)
-  }
-  if (doc.bug_types !== undefined && !(Array.isArray(doc.bug_types) && doc.bug_types.length && doc.bug_types.every(nonEmpty))) {
-    errors.push(`${name}: "bug_types" must be a list of issue type names`)
-  }
+/** A top-level field's check: when it applies (undefined is skipped unless `required`), and what's wrong otherwise. */
+interface FieldRule {
+  key: string
+  required?: boolean
+  ok: (v: unknown) => boolean
+  message: string
+}
 
-  const repos = isRec(doc.repos) ? doc.repos : {}
-  if (!isRec(doc.repos) || Object.keys(repos).length === 0) errors.push(`${name}: "repos" needs at least one repo`)
-  for (const [r, v] of Object.entries(repos)) {
+const FIELD_RULES: FieldRule[] = [
+  ...['release', 'layout', 'jql'].map((key) => ({ key, required: true, ok: nonEmpty, message: 'is required' })),
+  { key: 'release', ok: (v) => !nonEmpty(v) || RELEASE_NAME.test(v), message: 'may have only letters, digits, dots, dashes and underscores' },
+  { key: 'active', required: true, ok: (v) => typeof v === 'boolean', message: 'must be true or false' },
+  ...['report_page', 'ria_page'].map((key) => ({ key, ok: (v: unknown) => PAGE_ID.test(str(v)), message: 'must be a Confluence page id' })),
+  { key: 'coverage_threshold', ok: (v) => typeof v === 'number' && v >= 0 && v <= 100, message: 'must be a percentage' },
+  { key: 'test_complete_pattern', ok: (v) => isRegex(v, 'i'), message: 'is not a valid regular expression' },
+  { key: 'bug_types', ok: (v) => Array.isArray(v) && v.length > 0 && v.every(nonEmpty), message: 'must be a list of issue type names' },
+]
+
+const REPO_RULES: FieldRule[] = [
+  { key: 'github', required: true, ok: (v) => /^[\w.-]+\/[\w.-]+$/.test(str(v)), message: 'must look like owner/name' },
+  { key: 'builder', ok: (v) => v === 'gradle' || v === 'yarn', message: 'must be gradle or yarn' },
+  { key: 'test_paths', ok: (v) => isRegex(v), message: 'is not a valid regular expression' },
+]
+
+function checkFields(doc: Rec, rules: FieldRule[], where: string): string[] {
+  return rules.filter((r) => (r.required || doc[r.key] !== undefined) && !r.ok(doc[r.key])).map((r) => `${where}: "${r.key}" ${r.message}`)
+}
+
+function validateRepos(repos: Rec, name: string): string[] {
+  return Object.entries(repos).flatMap(([r, v]) => {
     const w = `${name}.repos.${r}`
-    if (!isRec(v)) {
-      errors.push(`${w}: expected a mapping`)
-      continue
-    }
-    if (!/^[\w.-]+\/[\w.-]+$/.test(str(v.github ?? ''))) errors.push(`${w}: "github" must look like owner/name`)
-    if ((v.cosmos_product === undefined) !== (v.cosmos_component === undefined)) {
-      errors.push(`${w}: set both "cosmos_product" and "cosmos_component", or neither`)
-    }
-    if (v.builder !== undefined && v.builder !== 'gradle' && v.builder !== 'yarn') errors.push(`${w}: "builder" must be gradle or yarn`)
-    if (v.test_paths !== undefined && !isRegex(v.test_paths)) errors.push(`${w}: "test_paths" is not a valid regular expression`)
-  }
+    if (!isRec(v)) return [`${w}: expected a mapping`]
+    const pair = (v.cosmos_product === undefined) !== (v.cosmos_component === undefined)
+    return [...checkFields(v, REPO_RULES, w), ...(pair ? [`${w}: set both "cosmos_product" and "cosmos_component", or neither`] : [])]
+  })
+}
 
-  if (!Array.isArray(doc.candidates) || doc.candidates.length === 0) errors.push(`${name}: "candidates" needs at least one candidate`)
+function validateCandidates(candidates: unknown, repos: Rec, name: string): string[] {
+  if (!Array.isArray(candidates) || candidates.length === 0) return [`${name}: "candidates" needs at least one candidate`]
+  const errors: string[] = []
   const names = new Set<string>()
-  for (const [n, c] of (Array.isArray(doc.candidates) ? doc.candidates : []).entries()) {
+  candidates.forEach((c: unknown, n: number) => {
     const w = `${name}.candidates[${n}]`
-    if (!isRec(c) || !nonEmpty(c.name)) {
-      errors.push(`${w}: "name" is required`)
-      continue
-    }
-    if (names.has(str(c.name))) errors.push(`${name}: duplicate candidate ${c.name}`)
-    names.add(str(c.name))
-    if (!isRec(c.shas) || Object.keys(c.shas).length === 0) {
-      errors.push(`${w}: "shas" needs a commit for at least one repo`)
-      continue
-    }
+    if (!isRec(c) || !nonEmpty(c.name)) return errors.push(`${w}: "name" is required`)
+    if (names.has(c.name)) errors.push(`${name}: duplicate candidate ${c.name}`)
+    names.add(c.name)
+    if (!isRec(c.shas) || Object.keys(c.shas).length === 0) return errors.push(`${w}: "shas" needs a commit for at least one repo`)
     for (const [r, sha] of Object.entries(c.shas)) {
       if (!(r in repos)) errors.push(`${w}: "${r}" is not one of the repos`)
       if (!SHA.test(str(sha))) errors.push(`${w}: ${r} must be a full 40-character commit SHA`)
     }
-  }
-
-  if (doc.human_rows !== undefined) {
-    if (!isRec(doc.human_rows)) errors.push(`${name}: "human_rows" must map row keys to Jira keys`)
-    else {
-      const keys = new Set(layout?.checklist.rows.map((r) => r.key))
-      for (const [row, v] of Object.entries(doc.human_rows)) {
-        const list = Array.isArray(v) ? v : [v]
-        if (!list.length || !list.every((k) => JIRA_KEY.test(str(k)))) errors.push(`${name}.human_rows.${row}: must be a Jira key or a list of them`)
-        if (layout && !keys.has(row)) errors.push(`${name}.human_rows.${row}: the layout has no row ${row}`)
-      }
-    }
-  }
-
-  if (doc.dashboards !== undefined) {
-    if (!Array.isArray(doc.dashboards)) errors.push(`${name}: "dashboards" must be a list`)
-    else doc.dashboards.forEach((d: unknown, n: number) => {
-      if (!isRec(d) || !nonEmpty(d.label) || !/^https:\/\/\S+$/.test(str(d.url ?? ''))) {
-        errors.push(`${name}.dashboards[${n}]: needs a "label" and an https "url"`)
-      }
-    })
-  }
+  })
   return errors
+}
+
+function validateHumanRows(rows: unknown, name: string, layout?: Layout): string[] {
+  if (rows === undefined) return []
+  if (!isRec(rows)) return [`${name}: "human_rows" must map row keys to Jira keys`]
+  const keys = new Set(layout?.checklist.rows.map((r) => r.key))
+  return Object.entries(rows).flatMap(([row, v]) => {
+    const list = Array.isArray(v) ? v : [v]
+    return [
+      ...(!list.length || !list.every((k) => JIRA_KEY.test(str(k))) ? [`${name}.human_rows.${row}: must be a Jira key or a list of them`] : []),
+      ...(layout && !keys.has(row) ? [`${name}.human_rows.${row}: the layout has no row ${row}`] : []),
+    ]
+  })
+}
+
+function validateDashboards(dashboards: unknown, name: string): string[] {
+  if (dashboards === undefined) return []
+  if (!Array.isArray(dashboards)) return [`${name}: "dashboards" must be a list`]
+  return dashboards.flatMap((d: unknown, n: number) => (isRec(d) && nonEmpty(d.label) && /^https:\/\/\S+$/.test(str(d.url))
+    ? [] : [`${name}.dashboards[${n}]: needs a "label" and an https "url"`]))
+}
+
+export function validateRelease(doc: unknown, name = 'release', layout?: Layout): string[] {
+  if (!isRec(doc)) return [`${name}: expected a mapping`]
+  const repos = isRec(doc.repos) ? doc.repos : {}
+  return [
+    ...checkFields(doc, FIELD_RULES, name),
+    ...(Object.keys(repos).length === 0 ? [`${name}: "repos" needs at least one repo`] : []),
+    ...validateRepos(repos, name),
+    ...validateCandidates(doc.candidates, repos, name),
+    ...validateHumanRows(doc.human_rows, name, layout),
+    ...validateDashboards(doc.dashboards, name),
+  ]
 }
 
 function readYaml(path: string): unknown {

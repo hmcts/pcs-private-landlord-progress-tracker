@@ -1,8 +1,10 @@
 // Helpers shared by the QA report: shape checks for the YAML and JSON its config, judgement and
 // evidence readers take before they're checked, and finding the commands it runs.
 
+import { execFile } from 'node:child_process'
 import { accessSync, constants, statSync } from 'node:fs'
 import { delimiter, resolve } from 'node:path'
+import { promisify } from 'node:util'
 import { QaError } from './errors.ts'
 
 export type Rec = Record<string, unknown>
@@ -37,4 +39,27 @@ export function commandPath(name: string, env: NodeJS.ProcessEnv = process.env):
     return full
   }
   throw new QaError('command-missing', `${name} is not on PATH`)
+}
+
+/** `f` over `items`, at most `limit` at a time, results in the items' order. */
+export async function mapLimit<T, R>(items: T[], limit: number, f: (x: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length)
+  let next = 0
+  const worker = async () => {
+    while (next < items.length) {
+      const n = next++
+      out[n] = await f(items[n])
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  return out
+}
+
+const execFileAsync = promisify(execFile)
+
+/** Runs a command found by commandPath without blocking, with nothing on its stdin; resolves to its stdout. */
+export async function runCommand(command: string, args: string[], opts: { env?: NodeJS.ProcessEnv; maxBuffer?: number } = {}): Promise<string> {
+  const p = execFileAsync(commandPath(command), args, { encoding: 'utf8', ...opts })
+  p.child.stdin?.end()
+  return (await p).stdout
 }

@@ -8,10 +8,9 @@
 //
 // Uses GITHUB_TOKEN when set (CI), else `gh api` when it's installed, else anonymous requests.
 
-import { execFileSync } from 'node:child_process'
 import { gunzipSync } from 'node:zlib'
 import type { Candidate, ReleaseConfig } from '../config.ts'
-import { commandPath } from '../util.ts'
+import { mapLimit, runCommand } from '../util.ts'
 import { HttpError, item, type Item, reason, short } from './common.ts'
 
 const SOURCE = 'github'
@@ -21,23 +20,12 @@ export type GitHubApi = (path: string) => Promise<unknown>
 /** The gzipped tarball of a repo at a commit. Injected in tests. */
 export type GitHubTarball = (repo: string, sha: string) => Promise<Buffer>
 
-const hasGh = (() => {
-  let v: boolean | undefined
-  return () => (v ??= (() => {
-    try {
-      execFileSync(commandPath('gh'), ['--version'], { stdio: 'ignore' })
-      return true
-    } catch {
-      return false
-    }
-  })())
-})()
+let gh: Promise<boolean> | undefined
+const hasGh = () => (gh ??= runCommand('gh', ['--version']).then(() => true, () => false))
 
 export function defaultGitHubApi(env: NodeJS.ProcessEnv = process.env): GitHubApi {
   return async (path) => {
-    if (!env.GITHUB_TOKEN && hasGh()) {
-      return JSON.parse(execFileSync(commandPath('gh'), ['api', path], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }))
-    }
+    if (!env.GITHUB_TOKEN && await hasGh()) return JSON.parse(await runCommand('gh', ['api', path], { maxBuffer: 64 * 1024 * 1024 }))
     const headers: Record<string, string> = { accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' }
     if (env.GITHUB_TOKEN) headers.authorization = `Bearer ${env.GITHUB_TOKEN}`
     const res = await fetch(`https://api.github.com/${path.replace(/^\//, '')}`, { headers, signal: AbortSignal.timeout(60_000) })
@@ -229,10 +217,12 @@ export function ignoredItem(repo: string, gh: string, sha: string, c: Candidate,
     data: { files: scan.files, findings: scan.findings } }, now)
 }
 
+/** Candidate commits read at once. GitHub's API and codeload both throttle bursts. */
+export const GITHUB_CONCURRENCY = 4
+
 export function githubReader(cfg: ReleaseConfig, api: GitHubApi = defaultGitHubApi(), tarball: GitHubTarball = defaultTarball(),
   now?: () => Date): () => Promise<Item[]> {
   return async () => {
-    const out: Item[] = []
     // A repo unchanged between candidates has the same commit in each: read it once.
     const runs = new Map<string, Promise<CheckRun[]>>()
     const scans = new Map<string, Promise<ReturnType<typeof scanTarball>>>()
@@ -240,26 +230,17 @@ export function githubReader(cfg: ReleaseConfig, api: GitHubApi = defaultGitHubA
       if (!m.has(k)) m.set(k, f())
       return m.get(k)!
     }
-    for (const c of cfg.candidates) {
-      for (const [repo, sha] of Object.entries(c.shas)) {
-        const gh = cfg.repos[repo].github
-        const k = `${gh}@${sha}`
-        try {
-          out.push(...checkItems(repo, sha, c, await once(runs, k, () => checkRuns(api, gh, sha)), now))
-        } catch (e) {
-          for (const rule of Object.keys(CHECK_RULES)) {
-            out.push(item({ source: SOURCE, sha, repo, candidate: c.name, rule, status: 'unknown', value: 'not checked',
-              note: `GitHub checks could not be read: ${reason(e)}` }, now))
-          }
-        }
-        try {
-          out.push(ignoredItem(repo, gh, sha, c, await once(scans, k, async () => scanTarball(await tarball(gh, sha), cfg.repos[repo].test_paths)), now))
-        } catch (e) {
-          out.push(item({ source: SOURCE, sha, repo, candidate: c.name, rule: 'ignored-tests', status: 'unknown', value: 'not checked',
-            note: `the source at ${short(sha)} could not be read: ${reason(e)}` }, now))
-        }
-      }
+    const one = async ([c, repo, sha]: [Candidate, string, string]): Promise<Item[]> => {
+      const gh = cfg.repos[repo].github
+      const k = `${gh}@${sha}`
+      const unknown = (rule: string, note: string) => item({ source: SOURCE, sha, repo, candidate: c.name, rule, status: 'unknown', value: 'not checked', note }, now)
+      const checks = once(runs, k, () => checkRuns(api, gh, sha)).then((r) => checkItems(repo, sha, c, r, now),
+        (e) => Object.keys(CHECK_RULES).map((rule) => unknown(rule, `GitHub checks could not be read: ${reason(e)}`)))
+      const ignored = once(scans, k, async () => scanTarball(await tarball(gh, sha), cfg.repos[repo].test_paths)).then(
+        (scan) => ignoredItem(repo, gh, sha, c, scan, now), (e) => unknown('ignored-tests', `the source at ${short(sha)} could not be read: ${reason(e)}`))
+      return [...await checks, await ignored]
     }
-    return out
+    const pairs = cfg.candidates.flatMap((c) => Object.entries(c.shas).map(([repo, sha]) => [c, repo, sha] as [Candidate, string, string]))
+    return (await mapLimit(pairs, GITHUB_CONCURRENCY, one)).flat()
   }
 }

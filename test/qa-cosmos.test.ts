@@ -1,6 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { cosmosReader, type CveDoc, type StageEvent, summariseCve, toBuilds } from '../scripts/lib/qa/sources/cosmos.ts'
+import { cosmosReader, type CveDoc, newestReports, type StageEvent, summariseCve, toBuilds } from '../scripts/lib/qa/sources/cosmos.ts'
+import { repoFromGitUrl } from '../scripts/lib/qa/sources/cve.ts'
 import { CFG, NOW, SHA } from './qa-helpers.ts'
 
 // Stage events shaped as MetricsPublisher.collectMetrics() writes them (cnp-jenkins-library).
@@ -25,18 +26,31 @@ const apiEvents = [
   ...build('HMCTS_j_to_z/pcs-api/ithc', 1365, 'ithc', SHA.api2, [['functionalTest:aat', 'FAILURE']], 'Pipeline Failed'),
 ]
 
-// A trimmed OWASP dependency-check report (GradleBuilder.prepareCVEReport keeps vulnerable deps only).
-const javaReport: CveDoc = { build: { build_tag: `jenkins-${API_MASTER.replace(/\//g, '-')}-2092`, codebase_type: 'java' }, report: { dependencies: [
-  { fileName: 'a.jar', vulnerabilities: [], suppressedVulnerabilities: [{ name: 'CVE-2026-0001', severity: 'HIGH' }, { name: 'CVE-2026-0002', severity: 'LOW' }] },
-  { fileName: 'b.jar', suppressedVulnerabilities: [{ name: 'CVE-2026-0001', severity: 'HIGH' }] },
+const API_GIT = 'https://github.com/hmcts/pcs-api.git'
+const FE_GIT = 'https://github.com/hmcts/pcs-frontend.git'
+
+// GradleBuilder.prepareCVEReport: dependency-check trimmed to vulnerable dependencies. Suppressed
+// entries carry no `severity` of their own, only CVSS blocks.
+const javaReport: CveDoc = { _ts: 1_790_000_000, build: { branch_name: 'master', build_tag: `jenkins-${API_MASTER.replace(/\//g, '-')}-2092`, git_url: API_GIT, codebase_type: 'java' }, report: { dependencies: [
+  { fileName: 'a.jar', vulnerabilities: [], suppressedVulnerabilities: [{ name: 'CVE-2026-0001', cvssv3: { baseSeverity: 'HIGH', baseScore: 7.5 } }, { name: 'CVE-2026-0002', cvssv2: { severity: 'LOW' } }] },
+  { fileName: 'b.jar', suppressedVulnerabilities: [{ name: 'CVE-2026-0001', cvssv3: { baseSeverity: 'HIGH' } }] },
+  { fileName: 'b.jar', suppressedVulnerabilities: [{ name: 'CVE-2026-0001', cvssv3: { baseSeverity: 'HIGH' } }] },
+  { vulnerabilities: [{ name: 'CVE-2026-0003', severity: 'HIGH' }] },
 ] } }
 
-// YarnBuilder.prepareCVEReport: every advisory, with the known (suppressed) ones listed again.
-const nodeReport = (open: boolean): CveDoc => ({ build: { build_tag: 'jenkins-HMCTS_j_to_z-pcs-frontend-master-1569', codebase_type: 'node' }, report: {
-  vulnerabilities: [{ title: 'ReDoS', module_name: 'x', severity: 'moderate' }, ...(open ? [{ title: 'Prototype pollution', module_name: 'y', severity: 'high' }] : [])],
-  suppressed: [{ title: 'ReDoS', module_name: 'x', severity: 'moderate' }],
+// YarnBuilder.prepareCVEReport: the whole audit in `vulnerabilities` (accepted advisories included),
+// the known-issues file in `suppressed`, and the all-null placeholder entry every report carries.
+const NULL_ENTRY = { title: null, cves: null, vulnerable_versions: null, patched_versions: null, severity: null, cwe: null, cvss: null, url: null, module_name: null }
+const nodeReport = (open: boolean): CveDoc => ({ _ts: 1_790_000_000, build: { branch_name: 'master', build_tag: 'jenkins-HMCTS_j_to_z-pcs-frontend-master-1569', git_url: FE_GIT, codebase_type: 'node' }, report: {
+  vulnerabilities: [NULL_ENTRY, { title: 'ReDoS', cves: ['CVE-2026-1000'], module_name: 'x', severity: 'moderate', url: 'https://github.com/advisories/GHSA-a' },
+    ...(open ? [{ title: 'Prototype pollution', cves: [], module_name: 'y', severity: 'high', url: 'https://github.com/advisories/GHSA-b' }] : [])],
+  suppressed: [{ title: 'ReDoS', cves: ['CVE-2026-1000'], module_name: 'x', severity: 'moderate', url: 'https://github.com/advisories/GHSA-a' }],
   summary: { vulnerabilities: { critical: 0, high: open ? 1 : 0, moderate: 1, low: 0, info: 0 } },
 } })
+
+// PythonBuilder: uv audit, with no grades and no suppression.
+const pythonReport: CveDoc = { build: { branch_name: 'master', build_tag: 't', git_url: 'git@github.com:hmcts/py-app.git', codebase_type: 'python' }, report: {
+  vulnerabilities: [{ display_id: 'GHSA-xxxx', aliases: ['CVE-2026-2000'], package: 'requests' }, { aliases: [], dependency: { name: 'urllib3' } }] } }
 
 describe('pipeline-metrics builds', () => {
   test('keeps master and nightly builds, newest first, and finds the failed stage', () => {
@@ -64,9 +78,32 @@ describe('pipeline-metrics builds', () => {
 })
 
 describe('cve-reports', () => {
-  test('counts open and suppressed findings', () => {
-    assert.deepEqual(summariseCve(javaReport), { type: 'java', open: 0, suppressed: 2, bySeverity: {} })
+  test('counts open and suppressed findings per CVE and package, as the publishers shape them', () => {
+    assert.deepEqual(summariseCve(javaReport), { type: 'java', open: 0, suppressed: 3, bySeverity: {} })
     assert.deepEqual(summariseCve(nodeReport(true)), { type: 'node', open: 1, suppressed: 1, bySeverity: { high: 1 } })
+    assert.deepEqual(summariseCve(nodeReport(false)), { type: 'node', open: 0, suppressed: 1, bySeverity: {} })
+    assert.deepEqual(summariseCve(pythonReport), { type: 'python', open: 1, suppressed: 0, bySeverity: { unrated: 1 } })
+    assert.equal(summariseCve({ build: { codebase_type: 'go' }, report: {} }), undefined)
+  })
+
+  test('grades from CVSS, worse first, and folds moderate to medium', () => {
+    const doc: CveDoc = { build: { codebase_type: 'java' }, report: { dependencies: [{ fileName: 'c.jar', vulnerabilities: [
+      { name: 'CVE-1', severity: 'MEDIUM', cvssv3: { baseSeverity: 'HIGH' } }, { name: 'CVE-1', cvssv2: { severity: 'LOW' } }, { name: 'CVE-2' }] }] } }
+    assert.deepEqual(summariseCve(doc)!.bySeverity, { high: 1, unrated: 1 })
+  })
+
+  test('attributes a report by git_url, stripping .git only as a suffix', () => {
+    assert.equal(repoFromGitUrl('https://github.com/HMCTS/pcs-api.git'), 'hmcts/pcs-api')
+    assert.equal(repoFromGitUrl('https://github.com/hmcts/foo.github.io.git'), 'hmcts/foo.github.io')
+    assert.equal(repoFromGitUrl('git@github.com:hmcts/py-app.git'), 'hmcts/py-app')
+    for (const bad of ['https://gitlab.com/hmcts/x.git', 'https://github.com/hmcts', 'https://github.com/a/b/c', 7]) assert.equal(repoFromGitUrl(bad), undefined)
+  })
+
+  test('keeps the newest report per build and type, and only the repo\'s own', () => {
+    const older = { ...javaReport, _ts: 1 }
+    const other = { ...javaReport, _ts: 9_999_999_999, build: { ...javaReport.build, git_url: 'https://github.com/hmcts/other.git' } }
+    const kept = newestReports([older, javaReport, other], 'hmcts/pcs-api')
+    assert.deepEqual([...kept.values()].map((d) => d._ts), [javaReport._ts])
   })
 })
 
@@ -74,17 +111,19 @@ describe('cosmosReader', () => {
   const cfg = { ...CFG, candidates: [CFG.candidates[1]] }
 
   test('answers the stage rules and joins CVE reports through build_tag', async () => {
-    const queries: { container: string; params: { name: string; value: unknown }[] }[] = []
-    const items = await cosmosReader(cfg, async (container, _q, params) => {
-      queries.push({ container, params })
+    const queries: { db: string; container: string; query: string; params: { name: string; value: unknown }[] }[] = []
+    const items = await cosmosReader(cfg, async (db, container, query, params) => {
+      queries.push({ db, container, query, params })
+      // pcs-api moved to sds-jenkins after its earlier builds, as repos given the jenkins-sds topic do.
       if (container === 'pipeline-metrics') {
+        if (db === 'jenkins') return []
         const sha = params.find((p) => p.name === '@sha')!.value
         const c = params.find((p) => p.name === '@c')!.value
         return c === 'api' ? apiEvents.filter((e) => e.git_commit === sha)
           : build('HMCTS_j_to_z/pcs-frontend/master', 1569, 'master', SHA.fe2, [['securitychecks'], ['smoketest:aat'], ['functionalTest:aat']], 'Pipeline Succeeded')
       }
       const tags = params[0].value as string[]
-      return [javaReport, nodeReport(true)].filter((d) => tags.includes(d.build.build_tag!))
+      return (db === 'jenkins' ? [nodeReport(true)] : [javaReport]).filter((d) => tags.includes(d.build.build_tag!))
     }, NOW)()
 
     const api = Object.fromEntries(items.filter((i) => i.repo === 'pcs-api').map((i) => [i.rule, i]))
@@ -93,13 +132,15 @@ describe('cosmosReader', () => {
     assert.match(api.functional.value, /master #2092.*functionalTest:aat passed.*nightly #653.*fullFunctionalTest:aat passed/)
     assert.equal(api['deployed-aat'].status, 'pass')
     assert.deepEqual([api['dependency-check'].status, api['dependency-check'].answer], ['pass', 'Yes'])
-    assert.match(api['dependency-check'].value, /0 open, 2 suppressed/)
+    assert.match(api['dependency-check'].value, /0 open, 3 suppressed/)
     assert.ok(Object.values(api).every((i) => i.sha === SHA.api2))
 
     const fe = Object.fromEntries(items.filter((i) => i.repo === 'pcs-frontend').map((i) => [i.rule, i]))
     assert.equal(fe['integration-contract'].status, 'unknown')
     assert.deepEqual([fe['yarn-audit'].status, fe['yarn-audit'].answer], ['fail', 'Yes'])
     assert.ok(queries.filter((q) => q.container === 'pipeline-metrics').every((q) => q.params.some((p) => p.name === '@sha')))
+    assert.deepEqual([...new Set(queries.map((q) => q.db))].sort(), ['jenkins', 'sds-jenkins'])
+    assert.ok(queries.every((q) => /ARRAY_CONTAINS\(@branches, c\.(build\.)?branch_name\)/.test(q.query)))
   })
 
   test('access denied gives unknown rows, and Cosmos is not asked again', async () => {
@@ -108,7 +149,7 @@ describe('cosmosReader', () => {
       calls++
       throw Object.assign(new Error('Request blocked by Auth pipeline-metrics : principal does not have required RBAC permissions'), { code: 403 })
     }, NOW)()
-    assert.equal(calls, 1)
+    assert.equal(calls, 2)
     assert.equal(items.length, 4 * 4)
     assert.ok(items.every((i) => i.status === 'unknown' && i.note === 'Cosmos pipeline-metrics could not be read: access denied (403)'))
   })
@@ -120,7 +161,7 @@ describe('cosmosReader', () => {
       ...build('HMCTS_j_to_z/pcs-api/main', 4, 'main', SHA.api2, [['checkout'], ['pact-consumer-tests']], 'Pipeline Succeeded'),
     ]
     const items = await cosmosReader({ ...cfg, candidates: [{ name: 'V2', shas: { 'pcs-api': SHA.api2 } }] },
-      async (container) => (container === 'pipeline-metrics' ? events : []), NOW)()
+      async (db, container) => (db === 'jenkins' && container === 'pipeline-metrics' ? events : []), NOW)()
     const api = Object.fromEntries(items.map((i) => [i.rule, i]))
     assert.equal(api.functional.status, 'fail')
     assert.match(api.functional.value, /master #10/)

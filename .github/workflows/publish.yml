@@ -193,10 +193,9 @@ jobs:
         continue-on-error: true
         run: npm run fetch
 
-      # Edits are made as whoever seeded the twg secret. Cosmos is read as the Azure sign-in
-      # above, unless the COSMOS_KEY_SECRET_NAME variable names a read-only key in the same
-      # vault, which then exists only in this step. Evidence stays in $RUNNER_TEMP, and the log
-      # gets only counts.
+      # Edits are made as whoever seeded the twg secret. Cosmos is read with the read-only key in
+      # the COSMOS_PIPELINE_METRICS_KEY secret, or as the Azure sign-in above if it's unset.
+      # Evidence stays in $RUNNER_TEMP, and the log gets only counts.
       - name: Update the QA readiness reports
         id: qa
         if: steps.twg.outputs.signed_in == 'true' && github.ref == 'refs/heads/master'
@@ -206,23 +205,8 @@ jobs:
           QA_CACHE_DIR: ${{ runner.temp }}/qa
           GH_TOKEN: ${{ github.token }}
           GITHUB_TOKEN: ${{ github.token }}
-          COSMOS_KEY_SECRET: ${{ vars.COSMOS_KEY_SECRET_NAME }}
-        run: |
-          set -euo pipefail
-          if [[ -n "$COSMOS_KEY_SECRET" ]]; then
-            err="$RUNNER_TEMP/cosmos-kv.err"
-            if key=$(az keyvault secret show --vault-name "$TWG_VAULT" --name "$COSMOS_KEY_SECRET" \
-                -o tsv --query value 2> "$err") && [[ -n "$key" ]]; then
-              echo "::add-mask::$key"
-              export COSMOS_PIPELINE_METRICS_KEY="$key"
-            else
-              code=$(grep -oE '\([A-Za-z]+\)' "$err" 2>/dev/null | head -1 | tr -d '()' || true)
-              echo "::warning::could not read $COSMOS_KEY_SECRET from the $TWG_VAULT Key Vault (${code:-no error code}), so Cosmos is read as the Azure sign-in"
-            fi
-            rm -f "$err"
-            unset key
-          fi
-          npm run qa-report -- --all-active --publish
+          COSMOS_PIPELINE_METRICS_KEY: ${{ secrets.COSMOS_PIPELINE_METRICS_KEY }}
+        run: npm run qa-report -- --all-active --publish
 
       - name: Store the twg sign-in if it rotated again
         if: always() && steps.twg-restore.outputs.restored == 'true'

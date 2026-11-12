@@ -5,10 +5,13 @@
 // never left out of a row's verdict.
 
 import type { Candidate, ReleaseConfig } from '../config.ts'
+import { mapLimit } from '../util.ts'
 import { day, type HttpJson, httpJson, item, type Item, reason, short } from './common.ts'
 
 export const SONAR = 'https://sonarcloud.io'
 const SOURCE = 'sonarcloud'
+/** Candidate commits looked up at once, to stay well inside SonarCloud's anonymous rate limit. */
+export const SONAR_CONCURRENCY = 4
 export const SONAR_RULES = ['sonar-coverage', 'sonar-quality-gate', 'sonar-security']
 const MAX_PAGES = 20
 
@@ -51,25 +54,19 @@ export async function measuresAt(project: string, date: string, get: HttpJson = 
 export function sonarReader(cfg: ReleaseConfig, get: HttpJson = httpJson, now?: () => Date): () => Promise<Item[]> {
   const threshold = cfg.coverage_threshold ?? 80
   return async () => {
-    const out: Item[] = []
     // Each candidate's commits are looked up in the same history, so read it once per project.
     const history = new Map<string, Promise<Analysis[]>>()
     const find = async (project: string, sha: string) => {
       if (!history.has(project)) history.set(project, analyses(project, get))
       return (await history.get(project)!).find((a) => a.revision === sha) ?? null
     }
-    for (const c of cfg.candidates) {
-      for (const [repo, sha] of Object.entries(c.shas)) {
-        const project = cfg.repos[repo]?.sonar
-        if (!project) {
-          out.push(...SONAR_RULES.map((rule) => item({ source: SOURCE, sha, repo, candidate: c.name, rule, status: 'unknown', value: 'not checked',
-            note: 'no Sonar project is configured for the repo' }, now)))
-          continue
-        }
-        out.push(...await one(repo, project, sha, c, threshold, get, find, now))
-      }
-    }
-    return out
+    const pairs = cfg.candidates.flatMap((c) => Object.entries(c.shas).map(([repo, sha]) => [c, repo, sha] as const))
+    return (await mapLimit([...pairs], SONAR_CONCURRENCY, async ([c, repo, sha]) => {
+      const project = cfg.repos[repo]?.sonar
+      if (project) return one(repo, project, sha, c, threshold, get, find, now)
+      return SONAR_RULES.map((rule) => item({ source: SOURCE, sha, repo, candidate: c.name, rule, status: 'unknown', value: 'not checked',
+        note: 'no Sonar project is configured for the repo' }, now))
+    })).flat()
   }
 }
 

@@ -1,5 +1,6 @@
 // twg for the QA report: the roadmap's runner, with stderr captured rather than passed through,
-// since twg's notices can name the page or query it read and this runs in a public log.
+// since twg's notices can name the page or query it read and this runs in a public log. The
+// readers use the asynchronous one, so their calls overlap; publishing uses the synchronous one.
 //
 // Ids and keys go to twg as arguments, so every caller passes them through pageId or jiraKey
 // first: digits only, or an issue key, never anything twg could read as an option.
@@ -7,7 +8,7 @@
 import { execFileSync } from 'node:child_process'
 import type { TwgRunner } from '../roadmap-runner.ts'
 import { QaError } from './errors.ts'
-import { commandPath } from './util.ts'
+import { commandPath, runCommand } from './util.ts'
 
 export const PAGE_ID = /^\d+$/
 export const JIRA_KEY = /^[A-Z][A-Z0-9]+-\d+$/
@@ -28,6 +29,11 @@ export function jiraKey(key: unknown): string {
   return `${m[1]}-${n}`
 }
 
-export const quietRunner: TwgRunner = (args) =>
-  execFileSync(commandPath('twg'), args, { encoding: 'utf8', env: { ...process.env, TWG_AGENT_DEFAULTS: '1' }, maxBuffer: 256 * 1024 * 1024,
-    stdio: ['ignore', 'pipe', 'pipe'] })
+/** A twg runner that may answer later. A synchronous TwgRunner is one too, which suits tests. */
+export type AsyncTwgRunner = (args: string[]) => string | Promise<string>
+
+const options = () => ({ encoding: 'utf8' as const, env: { ...process.env, TWG_AGENT_DEFAULTS: '1' }, maxBuffer: 256 * 1024 * 1024 })
+
+export const quietRunnerAsync: AsyncTwgRunner = (args) => runCommand('twg', args, options())
+
+export const quietRunner: TwgRunner = (args) => execFileSync(commandPath('twg'), args, { ...options(), stdio: ['ignore', 'pipe', 'pipe'] })

@@ -107,7 +107,7 @@ hold only page ids, repo names, SHAs, Sonar keys and Jira keys.
 | Source | Rows |
 |---|---|
 | SonarCloud (public API), the analysis of each candidate commit | coverage, quality gate, static analysis |
-| Cosmos `pipeline-metrics` and `cve-reports`, the Jenkins builds of each candidate commit | integration and contract, functional, deployed to AAT, yarn audit, dependency check |
+| Cosmos `pipeline-metrics` and `cve-reports` (databases `jenkins` and `sds-jenkins`), the Jenkins builds of each candidate commit | integration and contract, functional, deployed to AAT, yarn audit, dependency check |
 | GitHub check runs on each candidate commit | integration and contract, functional, deployed to AAT |
 | The source at each candidate commit | ignored or pending tests |
 | Jira, through twg | outstanding bugs, Critical and High bugs, test complete comments, rows in `human_rows` |
@@ -165,13 +165,12 @@ log gets only counts. To stop a release being updated, set `active: false` in it
 
 Cosmos needs one of:
 
-- **Preferred:** the *Cosmos DB Built-in Data Reader* data-plane role on the `pipeline-metrics`
-  account (subscription DCD-CNP-Prod) for the workflow's app registration. The step reads Cosmos
-  as the `azure/login` sign-in.
-- The account's read-only key stored as a secret in the `TWG_KEY_VAULT` vault, with the
-  `COSMOS_KEY_SECRET_NAME` variable set to its name. The step reads it with the app's existing
-  **Get** access, masks it, and passes it only to the report. Store it from a file, as for the
-  twg secret, so it never lands in your shell history.
+- The account's read-only key in the `COSMOS_PIPELINE_METRICS_KEY` repository secret. It's a
+  copy of `cve-cosmos-readonly-key` in the `dtsse-aat` Key Vault, which dtsse-github-metrics'
+  CVE collector also reads; copy it again if that key is rotated. Only the report step gets it.
+- The *Cosmos DB Built-in Data Reader* data-plane role on the `pipeline-metrics` account
+  (subscription DCD-CNP-Prod) for the workflow's app registration, read as the `azure/login`
+  sign-in. That would remove the stored key, but it's a platform request.
 
 With neither, yarn audit and dependency check stay "To confirm", and the rest of the report is
 still filled in.
@@ -188,12 +187,12 @@ still filled in.
 |---|---|
 | `TWG_AZURE_CLIENT_ID` | Client ID of the app registration the workflow signs in to Azure as |
 | `AZURE_TENANT_ID` | The HMCTS Azure tenant ID |
+| `COSMOS_PIPELINE_METRICS_KEY` | Optional. The `pipeline-metrics` Cosmos read-only key, for the QA readiness report |
 
 | Variable | What it is |
 |---|---|
 | `TWG_KEY_VAULT` | The Key Vault holding the twg sign-in |
 | `TWG_SECRET_NAME` | Optional. The secret's name. Defaults to `twg-auth-conf-pcs-progress-tracker` |
-| `COSMOS_KEY_SECRET_NAME` | Optional. The name of a secret in `TWG_KEY_VAULT` holding the `pipeline-metrics` Cosmos read-only key, for the QA readiness report |
 
 To pick up a newer version of the roadmap generator, copy
 `apps/pcs/.claude/scripts/lib/roadmap/roadmap-runner.ts` from `hmcts/cft-workspace` over

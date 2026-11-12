@@ -8,8 +8,7 @@ import { jiraReader } from './sources/jira.ts'
 import { riaReader } from './sources/ria.ts'
 import { type HttpJson, type Item, reason } from './sources/common.ts'
 import { sonarReader } from './sources/sonar.ts'
-import { quietRunner } from './twg.ts'
-import type { TwgRunner } from '../roadmap-runner.ts'
+import { type AsyncTwgRunner, quietRunnerAsync } from './twg.ts'
 import type { Evidence, EvidenceItem } from './types.ts'
 import { QaError } from './errors.ts'
 import { isRec, str } from './util.ts'
@@ -19,7 +18,7 @@ export interface Sources {
   cosmos?: CosmosQuery
   githubApi?: GitHubApi
   tarball?: GitHubTarball
-  twg?: TwgRunner
+  twg?: AsyncTwgRunner
   now?: () => Date
 }
 
@@ -28,8 +27,8 @@ export function readers(cfg: ReleaseConfig, s: Sources = {}): Record<string, () 
     sonarcloud: sonarReader(cfg, s.http, s.now),
     cosmos: cosmosReader(cfg, s.cosmos, s.now),
     github: githubReader(cfg, s.githubApi, s.tarball, s.now),
-    jira: jiraReader(cfg, s.twg ?? quietRunner, s.now),
-    ria: riaReader(cfg, s.twg ?? quietRunner, s.now),
+    jira: jiraReader(cfg, s.twg ?? quietRunnerAsync, s.now),
+    ria: riaReader(cfg, s.twg ?? quietRunnerAsync, s.now),
   }
 }
 

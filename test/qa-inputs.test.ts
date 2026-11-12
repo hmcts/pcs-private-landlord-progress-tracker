@@ -13,7 +13,7 @@ import { commentThread } from '../scripts/lib/qa/sources/jira.ts'
 import { githubReader } from '../scripts/lib/qa/sources/github.ts'
 import { sonarReader } from '../scripts/lib/qa/sources/sonar.ts'
 import { jiraKey, pageId } from '../scripts/lib/qa/twg.ts'
-import { commandPath } from '../scripts/lib/qa/util.ts'
+import { commandPath, mapLimit } from '../scripts/lib/qa/util.ts'
 import { CFG, fakeTwg, NOW, SHA, tarball } from './qa-helpers.ts'
 
 describe('ids and keys passed to twg', () => {
@@ -25,11 +25,11 @@ describe('ids and keys passed to twg', () => {
     for (const bad of ['--jql', 'HDPI-', 'hdpi-1', 'HDPI-1 OR x', 'HDPI-0', 'HDPI-01', 7]) assert.throws(() => jiraKey(bad), /Jira key/)
   })
 
-  test('twg is never run with an id that could be read as an option', () => {
+  test('twg is never run with an id that could be read as an option', async () => {
     const run = fakeTwg(() => ({}))
     assert.throws(() => getPage(run, '--format', false))
     assert.throws(() => createPage(run, '-y', 'T', '<p>x</p>', tmpdir(), true))
-    assert.throws(() => commentThread('--first', run))
+    await assert.rejects(commentThread('--first', run))
     assert.equal(run.calls.length, 0)
   })
 })
@@ -87,5 +87,20 @@ describe('commandPath', () => {
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
+  })
+})
+
+describe('mapLimit', () => {
+  test('runs at most the limit at once, and keeps the order', async () => {
+    let running = 0
+    let peak = 0
+    const out = await mapLimit([5, 1, 4, 2, 3, 0], 2, async (n) => {
+      peak = Math.max(peak, ++running)
+      await new Promise((r) => setTimeout(r, n))
+      running--
+      return n * 10
+    })
+    assert.deepEqual(out, [50, 10, 40, 20, 30, 0])
+    assert.equal(peak, 2)
   })
 })

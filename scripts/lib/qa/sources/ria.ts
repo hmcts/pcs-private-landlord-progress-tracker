@@ -5,9 +5,8 @@
 // and say above it whether testing is required. A blank sign-off line means not signed yet.
 
 import type { ReleaseConfig } from '../config.ts'
-import { defaultRunner, type TwgRunner } from '../../roadmap-runner.ts'
 import { find, parse, textOf, type El } from '../html.ts'
-import { pageId } from '../twg.ts'
+import { type AsyncTwgRunner, pageId, quietRunnerAsync } from '../twg.ts'
 import { str } from '../util.ts'
 import { day, item, type Item, reason } from './common.ts'
 
@@ -69,7 +68,7 @@ export function parseRia(html: string): RiaFacts {
   }
 }
 
-export function riaReader(cfg: ReleaseConfig, run: TwgRunner = defaultRunner, now?: () => Date): () => Promise<Item[]> {
+export function riaReader(cfg: ReleaseConfig, run: AsyncTwgRunner = quietRunnerAsync, now?: () => Date): () => Promise<Item[]> {
   return async () => {
     const rules = ['perf-signoff', 'perf-required', 'security-signoff']
     if (!cfg.ria_page) {
@@ -79,7 +78,7 @@ export function riaReader(cfg: ReleaseConfig, run: TwgRunner = defaultRunner, no
     const links = [{ text: 'Release Impact Assessment', url: `https://hmcts.atlassian.net/wiki/pages/viewpage.action?pageId=${page}` }]
     let facts: RiaFacts
     try {
-      const out = JSON.parse(run(['confluence', 'content', 'get', page, '--detail', 'full', '--format', 'html', '-o', 'json', '--output-summary', 'none']))
+      const out = JSON.parse(await run(['confluence', 'content', 'get', page, '--detail', 'full', '--format', 'html', '-o', 'json', '--output-summary', 'none']))
       facts = parseRia(str(out.data?.body?.value))
     } catch (e) {
       return rules.map((rule) => item({ source: SOURCE, rule, status: 'unknown', value: 'not checked', links,
