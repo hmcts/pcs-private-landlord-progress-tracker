@@ -10,7 +10,7 @@
 
 import { gunzipSync } from 'node:zlib'
 import type { Candidate, ReleaseConfig } from '../config.ts'
-import { mapLimit, runCommand } from '../util.ts'
+import { mapLimit, runCommand, SHA } from '../util.ts'
 import { HttpError, item, type Item, reason, short } from './common.ts'
 
 const SOURCE = 'github'
@@ -181,16 +181,44 @@ export function* untar(tar: Buffer): Generator<{ path: string; body: Buffer }> {
   }
 }
 
-export function scanTarball(gz: Buffer, testPaths = DEFAULT_TEST_PATHS): { files: number; findings: Finding[] } {
+/** Picks the files a scan covers, from a repo-relative path and the file's text. */
+export type ScanScope = (path: string, text: string) => boolean
+
+/** Test files named as Playwright, Jest and the Node test runner name them: x.spec.ts, x.test.js. */
+export const SPEC_FILE = /\.(spec|test)\.[cm]?[jt]sx?$/
+
+export interface Scan {
+  files: number
+  findings: Finding[]
+  /** With a scope: every spec file under the test paths, whether in scope or not. */
+  specs?: string[]
+  /** With a scope: the spec files in it. */
+  scoped?: string[]
+}
+
+/**
+ * The test files under `testPaths` (a regex over repo-relative paths). With a `scope`, only the
+ * spec files among them that it picks: a page object or helper that mentions a tag is not a test.
+ */
+export function scanTarball(gz: Buffer, testPaths = DEFAULT_TEST_PATHS, scope?: ScanScope): Scan {
   const isTest = new RegExp(testPaths)
   const findings: Finding[] = []
+  const specs: string[] = []
+  const scoped: string[] = []
   let files = 0
   for (const e of untar(gunzipSync(gz))) {
     const path = e.path.replace(/^[^/]+\//, '') // codeload puts everything under <owner>-<repo>-<sha>/
-    if (!SCANNED.test(path) || !isTest.test(path) || path.includes('node_modules/')) continue
+    if (!SCANNED.test(path) || path.includes('node_modules/') || !isTest.test(path)) continue
+    const body = e.body.toString('utf8')
+    if (scope) {
+      if (!SPEC_FILE.test(path)) continue
+      specs.push(path)
+      if (!scope(path, body)) continue
+      scoped.push(path)
+    }
     files++
     const pats = PATTERNS.filter((p) => p.files.test(path))
-    e.body.toString('utf8').split('\n').forEach((text, n) => {
+    body.split('\n').forEach((text, n) => {
       if (/^\s*(\/\/|\*|\/\*|#)/.test(text) && !path.endsWith('.feature')) return
       for (const p of pats) {
         if (!p.re.test(text)) continue
@@ -200,11 +228,12 @@ export function scanTarball(gz: Buffer, testPaths = DEFAULT_TEST_PATHS): { files
       }
     })
   }
-  return { files, findings }
+  return scope ? { files, findings, specs, scoped } : { files, findings }
 }
 
-export function ignoredItem(repo: string, gh: string, sha: string, c: Candidate, scan: { files: number; findings: Finding[] },
-  now?: () => Date): Item {
+/** The ignored-tests finding for a scan; `c` is null for a scan that belongs to no candidate (a feature's E2E specs). */
+export function ignoredItem(repo: string, gh: string, sha: string, c: Candidate | null, scan: { files: number; findings: Finding[] },
+  now?: () => Date, rule = 'ignored-tests'): Item {
   const fixed = scan.findings.filter((f) => !f.conditional)
   const kinds = new Map<string, number>()
   for (const f of fixed) kinds.set(f.kind, (kinds.get(f.kind) ?? 0) + 1)
@@ -212,7 +241,7 @@ export function ignoredItem(repo: string, gh: string, sha: string, c: Candidate,
   const cond = scan.findings.length - n
   const value = (n ? `${n} ignored or pending (${[...kinds].map(([k, v]) => `${k} ×${v}`).join(', ')}) in ${new Set(fixed.map((f) => f.path)).size} files`
     : `none in ${scan.files} test files`) + (cond ? `, and ${cond} skipped at run time by a condition` : '')
-  return item({ source: SOURCE, sha, repo, candidate: c.name, rule: 'ignored-tests', status: n ? 'fail' : 'pass', answer: n || cond ? 'Yes' : 'No', value,
+  return item({ source: SOURCE, sha, repo, candidate: c?.name, rule, status: n ? 'fail' : 'pass', answer: n || cond ? 'Yes' : 'No', value,
     links: [...fixed, ...scan.findings.filter((f) => f.conditional)].slice(0, 10).map((f) => ({ text: `${f.path.split('/').pop()}:${f.line}`, url: `https://github.com/${gh}/blob/${sha}/${f.path}#L${f.line}` })),
     data: { files: scan.files, findings: scan.findings } }, now)
 }
@@ -233,7 +262,7 @@ export function githubReader(cfg: ReleaseConfig, api: GitHubApi = defaultGitHubA
     const one = async ([c, repo, sha]: [Candidate, string, string]): Promise<Item[]> => {
       const gh = cfg.repos[repo].github
       const k = `${gh}@${sha}`
-      const unknown = (rule: string, note: string) => item({ source: SOURCE, sha, repo, candidate: c.name, rule, status: 'unknown', value: 'not checked', note }, now)
+      const unknown = (rule: string, note: string) => item({ source: SOURCE, sha, repo, candidate: c.name, rule, status: 'unknown', value: 'not checked', note, unreachable: true }, now)
       const checks = once(runs, k, () => checkRuns(api, gh, sha)).then((r) => checkItems(repo, sha, c, r, now),
         (e) => Object.keys(CHECK_RULES).map((rule) => unknown(rule, `GitHub checks could not be read: ${reason(e)}`)))
       const ignored = once(scans, k, async () => scanTarball(await tarball(gh, sha), cfg.repos[repo].test_paths)).then(
@@ -243,4 +272,38 @@ export function githubReader(cfg: ReleaseConfig, api: GitHubApi = defaultGitHubA
     const pairs = cfg.candidates.flatMap((c) => Object.entries(c.shas).map(([repo, sha]) => [c, repo, sha] as [Candidate, string, string]))
     return (await mapLimit(pairs, GITHUB_CONCURRENCY, one)).flat()
   }
+}
+
+// ------------------------------------------------------------------ latest finished build
+
+/** How far back from the branch head to look for a commit whose Jenkins build has finished. */
+export const LOOKBACK = 30
+
+/** The status Jenkins sets on a branch build's commit; PR builds set pr-head or pr-merge instead. */
+export const BRANCH_STATUS = 'continuous-integration/jenkins/branch'
+
+/** Commits whose status is read at once, newest first, before looking further back. */
+export const STATUS_BATCH = 4
+
+/**
+ * The newest commit on `branch` whose Jenkins branch build has finished, passed or failed: its
+ * BRANCH_STATUS is anything but pending. Null when none of the last LOOKBACK commits has one.
+ * Statuses are read a batch at a time, so a recent hit costs one round.
+ */
+export async function latestFinished(api: GitHubApi, gh: string, branch: string): Promise<{ sha: string; date?: string } | null> {
+  const listed = await api(`repos/${gh}/commits?sha=${encodeURIComponent(branch)}&per_page=${LOOKBACK}`) as
+    { sha?: unknown; commit?: { committer?: { date?: string } } }[]
+  const commits = (Array.isArray(listed) ? listed : []).flatMap((c) =>
+    (typeof c.sha === 'string' && SHA.test(c.sha) ? [{ sha: c.sha, date: c.commit?.committer?.date }] : []))
+  const finished = async (sha: string) => {
+    const st = await api(`repos/${gh}/commits/${sha}/status`) as { statuses?: { context?: string; state?: string }[] }
+    return (st.statuses ?? []).some((x) => x.context === BRANCH_STATUS && !!x.state && x.state !== 'pending')
+  }
+  for (let n = 0; n < commits.length; n += STATUS_BATCH) {
+    const batch = commits.slice(n, n + STATUS_BATCH)
+    const done = await mapLimit(batch, STATUS_BATCH, (c) => finished(c.sha))
+    const hit = batch.find((_, k) => done[k])
+    if (hit) return hit.date ? hit : { sha: hit.sha }
+  }
+  return null
 }

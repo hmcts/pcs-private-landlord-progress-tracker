@@ -1,7 +1,8 @@
-// Jira, read through twg as the roadmap is (scripts/lib/roadmap-runner.ts, but asynchronously, so
-// the readers' twg calls overlap rather than queue): outstanding bugs by
-// priority, "Test Complete" style comments on the release's stories, tasks and bugs, and the
-// status of each ticket backing a human-answered row. The report is internal, so this doesn't
+// Jira, read through twg as the roadmap is (scripts/lib/roadmap-runner.ts, but awaitable, so the
+// other sources carry on while twg runs; twg itself still runs one call at a time): outstanding
+// bugs by priority, "Test Complete" style comments on the scope's stories, tasks and bugs, how
+// many of them are done, and the status of each ticket backing a human-answered row. The scope
+// is the release's jql, or for a feature the child tickets of its epics (see config.ts). The report is internal, so this doesn't
 // apply the public site's not-public filter, and nothing it reads may reach the site.
 
 import type { ReleaseConfig } from '../config.ts'
@@ -74,10 +75,15 @@ export const TEST_COMPLETE = String.raw`test(ing)?\s+(is\s+|has\s+been\s+)?(comp
 
 const CLOSED_UNDONE = /withdrawn|won.?t|cancel|duplicate|rejected|not required/i
 
-const browse = (key: string) => ({ text: key, url: `${JIRA}/browse/${key}` })
+const withdrawn = (i?: JiraIssue) => CLOSED_UNDONE.test(i?.status?.name ?? '')
+const done = (i?: JiraIssue) => i?.status?.statusCategory?.key === 'done'
+
+export const browse = (key: string): { text: string; url: string } => ({ text: key, url: `${JIRA}/browse/${key}` })
 const jqlLink = (text: string, jql: string) => ({ text, url: `${JIRA}/issues/?jql=${encodeURIComponent(jql)}` })
 
 type Now = (() => Date) | undefined
+
+const scopeName = (cfg: ReleaseConfig) => (cfg.kind === 'feature' ? "the feature's epics" : 'the release')
 
 async function bugItems(cfg: ReleaseConfig, run: AsyncTwgRunner, now: Now): Promise<Item[]> {
   const types = cfg.bug_types ?? ['Bug']
@@ -92,7 +98,7 @@ async function bugItems(cfg: ReleaseConfig, run: AsyncTwgRunner, now: Now): Prom
       keys[p].push(b.key)
     }
     const text = PRIORITIES.map((p) => `${p} – ${counts[p]}`).join(', ')
-    const links = [jqlLink('Open bugs in the release', bugJql)]
+    const links = [jqlLink(`Open bugs in ${scopeName(cfg)}`, bugJql)]
     const high = counts.Critical + counts.High
     return [
       item({ source: SOURCE, rule: 'outstanding-bugs', status: 'pass', value: text, links, data: { counts, keys } }, now),
@@ -102,11 +108,11 @@ async function bugItems(cfg: ReleaseConfig, run: AsyncTwgRunner, now: Now): Prom
     ]
   } catch (e) {
     const note = `Jira could not be read: ${reason(e)}`
-    return ['outstanding-bugs', 'high-defects'].map((rule) => item({ source: SOURCE, rule, status: 'unknown', value: 'not checked', note }, now))
+    return ['outstanding-bugs', 'high-defects'].map((rule) => item({ source: SOURCE, rule, status: 'unknown', value: 'not checked', note, unreachable: true }, now))
   }
 }
 
-/** Whether a ticket has a test complete comment, or null when its long thread couldn't be read. */
+/** Whether a ticket has a test complete comment, reading the whole of a long thread; null when that read failed. */
 async function hasTestComplete(w: JiraIssue, re: RegExp, run: AsyncTwgRunner): Promise<boolean | null> {
   const comments = w.comment?.comments ?? []
   if (comments.some((c) => re.test(adfText(c.body)))) return true
@@ -119,27 +125,36 @@ async function hasTestComplete(w: JiraIssue, re: RegExp, run: AsyncTwgRunner): P
   }
 }
 
-async function testCompleteItem(cfg: ReleaseConfig, run: AsyncTwgRunner, now: Now): Promise<Item> {
+/** "Test complete" comments, and how many of the stories, tasks and bugs are done: one query for both. */
+async function workItems(cfg: ReleaseConfig, run: AsyncTwgRunner, now: Now): Promise<Item[]> {
   try {
-    const workJql = `(${cfg.jql}) AND issuetype in (Story, Task, Bug)`
+    // A feature counts every bug type it names among its work; a release keeps to Bug, as it always has.
+    const types = cfg.kind === 'feature' ? ['Story', 'Task', ...(cfg.bug_types ?? ['Bug'])].map((t) => `"${t}"`).join(', ') : 'Story, Task, Bug'
+    const workJql = `(${cfg.jql}) AND issuetype in (${types})`
     const re = new RegExp(cfg.test_complete_pattern ?? TEST_COMPLETE, 'i')
     // Withdrawn or duplicate tickets were never going to be tested.
     const work = (await query(workJql, 'comment,issuetype,status', run)).filter((w) => !CLOSED_UNDONE.test(w.status?.name ?? ''))
+    const links = [jqlLink(`Stories, tasks and bugs in ${scopeName(cfg)}`, workJql)]
+    const open = work.filter((w) => !done(w)).map((w) => w.key)
+    const finished = item({ source: SOURCE, rule: 'stories-done', status: open.length || !work.length ? 'fail' : 'pass',
+      value: `${work.length - open.length} of ${work.length} stories, tasks and bugs are done`, links: [...links, ...open.slice(0, 15).map(browse)],
+      note: work.length ? undefined : 'there are no stories, tasks or bugs in scope', data: { total: work.length, open } }, now)
     const missing: string[] = []
-    const truncated: string[] = []
+    const unread: string[] = []
     for (const w of work) {
       const found = await hasTestComplete(w, re, run)
       if (found === false) missing.push(w.key)
-      else if (found === null) truncated.push(w.key)
+      else if (found === null) unread.push(w.key)
     }
-    const done = work.length - missing.length - truncated.length
-    return item({ source: SOURCE, rule: 'test-complete', status: missing.length ? 'fail' : truncated.length ? 'unknown' : 'pass',
-      value: `${done} of ${work.length} stories, tasks and bugs have a test complete comment`,
-      links: [jqlLink('Stories, tasks and bugs in the release', workJql), ...missing.slice(0, 15).map(browse)],
-      note: truncated.length ? `${truncated.length} had more comments than Jira returned` : undefined,
-      data: { total: work.length, missing, truncated } }, now)
+    const tested = work.length - missing.length - unread.length
+    return [item({ source: SOURCE, rule: 'test-complete', status: missing.length ? 'fail' : unread.length ? 'unknown' : 'pass',
+      value: `${tested} of ${work.length} stories, tasks and bugs have a test complete comment`,
+      links: [...links, ...missing.slice(0, 15).map(browse)],
+      note: unread.length ? `the comments of ${unread.length} could not be read in full` : undefined,
+      unreachable: !missing.length && unread.length > 0, data: { total: work.length, missing, unread } }, now), finished]
   } catch (e) {
-    return item({ source: SOURCE, rule: 'test-complete', status: 'unknown', value: 'not checked', note: `Jira could not be read: ${reason(e)}` }, now)
+    const note = `Jira could not be read: ${reason(e)}`
+    return ['test-complete', 'stories-done'].map((rule) => item({ source: SOURCE, rule, status: 'unknown', value: 'not checked', note, unreachable: true }, now))
   }
 }
 
@@ -165,9 +180,6 @@ async function humanTickets(keys: string[], run: AsyncTwgRunner): Promise<{ byKe
   return { byKey, failed }
 }
 
-const withdrawn = (i?: JiraIssue) => CLOSED_UNDONE.test(i?.status?.name ?? '')
-const done = (i?: JiraIssue) => i?.status?.statusCategory?.key === 'done' && !withdrawn(i)
-
 async function humanItems(cfg: ReleaseConfig, run: AsyncTwgRunner, now: Now): Promise<Item[]> {
   const human = Object.entries(cfg.human_rows ?? {}).map(([row, v]) => [row, Array.isArray(v) ? v : [v]] as const)
   const all = [...new Set(human.flatMap(([, ks]) => ks))]
@@ -180,13 +192,13 @@ async function humanItems(cfg: ReleaseConfig, run: AsyncTwgRunner, now: Now): Pr
     const status = error || issues.some((i) => !i) ? 'unknown' : issues.every((i) => done(i) || withdrawn(i)) ? 'pass' : 'unknown'
     return item({ source: SOURCE, rule: 'human', status, answer: !error && issues.every(withdrawn) ? 'N/A' : undefined,
       value: keys.map((k, n) => `${k}: ${issues[n]?.status?.name ?? 'not found'}`).join(', '), links: keys.map(browse),
-      note: error ?? (status === 'unknown' ? 'the backing ticket is not done yet' : undefined), data: { row } }, now)
+      note: error ?? (status === 'unknown' ? 'the backing ticket is not done yet' : undefined), unreachable: !!error, data: { row } }, now)
   })
 }
 
 export function jiraReader(cfg: ReleaseConfig, run: AsyncTwgRunner = quietRunnerAsync, now?: () => Date): () => Promise<Item[]> {
   return async () => {
-    const [bugs, tested, human] = await Promise.all([bugItems(cfg, run, now), testCompleteItem(cfg, run, now), humanItems(cfg, run, now)])
-    return [...bugs, tested, ...human]
+    const [bugs, work, human] = await Promise.all([bugItems(cfg, run, now), workItems(cfg, run, now), humanItems(cfg, run, now)])
+    return [...bugs, ...work, ...human]
   }
 }

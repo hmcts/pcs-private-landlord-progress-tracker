@@ -1,0 +1,54 @@
+# The PCS QA readiness report for a feature: a "Feature Information" table, then a "QA Readiness
+# Checklist" in two parts. Service-wide rows are about each repo as a whole, at the commit its
+# header row names; their comments say "service-wide" and the commit. Feature rows are about the
+# feature's own scope: the E2E tests its config picks, and its epics' child tickets.
+#
+# Rules and `good` work as in pcs.yaml. Performance and security rows are read from the feature's
+# Release Impact Assessment if its config has a ria_page, and are N/A ("no RIA for this
+# feature") if not.
+
+title: QA Readiness Report – {feature}
+intro:
+  - This readiness checklist covers one feature. Rows marked service-wide are about each service as a whole, at the commit named under Service-wide revision; the rest are about the feature's own E2E tests and Jira tickets.
+  - Where applicable, supporting evidence has been provided. Any items marked as N/A include an explanation.
+
+info:
+  heading: Feature Information
+  columns: [Item, Details]
+  widths: [178, 1133]
+  rows:
+    - { key: Feature, rule: feature }
+    - { key: Epics, rule: epics }
+    - { key: Outstanding Bugs, rule: outstanding-bugs }
+    - { key: GIT, rule: repos }
+    - { key: Service-wide revision, rule: service-revision }
+    - { key: E2E build, rule: e2e-build }
+    - { key: Test Environments, rule: human }
+    - { key: Generated, rule: generated }
+
+checklist:
+  heading: QA Readiness Checklist
+  columns: [No, Question, Status, Comments / Evidence]
+  widths: [49, 334, 60, 924]
+  rows:
+    - { key: '1', rule: sonar-coverage, question: 'Service-wide: is unit test coverage greater than 80% for all services?' }
+    - { key: '2', rule: sonar-quality-gate, question: 'Service-wide: have all SonarCloud Quality Gates passed?' }
+    - { key: '3', rule: integration-contract, question: 'Service-wide: have all Integration and Contract Tests passed?' }
+    - { key: '4', rule: functional, question: 'Service-wide: have all Functional Automation Tests passed?' }
+    - { key: '5', rule: yarn-audit, good: 'No', question: 'Service-wide: has Yarn Audit reported any vulnerabilities?' }
+    - { key: '6', rule: sonar-security, good: 'No', question: 'Service-wide: have SonarJava / Static Analysis checks reported any vulnerabilities?' }
+    - { key: '7', rule: dependency-check, good: 'No', question: 'Service-wide: has Dependency Checker reported any vulnerabilities?' }
+    - { key: '8', rule: ignored-tests, good: 'No', question: 'Service-wide: are any Automation Tests ignored, removed or pending?' }
+    - { key: '9', rule: e2e-feature, question: "Have the feature's E2E tests passed?" }
+    - { key: '10', rule: ignored-tests-feature, good: 'No', question: "Are any of the feature's E2E tests ignored, removed or pending?" }
+    - { key: '11', rule: human, question: "Have the feature's Cross Browser Tests passed?" }
+    - { key: '12', rule: human, good: 'No', question: Was any additional Manual Accessibility Testing required? }
+    - { key: '13', rule: perf-signoff, question: Have all Performance Tests passed? }
+    - { key: '14', rule: perf-required, question: Was any additional Performance Testing required? }
+    - { key: '15', rule: security-signoff, question: Has Security Testing been completed? }
+    - { key: '16', rule: human, question: "Has the feature's Manual Test Suite passed successfully?" }
+    - { key: '17', rule: stories-done, question: "Are all the feature's stories, tasks and bugs done?" }
+    - { key: '18', rule: human, question: Has the Product Owner signed off the stories? }
+    - { key: '19', rule: test-complete, question: Have Test Complete comments been added to all Stories and Defects? }
+    - { key: '20', rule: high-defects, question: Have all Critical and High Priority defects been resolved? }
+    - { key: '21', rule: human, question: Have remaining defects been triaged and prioritised? }

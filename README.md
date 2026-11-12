@@ -83,7 +83,8 @@ npm run typecheck
 
 ## QA readiness report
 
-`npm run qa-report -- --release R1.3A` fills in a release's QA readiness report on Confluence.
+`npm run qa-report -- --release R1.3A` fills in a release's QA readiness report on Confluence, and
+`npm run qa-report -- --feature <name>` a feature's.
 It is internal, not part of the site: nothing it collects is committed, published or printed.
 
 ```sh
@@ -93,7 +94,8 @@ npm run qa-report -- --release R1.3A --publish       # update the page (the rele
 npm run qa-report -- --release R1.3A --evidence      # re-render from the last run's evidence.json
 npm run qa-report -- --release R1.4 --create-under <parentPageId> [--publish]   # no report_page yet
 npm run qa-report -- --release R1.3A --judgement     # rows a person answers, from judgement.yaml
-npm run qa-report -- --all-active [--publish]        # every release with active: true and a report_page
+npm run qa-report -- --feature private-landlord-make-a-claim   # a feature: the same options apply
+npm run qa-report -- --all-active [--publish]        # every release and feature with active: true and a report_page
 ```
 
 Each release has `config/qa-readiness/<release>.yaml`: the `candidates` (a full commit SHA per
@@ -102,7 +104,55 @@ repo for each release candidate), the `repos` (GitHub name, Sonar project key, t
 `report_page` and `ria_page` (Confluence page ids), `human_rows` (the Jira ticket whose status
 answers a row a person signs off) and `active`. The page's rows and questions are in
 `config/qa-readiness/layouts/`. `npm run validate` checks both. This repo is public, so these files
-hold only page ids, repo names, SHAs, Sonar keys and Jira keys.
+hold only page ids, repo names, SHAs, Sonar keys and Jira keys (and, for a feature, Jenkins job
+names, E2E tags and spec paths).
+
+### Feature reports
+
+The Private Landlord workstream has no releases, so a report can cover a feature instead:
+`config/qa-readiness/<feature>.yaml` with `feature: <name>` in place of `release`, and no
+`candidates` or `jql`. It uses the `pcs-feature` layout. See
+`config/qa-readiness/private-landlord-make-a-claim.yaml`.
+
+```yaml
+feature: private-landlord-make-a-claim
+active: false
+layout: pcs-feature
+epics: [HDPI-10019]                # Jira scope: these epics' child tickets
+repos:
+  pcs-frontend:
+    github: hmcts/pcs-frontend     # sonar, cosmos_product, cosmos_component, builder as for a release
+    commit: master                 # service-wide rows: this branch's latest finished build, or a full SHA
+    e2e:                           # optional: where the feature's E2E tests ran
+      jenkins: { job: HMCTS_j_to_z/pcs-frontend, branch: PR-2312, build: last-completed }   # or a build number
+      tags: ['@privateLandlord']   # Playwright tags in the test titles
+      paths: [src/test/ui/e2eTest/privateLandlordMakeAClaim.spec.ts]   # spec files or folders
+```
+
+- **Service-wide rows** (coverage, quality gate, static analysis, integration and contract,
+  functional, yarn audit, dependency check, ignored tests) are about each repo as a whole. They are
+  read at one commit per repo, picked when the evidence is collected: the newest commit on
+  `commit` (default: the repo's default branch) whose Jenkins build has finished, passed or
+  failed, going by its `continuous-integration/jenkins/branch` status. A full SHA pins it. The
+  header's "Service-wide revision" row names the commit, and each row's comment says
+  "service-wide" and the commit.
+- **Feature rows** are about the feature only. The E2E row counts the passed, failed, flaky and
+  skipped tests among the configured Jenkins build's results that carry one of `tags` in their
+  title or come from one of `paths`; the header's "E2E build" row names the build and the commit
+  it ran. No matching test is a failure (the scope is wrong, or the suite didn't run), not a pass.
+  The results come from the build's JUnit report: pcs-frontend's PR builds publish their Playwright
+  results there, but pcs-api's "E2E Test - AKS preview" stage doesn't (only an HTML report), so a
+  pcs-api E2E build fails the row with a note saying its report holds no Playwright tests.
+  The feature's ignored-tests row scans only those specs, at that commit. Outstanding bugs,
+  Critical and High bugs, test complete comments and "are the stories done" read the epics' child
+  tickets (`parent in (…)`, as the roadmap does). Performance and security rows come from
+  `ria_page` if set, and are N/A ("no RIA for this feature") if not.
+
+Jenkins (`build.hmcts.net`) is reachable only on the VPN, with Basic auth: set
+`JENKINS_USERNAME` (your Entra object id) and `JENKINS_PASSWORD` (a Jenkins API token), the
+same variables cft-workspace's `scripts/mcp-jenkins` uses. `JENKINS_URL` overrides the host.
+Off the VPN Jenkins answers with a redirect to a sign-in page; that, a 401 or 403, or missing
+variables all count as unreachable.
 
 | Source | Rows |
 |---|---|
@@ -114,6 +164,11 @@ hold only page ids, repo names, SHAs, Sonar keys and Jira keys.
 | The Release Impact Assessment, through twg | performance and security sign-off |
 
 A source that can't be read leaves its rows "To confirm" with the reason, and the run carries on.
+The evidence marks those items `unreachable`, apart from items that are unknown because what was
+asked about isn't there (no analysis of the commit, no matching check, a ticket not done). When a
+row is unknown only because of an unreachable source, a publish leaves its cells as the page has
+them, so a published "Yes" isn't turned back into "To confirm". That is what lets the scheduled
+run, which has no VPN and so no Jenkins, leave alone the E2E rows a local run filled in.
 A row passes only when every check it asks for passes: Cosmos and GitHub are alternatives for the
 same build check, but a closed `human_rows` ticket never makes up for a check that couldn't be made.
 Only Jenkins builds that finished count, the latest of each job.
@@ -156,24 +211,63 @@ Run locally, edits are made as your own twg login.
 
 ### In the Publish workflow
 
-The Publish workflow runs `npm run qa-report -- --all-active --publish` after reading the
-roadmap, with the same twg sign-in, so Confluence edits are made as whoever seeded the twg secret
-(see "Jira sign-in"), and that account needs edit rights on each report page. It runs only on
-`master` and only once twg is signed in. Each release is done on its own; if any fails, the run
-is marked as failed, but the site is still deployed. Evidence goes to `$RUNNER_TEMP/qa` and the
-log gets only counts. To stop a release being updated, set `active: false` in its config.
+The Publish workflow's `qa-report` job runs `npm run qa-report -- --all-active --publish`. It has
+its own twg sign-in, the QA secret (see "Jira sign-in"), so Confluence edits are made as whoever
+seeded that, and that account needs edit rights on each report page. Each active release and
+feature is done on its own; if any fails, or twg can't sign in, the run is marked as failed, but
+the site is still deployed. Evidence goes to `$RUNNER_TEMP/qa` and is deleted with the sign-ins
+at the end, and the log gets only counts. To stop a report being updated, set `active: false`
+in its config.
 
-Cosmos needs one of:
+The job runs on HMCTS's self-hosted runner group `azure-nonprod`, as hmcts/cath-service's E2E
+job does, so that it can reach Jenkins (`build.hmcts.net`), which GitHub's own runners can't.
 
-- The account's read-only key in the `COSMOS_PIPELINE_METRICS_KEY` repository secret. It's a
-  copy of `cve-cosmos-readonly-key` in the `dtsse-aat` Key Vault, which dtsse-github-metrics'
-  CVE collector also reads; copy it again if that key is rotated. Only the report step gets it.
-- The *Cosmos DB Built-in Data Reader* data-plane role on the `pipeline-metrics` account
-  (subscription DCD-CNP-Prod) for the workflow's app registration, read as the `azure/login`
-  sign-in. That would remove the stored key, but it's a platform request.
+- **The job runs only on the schedule and on a manual dispatch from `master`.** It never runs on
+  a push or from another branch.
+- **Nothing in this repo can stop a pull request using the runners.** This repo is public, and a
+  self-hosted runner must never run code from a pull request. Publish has no `pull_request`
+  trigger, but that protects nothing: a pull request from a fork can edit `ci.yml` to say
+  `runs-on: { group: azure-nonprod }`, and its run would get a runner if the group allowed it. The
+  safeguards are two settings outside the code:
+  - The runner group's **"selected workflows"** restriction. An org admin limits
+    `azure-nonprod`, for this repo, to
+    `hmcts/pcs-private-landlord-progress-tracker/.github/workflows/publish.yml@refs/heads/master`,
+    so no other workflow, and no other ref of this one, can use it.
+  - The repo setting (Settings → Actions → General) that **requires approval for fork pull request
+    workflows from all outside contributors**, so a fork's run waits for a maintainer.
+- **The repo must be allowed to use the `azure-nonprod` runner group**, an organisation setting
+  only an org admin can change. Until it is, the job sits queued. Its 45-minute timeout counts only
+  once a runner picks it up, and GitHub cancels it after 24 hours in the queue. It has its own
+  concurrency group (`qa-report`) and nothing waits for it, so a queued `qa-report` delays only
+  the next `qa-report`, never the site.
+- **The runner's home is never used.** The Azure and twg sign-ins go in directories of the job's
+  own under `$RUNNER_TEMP` (`AZURE_CONFIG_DIR`, and `HOME` and `XDG_CONFIG_HOME` for the steps
+  that run twg), made readable only by the runner's user, and deleted at the end. On a runner that
+  isn't ephemeral, though, another job running as the same user at the same time could still read
+  them while this one runs. That is one more reason the group must be limited to this workflow.
+  Nothing is installed on the runner: if it lacks `az`, `jq`, `curl` or `sha256sum`, the job
+  fails and says which are missing.
+- **A step before the report checks Jenkins** with the report's own logic and credentials, and says
+  so in one notice: reachable, a sign-in redirect (Azure App Proxy, so the runner is outside the
+  network), unauthorised (401 or 403), credentials not set, or unreachable. Run it yourself with
+  `node --no-warnings scripts/qa-jenkins-check.ts`. The report runs either way. If Jenkins can't
+  be read, a feature's E2E rows, and its header's "E2E build" row, keep what the page already says.
+- Jenkins is read with the `JENKINS_USER` variable (an Entra object id) and the `JENKINS_TOKEN`
+  secret (that person's Jenkins API token), passed to the report as `JENKINS_USERNAME` and
+  `JENKINS_PASSWORD`. The runs call Jenkins as that person, so use a token made for this,
+  and replace it if they leave.
 
-With neither, yarn audit and dependency check stay "To confirm", and the rest of the report is
-still filled in.
+Locally, run the report on the VPN with `JENKINS_USERNAME` and `JENKINS_PASSWORD` set to refresh
+the E2E rows yourself.
+
+Cosmos is read with the account's read-only key in the `COSMOS_PIPELINE_METRICS_KEY` repository
+secret. It's a copy of `cve-cosmos-readonly-key` in the `dtsse-aat` Key Vault, which
+dtsse-github-metrics' CVE collector also reads; copy it again if that key is rotated. Only the
+report step gets it. The workflow's Azure sign-in has no Cosmos role, so without the key the Cosmos
+rows (yarn audit, dependency check, and the Jenkins stage rows GitHub doesn't answer) are unknown,
+and a publish keeps their published answers. Giving the app registration the *Cosmos DB Built-in
+Data Reader* data-plane role on the `pipeline-metrics` account (subscription DCD-CNP-Prod) would
+remove the stored key, but that's a platform request.
 
 ## Setup
 
@@ -188,11 +282,14 @@ still filled in.
 | `TWG_AZURE_CLIENT_ID` | Client ID of the app registration the workflow signs in to Azure as |
 | `AZURE_TENANT_ID` | The HMCTS Azure tenant ID |
 | `COSMOS_PIPELINE_METRICS_KEY` | Optional. The `pipeline-metrics` Cosmos read-only key, for the QA readiness report |
+| `JENKINS_TOKEN` | Optional. A Jenkins API token of the `JENKINS_USER` account, for a feature's E2E rows |
 
 | Variable | What it is |
 |---|---|
 | `TWG_KEY_VAULT` | The Key Vault holding the twg sign-in |
 | `TWG_SECRET_NAME` | Optional. The secret's name. Defaults to `twg-auth-conf-pcs-progress-tracker` |
+| `QA_TWG_SECRET_NAME` | Optional. The QA readiness report's twg sign-in, in the same vault. Defaults to `twg-auth-conf-pcs-progress-tracker-qa` |
+| `JENKINS_USER` | Optional. The Entra object id that `JENKINS_TOKEN` belongs to |
 
 To pick up a newer version of the roadmap generator, copy
 `apps/pcs/.claude/scripts/lib/roadmap/roadmap-runner.ts` from `hmcts/cft-workspace` over
@@ -206,10 +303,15 @@ hand and stored in Key Vault as twg's `auth.conf`, minus its hour-long access to
 restores it, runs `twg auth refresh`, and writes the rotated refresh token straight back.
 Every refresh spends the previous token, so:
 
-- **This workflow needs its own sign-in.** Don't reuse another job's secret, and don't keep using
-  a sign-in after you've stored it. Whichever copy refreshed first would sign the others out.
-- **Runs must not overlap.** The workflow's `concurrency` group ensures that.
-- Jira is read as whoever seeded the secret, so the roadmap shows what that account can see.
+- **Each job needs its own sign-in.** The `build` job (the roadmap) uses
+  `twg-auth-conf-pcs-progress-tracker`, and the `qa-report` job (the QA readiness reports) uses
+  `twg-auth-conf-pcs-progress-tracker-qa`, both in `TWG_KEY_VAULT`. Don't reuse another job's
+  or workflow's secret, and don't keep using a sign-in after you've stored it. Whichever copy
+  refreshed first would sign the others out.
+- **Two runs of one job must not overlap.** Each job's `concurrency` group (`publish` and
+  `qa-report`) ensures that.
+- Jira and Confluence are read, and the reports edited, as whoever seeded each secret, so the
+  roadmap shows what that account can see.
 
 The workflow reaches the vault with `azure/login` over OIDC. It needs:
 
@@ -221,13 +323,13 @@ The workflow reaches the vault with `azure/login` over OIDC. It needs:
   Runs from other branches can't reach the vault, so they build from the last snapshot.
 - a Key Vault access policy for that app with secrets **Get** and **Set**, and no other roles.
 
-**Seed the secret**, or re-seed it when a run reports `twg auth refresh` exit 77 (Atlassian
+**Seed a secret**, or re-seed it when a run reports `twg auth refresh` exit 77 (Atlassian
 rejected the token, typically after 90 days unused). `twg login` always writes its token to
 `~/.config/twg/auth.conf`. `TWG_CONFIG_DIR` moves only the profile files, so it can't keep a
 seed login apart from your own. Instead, hand your sign-in over to the workflow, then sign in
 again:
 
-1. Sign in as the account the roadmap should read Jira as. `twg login` needs a terminal, and
+1. Sign in as the account that job should read Jira as (and, for the QA secret, edit the reports as). `twg login` needs a terminal, and
    its device code expires quickly, so approve it as soon as it appears.
 
    ```bash
@@ -238,17 +340,22 @@ again:
 
    ```bash
    f=$(mktemp); grep -v '^oauth-access-token=' ~/.config/twg/auth.conf > "$f"
-   az keyvault secret set --vault-name <TWG_KEY_VAULT> --name twg-auth-conf-pcs-progress-tracker \
+   az keyvault secret set --vault-name <TWG_KEY_VAULT> --name <secret name> \
      --file "$f" --encoding utf-8 >/dev/null
    rm -f "$f"
    ```
 
-   `>/dev/null` matters, because `az keyvault secret set` prints the value it stored.
+   `<secret name>` is `twg-auth-conf-pcs-progress-tracker` for the roadmap, or
+   `twg-auth-conf-pcs-progress-tracker-qa` for the QA reports. `>/dev/null` matters, because
+   `az keyvault secret set` prints the value it stored.
 
 3. Before you use twg again, run the Publish workflow from `master` (Actions → Publish → Run
-   workflow), and check that its log says "stored the rotated twg sign-in". That refresh spends
-   the copy on your machine, so it can never sign the workflow out.
+   workflow), and check that the log of the job that uses the secret (`build` or `qa-report`)
+   says "stored the rotated twg sign-in". That refresh spends the copy on your machine, so it can
+   never sign the workflow out. Seed the two secrets one at a time, each with its own login: the
+   same sign-in stored twice would be two copies of one token.
 4. Sign in again for your own use: `twg login --force --site hmcts`.
 
-If the sign-in fails, the site is still published from the last snapshot with an "out of date"
-warning, and the run fails so someone notices.
+If the roadmap's sign-in fails, the site is still published from the last snapshot with an "out
+of date" warning, and the run fails so someone notices. If the QA sign-in isn't seeded or fails,
+the `qa-report` job stands down without spending anything and fails, which never affects the site.

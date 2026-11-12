@@ -71,6 +71,9 @@ export function parseRia(html: string): RiaFacts {
 export function riaReader(cfg: ReleaseConfig, run: AsyncTwgRunner = quietRunnerAsync, now?: () => Date): () => Promise<Item[]> {
   return async () => {
     const rules = ['perf-signoff', 'perf-required', 'security-signoff']
+    if (!cfg.ria_page && cfg.kind === 'feature') {
+      return rules.map((rule) => item({ source: SOURCE, rule, status: 'pass', answer: 'N/A', value: 'no RIA for this feature' }, now))
+    }
     if (!cfg.ria_page) {
       return rules.map((rule) => item({ source: SOURCE, rule, status: 'unknown', value: 'not checked', note: 'no ria_page is configured' }, now))
     }
@@ -82,7 +85,7 @@ export function riaReader(cfg: ReleaseConfig, run: AsyncTwgRunner = quietRunnerA
       facts = parseRia(str(out.data?.body?.value))
     } catch (e) {
       return rules.map((rule) => item({ source: SOURCE, rule, status: 'unknown', value: 'not checked', links,
-        note: `the RIA could not be read: ${reason(e)}` }, now))
+        note: `the RIA could not be read: ${reason(e)}`, unreachable: true }, now))
     }
     const signed = (label: string, s: SignOff) => s.who
       ? `Signed by ${label}: ${s.who}${s.date ? `, ${/^\d{4}-\d{2}-\d{2}/.test(s.date) ? day(s.date) : s.date}` : ''}` : `not signed by ${label} yet`

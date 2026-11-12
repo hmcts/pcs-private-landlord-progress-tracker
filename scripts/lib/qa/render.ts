@@ -7,11 +7,16 @@
 // but an anchor macro does, and renders as nothing. When someone rewrites the cell in the editor,
 // either the anchor goes with the old text, or the text no longer matches the hash: both mark
 // the cell as theirs, and publish leaves it alone from then on.
+//
+// A row that is unknown only because a source couldn't be read (items marked unreachable) is
+// marked `keep`: publishing leaves its cells as the page has them, so a run that can't reach a
+// source (the scheduled one has no VPN, so no Jenkins) never undoes one that could.
 
 import type { Layout, LayoutRow, ReleaseConfig } from './config.ts'
 import { type El, esc, find, fingerprint, type Node, parse, shortHash } from './html.ts'
 import type { Judgement, Judgements } from './judgement.ts'
-import { short } from './sources/common.ts'
+import { day, short } from './sources/common.ts'
+import { browse } from './sources/jira.ts'
 import type { Answer, Evidence, EvidenceItem, Link, Status } from './types.ts'
 import { str } from './util.ts'
 
@@ -29,6 +34,8 @@ export interface RowResult {
   answer: Answer | 'To confirm' | null
   needsJudgement: boolean
   lines: Line[]
+  /** Unknown only for want of a source that couldn't be read: publish keeps the page's cells. */
+  keep: boolean
 }
 
 const RANK: Record<Status, number> = { pass: 0, unknown: 1, fail: 2 }
@@ -61,10 +68,16 @@ export function evaluateRow(row: LayoutRow, table: 'info' | 'checklist', cfg: Re
   const id = table === 'info' ? `info:${row.key}` : row.key
   const items = ev.items.filter((i) => i.row === id)
   const latest = (repo?: string) => cfg.candidates.findLast((c) => !repo || repo in c.shas)?.name
-  const many = cfg.candidates.length > 1
+  // A feature's one candidate is still named, so its rows say they are service-wide.
+  const many = cfg.candidates.length > 1 || cfg.kind === 'feature'
   const gs = groups(items)
-  const current = gs.filter((g) => !g[0].candidate || g[0].candidate === latest(g[0].repo)).flat()
+  const currentGroups = gs.filter((g) => !g[0].candidate || g[0].candidate === latest(g[0].repo))
+  const current = currentGroups.flat()
   const status: Status = current.length ? worst(current.map((i) => i.status)) : 'unknown'
+  // A group still unknown could have been answered by any of its alternatives; if one of them
+  // couldn't be read, the group is unknown for want of it.
+  const unknownGroups = currentGroups.filter((g) => g.every((i) => i.status === 'unknown'))
+  const keep = status === 'unknown' && unknownGroups.length > 0 && unknownGroups.every((g) => g.some((i) => i.unreachable))
 
   let answer: RowResult['answer'] = null
   if (table === 'checklist') {
@@ -86,14 +99,19 @@ export function evaluateRow(row: LayoutRow, table: 'info' | 'checklist', cfg: Re
   } else if (!items.length) {
     lines.push({ text: 'No evidence was collected for this row.', links: [] })
   }
-  return { table, key: row.key, label: row.question ?? row.key, rule: row.rule, status, answer, needsJudgement, lines }
+  return { table, key: row.key, label: row.question ?? row.key, rule: row.rule, status, answer, needsJudgement, lines, keep }
 }
 
 /** The info table's rows that come from the config rather than evidence. */
-function infoLines(row: LayoutRow, cfg: ReleaseConfig): Line[] | null {
+function infoLines(row: LayoutRow, cfg: ReleaseConfig, ev: Evidence): Line[] | null {
   switch (row.rule) {
     case 'release':
+    case 'feature':
       return [{ text: cfg.release, links: [] }]
+    case 'epics':
+      return [{ text: '', links: (cfg.epics ?? []).map(browse) }]
+    case 'generated':
+      return [{ text: day(ev.generatedAt), links: [] }]
     case 'dashboards':
       return (cfg.dashboards ?? []).map((d) => ({ text: '', links: [{ text: d.label, url: d.url }] }))
     case 'repos':
@@ -111,18 +129,39 @@ export interface Results {
   checklist: RowResult[]
 }
 
+/** Info rows that list each item's value as it is: one line per repo. */
+const LISTED: Record<string, string> = {
+  'service-revision': 'To confirm: the commit could not be picked.',
+  'e2e-build': 'To confirm: no E2E build was read.',
+}
+
 export function evaluate(cfg: ReleaseConfig, layout: Layout, ev: Evidence): Results {
   const info = (layout.info?.rows ?? []).map((r) => {
     const res = evaluateRow(r, 'info', cfg, ev)
-    const fixed = infoLines(r, cfg)
-    if (fixed) return { ...res, status: 'pass' as Status, lines: fixed }
+    const fixed = infoLines(r, cfg, ev)
+    if (fixed) return { ...res, status: 'pass' as Status, lines: fixed, keep: false }
     if (r.rule === 'outstanding-bugs') {
       const it = ev.items.find((i) => i.row === `info:${r.key}` && i.status !== 'unknown')
       return { ...res, lines: it ? [{ text: it.value, links: it.links }] : [{ text: 'To confirm: Jira could not be read.', links: [] }] }
     }
+    if (r.rule in LISTED) {
+      const its = ev.items.filter((i) => i.row === `info:${r.key}`)
+      // One repo's source being unreachable keeps the whole cell, not just that repo's line.
+      const keep = its.some((i) => i.unreachable)
+      const line = (i: EvidenceItem): Line => ({ links: i.links,
+        text: i.status === 'unknown' ? `${i.repo ? `${i.repo}: ` : ''}to confirm${i.note ? ` (${i.note})` : ''}.` : `${i.value}.` })
+      return { ...res, keep, lines: its.length ? its.map(line) : [{ text: LISTED[r.rule], links: [] }] }
+    }
     return { ...res, lines: [] }
   })
-  return { info, checklist: layout.checklist.rows.map((r) => evaluateRow(r, 'checklist', cfg, ev)) }
+  const checklist = layout.checklist.rows.map((r) => evaluateRow(r, 'checklist', cfg, ev))
+  // The run date is not the date of every cell: say which kept what an earlier run wrote.
+  const kept = [...info.filter((r) => r.keep).map((r) => r.key), ...checklist.filter((r) => r.keep).map((r) => `row ${r.key}`)]
+  const generated = info.find((r) => r.rule === 'generated')
+  if (generated && kept.length) {
+    generated.lines.push({ text: `Kept from an earlier run, as a source could not be read: ${kept.join(', ')}.`, links: [] })
+  }
+  return { info, checklist }
 }
 
 // ------------------------------------------------------------------ HTML
@@ -135,6 +174,8 @@ export interface GenCell {
   hash: string | null
   /** A person's judgement: written unmarked, and only over a cell the generator still owns. */
   judged?: boolean
+  /** The row's source couldn't be read: the page's cell, if the generator still owns it, stays as it is. */
+  keep?: boolean
 }
 
 export interface GenRow {
@@ -194,17 +235,18 @@ function judgedCells(j: Judgement, cw: number[]): GenCell[] {
 export function genRows(layout: Layout, res: Results, judgements: Judgements = {}): GenRow[] {
   const out: GenRow[] = []
   const iw = layout.info?.widths ?? []
+  const kept = (c: GenCell, r: RowResult): GenCell => (r.keep ? { ...c, keep: true } : c)
   for (const r of res.info) {
     const owned = r.rule !== 'human'
     out.push({ table: 'info', key: r.key, cells: [plainCell(r.key, iw[0]),
-      owned ? ownedCell('info', r.key, 'details', r.lines, iw[1]) : plainCell('', iw[1])] })
+      owned ? kept(ownedCell('info', r.key, 'details', r.lines, iw[1]), r) : plainCell('', iw[1])] })
   }
   const cw = layout.checklist.widths ?? []
   for (const r of res.checklist) {
     const j = judgements[r.key]
     out.push({ table: 'checklist', key: r.key, cells: [plainCell(r.key, cw[0]), plainCell(r.label, cw[1]),
-      ...(j ? judgedCells(j, cw) : [ownedCell('checklist', r.key, 'status', [{ text: r.answer ?? 'To confirm', links: [] }], cw[2]),
-        ownedCell('checklist', r.key, 'comments', r.lines, cw[3])])] })
+      ...(j ? judgedCells(j, cw) : [kept(ownedCell('checklist', r.key, 'status', [{ text: r.answer ?? 'To confirm', links: [] }], cw[2]), r),
+        kept(ownedCell('checklist', r.key, 'comments', r.lines, cw[3]), r)])] })
   }
   return out
 }
@@ -219,7 +261,7 @@ export function tableHtml(t: { heading: string; columns: string[]; widths?: numb
 export function renderPage(cfg: ReleaseConfig, layout: Layout, res: Results, judgements: Judgements = {}): string {
   const rows = genRows(layout, res, judgements)
   const parts = [
-    `<h1>${esc(layout.title.replace('{release}', cfg.release))}</h1>`,
+    `<h1>${esc(titleOf(cfg, layout))}</h1>`,
     ...(layout.intro ?? []).map((p) => `<p>${esc(p)}</p>`),
     '<p><em>Cells written by the qa-report pipeline are regenerated each time it runs. Edit a cell to take it over: the pipeline then leaves it alone.</em></p>',
   ]
@@ -227,3 +269,6 @@ export function renderPage(cfg: ReleaseConfig, layout: Layout, res: Results, jud
   parts.push(tableHtml(layout.checklist, rows.filter((r) => r.table === 'checklist'), 1))
   return parts.join('\n')
 }
+
+/** The layout's title for this release or feature. */
+export const titleOf = (cfg: ReleaseConfig, layout: Layout): string => layout.title.replace('{release}', cfg.release).replace('{feature}', cfg.release)

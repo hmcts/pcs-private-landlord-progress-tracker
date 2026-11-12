@@ -1,0 +1,71 @@
+name: Store the twg sign-in if it rotated again
+description: >
+  Stores the twg sign-in back in Key Vault if twg rotated it after ../twg-sign-in stored it.
+  Call it with `if: always() && steps.<sign-in id>.outputs.restored == 'true'`: a composite
+  action can't run its own steps after the job's others, so the job must.
+
+# Loud on purpose: a rotation that isn't stored leaves the vault holding a spent token, and the
+# next run's refresh fails with exit 77. This repo is public: nothing here may print auth.conf
+# or any value in it.
+
+inputs:
+  vault:
+    description: The Key Vault holding the twg sign-in
+    required: true
+  secret:
+    description: The secret's name in that vault
+    required: true
+  home:
+    description: The directory twg-sign-in kept the sign-in in, if not the runner's home
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Store the twg sign-in if it rotated again
+      shell: bash
+      env:
+        TWG_VAULT: ${{ inputs.vault }}
+        TWG_SECRET: ${{ inputs.secret }}
+        TWG_HOME: ${{ inputs.home }}
+      run: |
+        set -uo pipefail
+        # On a shared runner, keep the sign-in out of the runner's own home.
+        if [[ -n "$TWG_HOME" ]]; then export HOME="$TWG_HOME" XDG_CONFIG_HOME="$TWG_HOME/.config"; fi
+        conf="$HOME/.config/twg/auth.conf"
+        err="$RUNNER_TEMP/twg-kv.err"
+        pack() { tr -d '\r' < "$conf" | grep -v '^oauth-access-token='; }
+
+        if [[ -f "$RUNNER_TEMP/twg-rejected" || ! -f "$conf" ]]; then
+          echo "nothing to store"
+          exit 0
+        fi
+        refresh=$(pack | sed -n 's/^oauth-refresh-token=//p' | head -1)
+        if [[ -z "$refresh" ]]; then
+          echo "::error::auth.conf lost its refresh token during the run. Re-seed $TWG_SECRET (README.md)"
+          exit 1
+        fi
+        echo "::add-mask::$refresh"
+        if [[ "$(pack | sha256sum | cut -d' ' -f1)" == "$(cat "$RUNNER_TEMP/twg-auth.sha" 2>/dev/null)" ]]; then
+          echo "twg sign-in unchanged since it was stored"
+          exit 0
+        fi
+
+        tmp=$(mktemp "$RUNNER_TEMP/twg-auth.XXXXXX")
+        rc=0
+        if pack > "$tmp"; then
+          az keyvault secret set --vault-name "$TWG_VAULT" --name "$TWG_SECRET" \
+            --file "$tmp" --encoding utf-8 > /dev/null 2> "$err" || rc=$?
+        else
+          rc=1
+        fi
+        rm -f "$tmp"
+        if (( rc != 0 )); then
+          code=$(grep -oE '\([A-Za-z]+\)' "$err" 2>/dev/null | head -1 | tr -d '()' || true)
+          rm -f "$err"
+          echo "::error::could not store the rotated twg sign-in (${code:-no error code}). The next run will need $TWG_SECRET re-seeded"
+          exit 1
+        fi
+        rm -f "$err"
+        echo "stored the twg sign-in, which rotated again during the run"

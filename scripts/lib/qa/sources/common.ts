@@ -32,6 +32,7 @@ export interface ItemArgs {
   note?: string
   answer?: Answer
   data?: Record<string, unknown>
+  unreachable?: boolean
 }
 
 export function item(a: ItemArgs, now: () => Date = () => new Date()): Item {
@@ -42,6 +43,7 @@ export function item(a: ItemArgs, now: () => Date = () => new Date()): Item {
   if (a.note) out.note = a.note
   if (a.answer) out.answer = a.answer
   if (a.data) out.data = a.data
+  if (a.unreachable) out.unreachable = true
   return out
 }
 
