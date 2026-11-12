@@ -7,7 +7,7 @@
 // internal detail, so it lives in the cache directory like the evidence, never in the repo.
 
 import { existsSync } from 'node:fs'
-import { isAbsolute, relative, resolve } from 'node:path'
+import { isAbsolute, join, relative, resolve } from 'node:path'
 import { loadYaml } from '../data.ts'
 import { QaError } from './errors.ts'
 import type { RowResult } from './render.ts'
@@ -48,13 +48,20 @@ export function validateJudgements(doc: unknown, checklist: RowResult[], name = 
   return errors
 }
 
+/** The release's judgement file in its cache directory: judgement.yaml, else judgement.json. */
+export function judgementFile(dir: string): string {
+  const yaml = join(dir, 'judgement.yaml')
+  const json = join(dir, 'judgement.json')
+  return existsSync(yaml) || !existsSync(json) ? yaml : json
+}
+
 /** Reads a judgement file, refusing one inside the repo outside .cache/, where it could be committed. */
 export function loadJudgements(path: string, checklist: RowResult[], root = process.cwd()): Judgements {
   const rel = relative(resolve(root), resolve(root, path))
   if (!rel.startsWith('..') && !isAbsolute(rel) && rel.split(/[\\/]/)[0] !== '.cache') {
     throw new QaError('bad-path', 'the judgement file must be outside the repo or under .cache/, as it holds internal detail')
   }
-  if (!existsSync(path)) throw new QaError('judgement-invalid', 'no judgement file at the path given')
+  if (!existsSync(path)) throw new QaError('judgement-invalid', 'no judgement.yaml or judgement.json in the release\'s cache directory')
   let doc: unknown
   try {
     doc = loadYaml(path)

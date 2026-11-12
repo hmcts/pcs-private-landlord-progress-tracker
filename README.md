@@ -90,9 +90,9 @@ It is internal, not part of the site: nothing it collects is committed, publishe
 npm run qa-report -- --release R1.3A                 # dry run: collect, render, merge
 npm run qa-report -- --release R1.3A --validate      # also have twg check the edits, without writing
 npm run qa-report -- --release R1.3A --publish       # update the page (the release must be active)
-npm run qa-report -- --release R1.3A --evidence .cache/qa/R1.3A/evidence.json   # re-render without collecting
+npm run qa-report -- --release R1.3A --evidence      # re-render from the last run's evidence.json
 npm run qa-report -- --release R1.4 --create-under <parentPageId> [--publish]   # no report_page yet
-npm run qa-report -- --release R1.3A --judgement .cache/qa/R1.3A/judgement.yaml # rows a person answers
+npm run qa-report -- --release R1.3A --judgement     # rows a person answers, from judgement.yaml
 npm run qa-report -- --all-active [--publish]        # every release with active: true and a report_page
 ```
 
@@ -123,8 +123,9 @@ which needs a Cosmos DB data-plane reader role. Without one, the rows only Jenki
 
 Evidence, the rendered report and the merge go to `.cache/qa/<release>/` (gitignored), or
 `$RUNNER_TEMP/qa` in CI, or `QA_CACHE_DIR`. `diff.txt` there says what a publish would change.
-`--evidence` and `--judgement` files must be in that directory, and `--config` in
-`config/qa-readiness/` or there. When a run fails it prints only what kind of failure it was;
+`--evidence` reuses the `evidence.json` there, and `--judgement` reads `judgement.yaml` (or
+`judgement.json`) beside it. A `--config` file must be in `config/qa-readiness/` or the cache
+directory. When a run fails it prints only what kind of failure it was;
 the error itself is appended to `errors.log` in the cache directory.
 
 The cells the pipeline writes begin with a hidden anchor macro, `qa-auto-<row>-<cell>-<hash>`, the
@@ -137,8 +138,8 @@ publishing ours would publish theirs too, so `--publish` and `--validate` leave 
 say "page has unpublished edits; skipped". The run doesn't fail; the next one tries again.
 
 Some rows have nothing to answer them mechanically, and come out "To confirm". `--judgement`
-takes their answers from a file, keyed by row number, with a `status` (Yes, No or N/A), a
-`comment` and optional `links`:
+takes their answers from `judgement.yaml` in the release's cache directory, keyed by row
+number, with a `status` (Yes, No or N/A), a `comment` and optional `links`:
 
 ```yaml
 '16': { status: 'Yes', comment: Manual regression on V2 passed., links: [{ text: HDPI-8908, url: 'https://hmcts.atlassian.net/browse/HDPI-8908' }] }

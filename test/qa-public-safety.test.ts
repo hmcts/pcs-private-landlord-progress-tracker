@@ -57,15 +57,15 @@ describe('the CLI', () => {
       fact({ rule: 'outstanding-bugs', status: 'pass', value: CANARY[2] }),
     ]
     const ev: Evidence = { release, generatedAt: NOW().toISOString(), candidates: [{ name: 'V1', shas: { 'pcs-api': CFG.candidates[0].shas['pcs-api'] } }], items: fileUnderRows(layout, items) }
-    const evFile = join(fixtures, 'evidence.json')
-    writeFileSync(evFile, JSON.stringify(ev))
-    const judgement = join(fixtures, 'judgement.json')
+    mkdirSync(out, { recursive: true })
+    writeFileSync(join(out, 'evidence.json'), JSON.stringify(ev))
+    const judgement = join(out, 'judgement.json')
     writeFileSync(judgement, JSON.stringify({ '16': { status: 'Yes', comment: CANARY[2], links: [{ text: CANARY[1], url: CANARY[3] }] } }))
 
     const env = { ...process.env }
     delete env.QA_CACHE_DIR
     delete env.RUNNER_TEMP
-    const r = spawnSync(process.execPath, ['--no-warnings', 'scripts/qa-report.ts', '--config', config, '--evidence', evFile, '--judgement', judgement], { encoding: 'utf8', env })
+    const r = spawnSync(process.execPath, ['--no-warnings', 'scripts/qa-report.ts', '--config', config, '--evidence', '--judgement'], { encoding: 'utf8', env })
     assert.equal(r.status, 0, r.stderr)
     const printed = r.stdout + r.stderr
     for (const c of CANARY) assert.ok(!printed.includes(c), `printed ${c}`)
@@ -98,13 +98,14 @@ describe('CLI failures', () => {
   const config = join(cache, 'config.yaml')
   writeFileSync(config, ['release: TEST-ERR', 'active: false', 'layout: pcs', 'jql: project = HDPI', 'candidates:', '  - name: V1', '    shas:',
     `      pcs-api: ${sha}`, 'repos:', '  pcs-api: { github: hmcts/pcs-api }', ''].join('\n'))
-  const evFile = join(cache, 'evidence.json')
-  writeFileSync(evFile, JSON.stringify({ release: 'TEST-ERR', generatedAt: NOW().toISOString(), candidates: [{ name: 'V1', shas: { 'pcs-api': sha } }], items: [] }))
+  const dir = join(cache, 'TEST-ERR')
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'evidence.json'), JSON.stringify({ release: 'TEST-ERR', generatedAt: NOW().toISOString(), candidates: [{ name: 'V1', shas: { 'pcs-api': sha } }], items: [] }))
 
   test('print only the kind of failure; the error itself, canary and all, goes to errors.log', () => {
-    const judgement = join(cache, 'judgement.json')
-    writeFileSync(judgement, JSON.stringify({ '16': { status: 'Yes', comment: 'x', [CANARY[1]]: CANARY[2] } }))
-    const r = cli('--config', config, '--evidence', evFile, '--judgement', judgement)
+    writeFileSync(join(dir, 'judgement.yaml'), JSON.stringify({ '16': { status: 'Yes', comment: 'x', [CANARY[1]]: CANARY[2] } }))
+    const r = cli('--config', config, '--evidence', '--judgement')
+    rmSync(join(dir, 'judgement.yaml'))
     assert.equal(r.status, 1)
     const printed = r.stdout + r.stderr
     for (const c of CANARY) assert.ok(!printed.includes(c), `printed ${c}`)
@@ -113,16 +114,18 @@ describe('CLI failures', () => {
   })
 
   test('refuse evidence for other candidate commits', () => {
-    const other = join(cache, 'other.json')
-    writeFileSync(other, JSON.stringify({ release: 'TEST-ERR', candidates: [{ name: 'V1', shas: { 'pcs-api': CFG.candidates[1].shas['pcs-api'] } }], items: [] }))
-    const r = cli('--config', config, '--evidence', other)
+    const otherConfig = join(cache, 'other.yaml')
+    writeFileSync(otherConfig, readFileSync(config, 'utf8').replace('TEST-ERR', 'TEST-OTHER'))
+    mkdirSync(join(cache, 'TEST-OTHER'), { recursive: true })
+    writeFileSync(join(cache, 'TEST-OTHER', 'evidence.json'), JSON.stringify({ release: 'TEST-OTHER', candidates: [{ name: 'V1', shas: { 'pcs-api': CFG.candidates[1].shas['pcs-api'] } }], items: [] }))
+    const r = cli('--config', otherConfig, '--evidence')
     assert.equal(r.status, 1)
     assert.match(r.stderr, /the evidence file is for another release or other candidate commits/)
   })
 
   test('refuse release names and files outside the places they belong', () => {
     for (const args of [['--release', '../../etc/passwd'], ['--release', 'R1..3'], ['--config', 'src/_data/raid.yaml'],
-      ['--config', config, '--evidence', 'package.json'], ['--config', config, '--judgement', '/etc/hostname'], ['--release', 'R1.3A', '--create-under=-y']]) {
+      ['--release', 'R1.3A', '--create-under=-y']]) {
       const r = cli(...args)
       assert.equal(r.status, 1, args.join(' '))
       assert.ok(!(r.stdout + r.stderr).includes('passwd') && !(r.stdout + r.stderr).includes('hostname'), args.join(' '))
@@ -131,10 +134,12 @@ describe('CLI failures', () => {
   })
 
   test('a malformed command line prints the usage, not the arguments', () => {
-    const r = cli('--release', 'R1.3A', '--evidence', '--canary-secret-test-name')
-    assert.equal(r.status, 2)
-    assert.ok(!r.stderr.includes(CANARY[1]))
-    assert.match(r.stderr, /^usage: /m)
+    for (const args of [['--release', 'R1.3A', '--canary-secret-test-name'], ['--release', 'R1.3A', '--evidence=canary-secret-test-name']]) {
+      const r = cli(...args)
+      assert.equal(r.status, 2)
+      assert.ok(!r.stderr.includes(CANARY[1]))
+      assert.match(r.stderr, /^usage: /m)
+    }
   })
 })
 

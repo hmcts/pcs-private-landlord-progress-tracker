@@ -85,8 +85,7 @@ Rows marked `(needs a person)`, and rows left "To confirm", have no mechanical a
 4. Re-run with the judgement and the evidence already collected:
 
    ```sh
-   npm run qa-report -- --release <release> --evidence .cache/qa/<release>/evidence.json \
-     --judgement .cache/qa/<release>/judgement.yaml
+   npm run qa-report -- --release <release> --evidence --judgement
    ```
 
 Judgement cells are written without the pipeline's marker, so once published they belong to a
@@ -100,8 +99,7 @@ Show the user `diff.txt`, and each judgement with its evidence. Publish only whe
 for this page:
 
 ```sh
-npm run qa-report -- --release <release> --evidence .cache/qa/<release>/evidence.json \
-  --judgement .cache/qa/<release>/judgement.yaml --publish
+npm run qa-report -- --release <release> --evidence --judgement --publish
 ```
 
 Report the counts it prints. "page has unpublished edits; skipped" means someone has the page

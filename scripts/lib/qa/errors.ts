@@ -17,6 +17,7 @@ export const PUBLIC = {
   'page-read': 'twg could not read the Confluence page',
   'page-update': 'twg could not update the Confluence page',
   'page-create': 'twg could not create the Confluence page',
+  'command-missing': 'a command the report needs (twg or gh) is not installed or not on PATH',
   twg: 'twg failed',
   unexpected: 'an unexpected error: see errors.log in the cache directory',
 } as const

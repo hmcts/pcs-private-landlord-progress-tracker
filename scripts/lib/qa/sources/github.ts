@@ -11,6 +11,7 @@
 import { execFileSync } from 'node:child_process'
 import { gunzipSync } from 'node:zlib'
 import type { Candidate, ReleaseConfig } from '../config.ts'
+import { commandPath } from '../util.ts'
 import { HttpError, item, type Item, reason, short } from './common.ts'
 
 const SOURCE = 'github'
@@ -24,7 +25,7 @@ const hasGh = (() => {
   let v: boolean | undefined
   return () => (v ??= (() => {
     try {
-      execFileSync('gh', ['--version'], { stdio: 'ignore' })
+      execFileSync(commandPath('gh'), ['--version'], { stdio: 'ignore' })
       return true
     } catch {
       return false
@@ -35,7 +36,7 @@ const hasGh = (() => {
 export function defaultGitHubApi(env: NodeJS.ProcessEnv = process.env): GitHubApi {
   return async (path) => {
     if (!env.GITHUB_TOKEN && hasGh()) {
-      return JSON.parse(execFileSync('gh', ['api', path], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }))
+      return JSON.parse(execFileSync(commandPath('gh'), ['api', path], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] }))
     }
     const headers: Record<string, string> = { accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' }
     if (env.GITHUB_TOKEN) headers.authorization = `Bearer ${env.GITHUB_TOKEN}`
@@ -171,8 +172,8 @@ export function* untar(tar: Buffer): Generator<{ path: string; body: Buffer }> {
     const h = tar.subarray(off, off + 512)
     if (h.every((b) => b === 0)) return
     const str = (a: number, n: number) => untilNul(h.subarray(a, a + n).toString('utf8'))
-    const size = parseInt(str(124, 12).trim() || '0', 8)
-    const type = String.fromCharCode(h[156] || 48)
+    const size = Number.parseInt(str(124, 12).trim() || '0', 8)
+    const type = String.fromCodePoint(h[156] || 48)
     const body = tar.subarray(off + 512, off + 512 + size)
     off += 512 + Math.ceil(size / 512) * 512
     if (type === 'x') {

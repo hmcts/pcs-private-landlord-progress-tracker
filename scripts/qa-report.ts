@@ -1,6 +1,6 @@
 // Generates a release's QA readiness report and merges it into its Confluence page.
 //
-//   node scripts/qa-report.ts --release R1.3A [--evidence <file>] [--judgement <file>] [--publish]
+//   node scripts/qa-report.ts --release R1.3A [--evidence] [--judgement] [--publish]
 //                             [--validate] [--create-under <parentPageId>] [--config <file>]
 //   node scripts/qa-report.ts --all-active [--publish] [--validate]
 //
@@ -9,15 +9,16 @@
 // report_page. It's a dry run unless --publish is given: the merged page and a diff are
 // written to the cache directory (see scripts/lib/qa/cache.ts) and nothing is written to
 // Confluence. --validate also has twg check the edits, without writing them. --evidence
-// skips collecting and uses an evidence file from an earlier run. --judgement fills rows a
-// person answers from a file (see scripts/lib/qa/judgement.ts). --all-active runs every
+// skips collecting and reuses the release's evidence.json from an earlier run. --judgement fills
+// rows a person answers from judgement.yaml (or .json) beside it (see scripts/lib/qa/judgement.ts).
+// --all-active runs every
 // release with `active: true` and a report_page, each on its own: one failing doesn't stop the
 // rest, but fails the run.
 //
 // This repo and its logs are public, so this prints only counts and each row's pass, fail or
 // unknown. Everything else, evidence included, stays in the cache directory. A failure prints
 // only a fixed message for its kind (lib/qa/errors.ts); the error itself goes to errors.log
-// there. Files named on the command line must be in config/qa-readiness or the cache directory.
+// there. A --config file must be in config/qa-readiness or the cache directory.
 
 import { readFileSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
@@ -26,20 +27,20 @@ import { cacheDir, releaseDir, releaseName, within } from './lib/qa/cache.ts'
 import { collect, evidenceFor, readers } from './lib/qa/collect.ts'
 import { activeReleases, CONFIG_DIR, loadRelease, releasePath } from './lib/qa/config.ts'
 import { logError, publicMessage, QaError } from './lib/qa/errors.ts'
-import { type Judgements, loadJudgements } from './lib/qa/judgement.ts'
+import { judgementFile, type Judgements, loadJudgements } from './lib/qa/judgement.ts'
 import { createPage, publishToPage, releaseTitle } from './lib/qa/publish.ts'
 import { evaluate, genRows, renderPage } from './lib/qa/render.ts'
 import { pageId, quietRunner } from './lib/qa/twg.ts'
 import type { Evidence } from './lib/qa/types.ts'
 
-const USAGE = 'usage: npm run qa-report -- --release <name> [--evidence <file>] [--judgement <file>] [--publish] [--validate] [--create-under <pageId>]\n' +
+const USAGE = 'usage: npm run qa-report -- --release <name> [--evidence] [--judgement] [--publish] [--validate] [--create-under <pageId>]\n' +
   '       npm run qa-report -- --all-active [--publish] [--validate]'
 
 const OPTIONS = {
   release: { type: 'string' },
   config: { type: 'string' },
-  evidence: { type: 'string' },
-  judgement: { type: 'string' },
+  evidence: { type: 'boolean', default: false },
+  judgement: { type: 'boolean', default: false },
   publish: { type: 'boolean', default: false },
   validate: { type: 'boolean', default: false },
   'create-under': { type: 'string' },
@@ -58,11 +59,12 @@ function args() {
 const values = args()
 
 const say = (s: string) => console.log(s)
+const EVIDENCE_FILE = 'evidence.json'
 
 interface Options {
   release?: string
-  evidence?: string
-  judgement?: string
+  evidence?: boolean
+  judgement?: boolean
   createUnder?: string
   publish: boolean
   validate: boolean
@@ -80,7 +82,7 @@ async function report(path: string, o: Options): Promise<'done' | 'skipped'> {
   if (o.evidence) {
     let doc: unknown
     try {
-      doc = JSON.parse(readFileSync(o.evidence, 'utf8'))
+      doc = JSON.parse(readFileSync(join(dir, EVIDENCE_FILE), 'utf8'))
     } catch (e) {
       throw new QaError('evidence-invalid', `the evidence file could not be read as JSON: ${(e as Error).message}`)
     }
@@ -89,7 +91,7 @@ async function report(path: string, o: Options): Promise<'done' | 'skipped'> {
   } else {
     const res = await collect(cfg, layout, readers(cfg))
     evidence = res.evidence
-    writeFileSync(join(dir, 'evidence.json'), JSON.stringify(evidence, null, 2) + '\n')
+    writeFileSync(join(dir, EVIDENCE_FILE), JSON.stringify(evidence, null, 2) + '\n')
     for (const source of ['sonarcloud', 'cosmos', 'github', 'jira', 'ria']) {
       const its = evidence.items.filter((i) => i.source === source)
       const n = (s: string) => its.filter((i) => i.status === s).length
@@ -98,7 +100,7 @@ async function report(path: string, o: Options): Promise<'done' | 'skipped'> {
   }
 
   const results = evaluate(cfg, layout, evidence)
-  const judgements: Judgements = o.judgement ? loadJudgements(o.judgement, results.checklist) : {}
+  const judgements: Judgements = o.judgement ? loadJudgements(judgementFile(dir), results.checklist) : {}
   for (const r of results.checklist) {
     const note = judgements[r.key] ? ' (judgement given)' : r.needsJudgement ? ' (needs a person)' : ''
     say(`row ${r.key.padEnd(3)} ${r.status}${note}`)
@@ -115,7 +117,7 @@ async function report(path: string, o: Options): Promise<'done' | 'skipped'> {
   if (cfg.report_page) {
     const res = publishToPage(run, pageId(cfg.report_page), layout, rows, dir, { publish: o.publish, validate: o.validate })
     if (res.unpublishedEdits) {
-      say(`${process.env.GITHUB_ACTIONS ? '::warning::' : ''}${cfg.release}: page has unpublished edits; skipped`)
+      say(`${process.env.GITHUB_ACTIONS ? '::warning::' : ''}page has unpublished edits; skipped`)
       return 'skipped'
     }
     const c = res.counts
@@ -135,7 +137,7 @@ async function report(path: string, o: Options): Promise<'done' | 'skipped'> {
 
 async function main(): Promise<number> {
   if (values['all-active']) {
-    const only = (['release', 'config', 'evidence', 'judgement', 'create-under'] as const).filter((k) => values[k] !== undefined)
+    const only = (['release', 'config', 'evidence', 'judgement', 'create-under'] as const).filter((k) => values[k] !== undefined && values[k] !== false)
     if (only.length) {
       console.error(`--all-active can't be combined with --${only.join(', --')}`)
       return 2
@@ -171,8 +173,7 @@ async function main(): Promise<number> {
   const config = values.config === undefined ? releasePath(release!) : within(values.config, [CONFIG_DIR, cache])
   await report(config, {
     release,
-    evidence: values.evidence === undefined ? undefined : within(values.evidence, [cache]),
-    judgement: values.judgement === undefined ? undefined : within(values.judgement, [cache]),
+    evidence: values.evidence, judgement: values.judgement,
     createUnder: values['create-under'], publish: values.publish, validate: values.validate,
   })
   return 0
