@@ -9,7 +9,7 @@ description: >
 # sign-in made once by hand is kept in Key Vault, restored here, refreshed, and written back.
 # Every refresh rotates the refresh token and spends the old one, so the new value is stored
 # straight after refreshing. The secret is either twg's legacy auth.conf or an archive of the
-# whole twg config directory; twg-auth.sh handles both. Setup and re-seeding: README.md,
+# twg config directory's sign-in files; twg-auth.sh handles both. Setup and re-seeding: README.md,
 # "Jira sign-in".
 #
 # This repo is public: nothing here may print the sign-in or any value in it.
@@ -39,11 +39,6 @@ outputs:
   restored:
     description: "'true' once the vault's sign-in is restored, so twg-store must run"
     value: ${{ steps.restore.outputs.restored }}
-  format:
-    description: >
-      The restored secret's format: 'legacy' (twg's auth.conf) or 'archive' (the whole twg config
-      directory, as twg-auth.sh describes). twg-store reads it from RUNNER_TEMP itself.
-    value: ${{ steps.restore.outputs.format }}
   signed_in:
     description: "'true' once twg is refreshed, stored and can reach Atlassian"
     value: ${{ steps.refresh.outputs.signed_in }}
@@ -119,7 +114,6 @@ runs:
         echo "$format" > "$RUNNER_TEMP/twg-auth.format"
         # The sha of what the vault holds, so twg-store can tell whether twg rotated again.
         twg_hash > "$RUNNER_TEMP/twg-auth.sha"
-        echo "format=$format" >> "$GITHUB_OUTPUT"
         echo "restored=true" >> "$GITHUB_OUTPUT"
 
     - name: Refresh the twg sign-in

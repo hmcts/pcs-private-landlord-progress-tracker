@@ -94,7 +94,7 @@ jobs:
         if: always()
         run: |
           az logout > /dev/null 2>&1 || true
-          rm -rf "${HOME:?}/.azure" "${HOME:?}/.config/twg" "${XDG_CONFIG_HOME:-${HOME:?}/.config}/twg"
+          rm -rf "${HOME:?}/.azure" "${XDG_CONFIG_HOME:-${HOME:?}/.config}/twg"
 
       - name: Commit the snapshot
         if: steps.fetch.outcome == 'success'

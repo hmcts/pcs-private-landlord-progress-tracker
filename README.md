@@ -299,7 +299,7 @@ To pick up a newer version of the roadmap generator, copy
 
 `twg` has no credential designed for CI: its login is OAuth in a browser. So the workflow
 uses the same arrangement as cft-workspace's doc-drift workflow. A sign-in is made once by
-hand and stored in Key Vault as an archive of twg's whole config directory. Each run restores
+hand and stored in Key Vault as an archive of twg's sign-in files. Each run restores
 it, runs `twg auth refresh`, and writes the rotated sign-in straight back, in the format it came
 in. Every refresh spends the previous token, so:
 
@@ -339,22 +339,20 @@ so it never touches your own:
    `HOME="$d" XDG_CONFIG_HOME="$d/.config" twg auth storage status` should report the `file`
    backend: a sign-in kept in the system keychain isn't in the directory, so it can't be stored.
 
-2. Pack the whole `twg` config directory, store it, and delete the temporary directory:
+2. Store it, and delete the temporary directory:
 
    ```bash
-   f="$d/secret"
-   { printf 'twg-config-tgz:v1:'
-     tar -C "$d/.config" --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -czf - twg \
-       | base64 -w0; } > "$f"
-   az keyvault secret set --vault-name <TWG_KEY_VAULT> --name <secret name> \
-     --file "$f" --encoding utf-8 >/dev/null
-   rm -rf "$d"
+   scripts/seed-twg-secret.sh <TWG_KEY_VAULT> <secret name> "$d"
    ```
 
    `<secret name>` is `twg-auth-conf-pcs-progress-tracker` for the roadmap, or
-   `twg-auth-conf-pcs-progress-tracker-qa` for the QA reports. `>/dev/null` matters, because
-   `az keyvault secret set` prints the value it stored. This needs GNU `tar` and `base64`, and
-   Key Vault takes up to 25 KB, which a run also checks before it stores the sign-in back.
+   `twg-auth-conf-pcs-progress-tracker-qa` for the QA reports. The script packs only the
+   sign-in files (`auth-profiles.json` and `auth.conf`, without their access tokens; the rest of
+   the directory is caches twg rebuilds), using the same code as the workflow. It checks the
+   value holds a refresh token, decodes to those files alone and fits Key Vault's 25 KB, stores
+   it with `--file` so it's never on a command line, and keeps `az`'s output, which echoes the
+   value, off the terminal. It prints only whether that worked and the size, and deletes `$d`
+   only once the secret is stored. It needs GNU `tar`, `jq` and `az`.
 
 That's all: there's no need to run the workflow first, or to sign in again yourself. The seed
 was its own login, so it never shares a token with yours, and neither can sign the other out.
@@ -362,7 +360,11 @@ Seed the two secrets one at a time, each with its own login: the same sign-in st
 would be two copies of one token.
 
 Secrets seeded the old way, as twg's `auth.conf` without its `oauth-access-token=` line, still
-restore, and are stored back in that format.
+restore, and are stored back in that format. So do archives packed by hand from the whole
+`twg` directory (`tar -C "$d/.config" -czf - twg`): only `auth-profiles.json` and `auth.conf`
+are unpacked, the caches beside them are skipped, and the first store after the refresh
+replaces the secret with those two files alone. An archive holding a link, a path outside
+`twg/` or a name with a space is still refused.
 
 If the roadmap's sign-in fails, the site is still published from the last snapshot with an "out
 of date" warning, and the run fails so someone notices. If the QA sign-in isn't seeded or fails,
