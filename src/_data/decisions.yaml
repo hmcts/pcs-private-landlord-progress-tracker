@@ -388,3 +388,10 @@
   title: Work allocation tasks for self-represented claims
   decision: Agree with work allocation and operations whether a self-represented private landlord's claim raises the same caseworker tasks as a claim made by a legal representative, or new ones, for example a review of a claim made without a legal representative.
   outcome: open-question
+
+- id: DEC-049
+  date: "2026-11-12"
+  area: eligibility
+  title: Where a private landlord can make a claim
+  decision: "Agree the area of eligibility for private landlord claims. The service as built accepts properties in England only, and only where the postcode is covered by one of the release 1 pilot courts (Bradford, Huddersfield and Wandsworth), the same courts legal representatives are limited to. The prototype accepts any property in England or Wales, and a Wales version of the approved screens exists."
+  outcome: open-question
