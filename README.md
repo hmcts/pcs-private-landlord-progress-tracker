@@ -211,17 +211,37 @@ Run locally, edits are made as your own twg login.
 
 ### In the Publish workflow
 
-The Publish workflow runs `npm run qa-report -- --all-active --publish` after reading the
-roadmap, with the same twg sign-in, so Confluence edits are made as whoever seeded the twg secret
-(see "Jira sign-in"), and that account needs edit rights on each report page. It runs only on
-`master` and only once twg is signed in. Each active release and feature is done on its own; if
-any fails, the run is marked as failed, but the site is still deployed. Evidence goes to
-`$RUNNER_TEMP/qa` and the log gets only counts. To stop a report being updated, set
-`active: false` in its config.
+The Publish workflow's `qa-report` job runs `npm run qa-report -- --all-active --publish`. It has
+its own twg sign-in, the QA secret (see "Jira sign-in"), so Confluence edits are made as whoever
+seeded that, and that account needs edit rights on each report page. Each active release and
+feature is done on its own; if any fails, or twg can't sign in, the run is marked as failed, but
+the site is still deployed. Evidence goes to `$RUNNER_TEMP/qa` and is deleted with the sign-ins
+at the end, and the log gets only counts. To stop a report being updated, set `active: false`
+in its config.
 
-The workflow has no VPN, so it can't reach Jenkins: a feature's E2E rows, and its header's
-"E2E build" row, keep what the page already says. Refresh them by running the report locally
-on the VPN, with the `JENKINS_*` variables set, and `--publish`.
+The job runs on HMCTS's self-hosted runner group `azure-nonprod`, as hmcts/cath-service's E2E
+job does, so that it can reach Jenkins (`build.hmcts.net`), which GitHub's own runners can't.
+
+- **It runs only on the schedule and on a manual dispatch from `master`**, never on a push or
+  from another branch. This repo is public, and a self-hosted runner must never run code from a
+  pull request: the workflow has no `pull_request` trigger, and `ci.yml`, which has, stays on
+  GitHub's runners.
+- **The repo must be allowed to use the `azure-nonprod` runner group**, an organisation setting
+  only an org admin can change. Until it is, the job sits queued: its 25-minute timeout counts
+  only once a runner picks it up, and GitHub cancels it after 24 hours in the queue. It has its
+  own concurrency group (`qa-report`) and nothing waits for it, so a queued `qa-report` delays
+  only the next `qa-report`, never the site.
+- A step before the report checks whether Jenkins answers from the runner, reading only the HTTP
+  status, and says so as a notice: reachable, a sign-in redirect (Azure App Proxy, so the runner
+  is outside the network), or unreachable. The report runs either way; if Jenkins can't be read,
+  a feature's E2E rows, and its header's "E2E build" row, keep what the page already says.
+- Jenkins is read with the `JENKINS_USER` variable (an Entra object id) and the `JENKINS_TOKEN`
+  secret (that person's Jenkins API token), passed to the report as `JENKINS_USERNAME` and
+  `JENKINS_PASSWORD`. The runs call Jenkins as that person, so use a token made for this,
+  and replace it if they leave.
+
+Locally, run the report on the VPN with `JENKINS_USERNAME` and `JENKINS_PASSWORD` set to refresh
+the E2E rows yourself.
 
 Cosmos needs one of:
 
@@ -248,11 +268,14 @@ still filled in.
 | `TWG_AZURE_CLIENT_ID` | Client ID of the app registration the workflow signs in to Azure as |
 | `AZURE_TENANT_ID` | The HMCTS Azure tenant ID |
 | `COSMOS_PIPELINE_METRICS_KEY` | Optional. The `pipeline-metrics` Cosmos read-only key, for the QA readiness report |
+| `JENKINS_TOKEN` | Optional. A Jenkins API token of the `JENKINS_USER` account, for a feature's E2E rows |
 
 | Variable | What it is |
 |---|---|
 | `TWG_KEY_VAULT` | The Key Vault holding the twg sign-in |
 | `TWG_SECRET_NAME` | Optional. The secret's name. Defaults to `twg-auth-conf-pcs-progress-tracker` |
+| `QA_TWG_SECRET_NAME` | Optional. The QA readiness report's twg sign-in, in the same vault. Defaults to `twg-auth-conf-pcs-progress-tracker-qa` |
+| `JENKINS_USER` | Optional. The Entra object id that `JENKINS_TOKEN` belongs to |
 
 To pick up a newer version of the roadmap generator, copy
 `apps/pcs/.claude/scripts/lib/roadmap/roadmap-runner.ts` from `hmcts/cft-workspace` over
@@ -266,10 +289,15 @@ hand and stored in Key Vault as twg's `auth.conf`, minus its hour-long access to
 restores it, runs `twg auth refresh`, and writes the rotated refresh token straight back.
 Every refresh spends the previous token, so:
 
-- **This workflow needs its own sign-in.** Don't reuse another job's secret, and don't keep using
-  a sign-in after you've stored it. Whichever copy refreshed first would sign the others out.
-- **Runs must not overlap.** The workflow's `concurrency` group ensures that.
-- Jira is read as whoever seeded the secret, so the roadmap shows what that account can see.
+- **Each job needs its own sign-in.** The `build` job (the roadmap) uses
+  `twg-auth-conf-pcs-progress-tracker`, and the `qa-report` job (the QA readiness reports) uses
+  `twg-auth-conf-pcs-progress-tracker-qa`, both in `TWG_KEY_VAULT`. Don't reuse another job's
+  or workflow's secret, and don't keep using a sign-in after you've stored it. Whichever copy
+  refreshed first would sign the others out.
+- **Two runs of one job must not overlap.** Each job's `concurrency` group (`publish` and
+  `qa-report`) ensures that.
+- Jira and Confluence are read, and the reports edited, as whoever seeded each secret, so the
+  roadmap shows what that account can see.
 
 The workflow reaches the vault with `azure/login` over OIDC. It needs:
 
@@ -281,13 +309,13 @@ The workflow reaches the vault with `azure/login` over OIDC. It needs:
   Runs from other branches can't reach the vault, so they build from the last snapshot.
 - a Key Vault access policy for that app with secrets **Get** and **Set**, and no other roles.
 
-**Seed the secret**, or re-seed it when a run reports `twg auth refresh` exit 77 (Atlassian
+**Seed a secret**, or re-seed it when a run reports `twg auth refresh` exit 77 (Atlassian
 rejected the token, typically after 90 days unused). `twg login` always writes its token to
 `~/.config/twg/auth.conf`. `TWG_CONFIG_DIR` moves only the profile files, so it can't keep a
 seed login apart from your own. Instead, hand your sign-in over to the workflow, then sign in
 again:
 
-1. Sign in as the account the roadmap should read Jira as. `twg login` needs a terminal, and
+1. Sign in as the account that job should read Jira as (and, for the QA secret, edit the reports as). `twg login` needs a terminal, and
    its device code expires quickly, so approve it as soon as it appears.
 
    ```bash
@@ -298,17 +326,22 @@ again:
 
    ```bash
    f=$(mktemp); grep -v '^oauth-access-token=' ~/.config/twg/auth.conf > "$f"
-   az keyvault secret set --vault-name <TWG_KEY_VAULT> --name twg-auth-conf-pcs-progress-tracker \
+   az keyvault secret set --vault-name <TWG_KEY_VAULT> --name <secret name> \
      --file "$f" --encoding utf-8 >/dev/null
    rm -f "$f"
    ```
 
-   `>/dev/null` matters, because `az keyvault secret set` prints the value it stored.
+   `<secret name>` is `twg-auth-conf-pcs-progress-tracker` for the roadmap, or
+   `twg-auth-conf-pcs-progress-tracker-qa` for the QA reports. `>/dev/null` matters, because
+   `az keyvault secret set` prints the value it stored.
 
 3. Before you use twg again, run the Publish workflow from `master` (Actions → Publish → Run
-   workflow), and check that its log says "stored the rotated twg sign-in". That refresh spends
-   the copy on your machine, so it can never sign the workflow out.
+   workflow), and check that the log of the job that uses the secret (`build` or `qa-report`)
+   says "stored the rotated twg sign-in". That refresh spends the copy on your machine, so it can
+   never sign the workflow out. Seed the two secrets one at a time, each with its own login: the
+   same sign-in stored twice would be two copies of one token.
 4. Sign in again for your own use: `twg login --force --site hmcts`.
 
-If the sign-in fails, the site is still published from the last snapshot with an "out of date"
-warning, and the run fails so someone notices.
+If the roadmap's sign-in fails, the site is still published from the last snapshot with an "out
+of date" warning, and the run fails so someone notices. If the QA sign-in isn't seeded or fails,
+the `qa-report` job stands down without spending anything and fails, which never affects the site.

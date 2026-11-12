@@ -42,7 +42,8 @@ it to the release (the file name must match `release:`), and fill in:
 - `human_rows`: for rows a person signs off (performance report, manual regression, dependent
   services), the Jira ticket(s) whose status backs the answer.
 - `active: true` only when the user wants it published. Active releases with a `report_page`
-  are also updated by the Publish workflow every weekday.
+  are also updated by the Publish workflow every weekday (its `qa-report` job, on the
+  `azure-nonprod` self-hosted runners).
 
 Run `npm run validate` after editing.
 
@@ -71,9 +72,11 @@ Use `--feature <name>` in place of `--release <name>` below.
 **E2E rows need Jenkins**, which is reachable only on the VPN, with `JENKINS_USERNAME` and
 `JENKINS_PASSWORD` set in the environment (never read or print them, and never read
 `.claude/*.env` files). Without them the E2E rows come out unknown and unreachable, and the
-run says "(source unreachable: keeps the published answer)". That's expected off the VPN, and in
-the scheduled Publish workflow: a publish leaves those rows as the page has them. To refresh them,
-run the report locally on the VPN, and publish once the user says so.
+run says "(source unreachable: keeps the published answer)". That's expected off the VPN: a
+publish leaves those rows as the page has them. The scheduled Publish workflow runs on the
+`azure-nonprod` self-hosted runners with its own Jenkins token; its "Check Jenkins can be
+reached" notice says whether it could read Jenkins. If it couldn't, refresh the rows by running
+the report locally on the VPN, and publish once the user says so.
 
 ```sh
 npm run qa-report -- --release <release>              # collect, render, merge; writes nothing

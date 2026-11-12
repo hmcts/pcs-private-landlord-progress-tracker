@@ -1,0 +1,180 @@
+name: twg sign-in
+description: >
+  Installs twg (pinned and checksum-verified), restores the twg sign-in from Key Vault, refreshes
+  it and stores the rotated token straight away. Run it after azure/login and pass that step's
+  outcome in. Pair it with ../twg-store, called with `if: always() && steps.<id>.outputs.restored == 'true'`,
+  which stores the sign-in again if twg rotated it later in the job.
+
+# twg has no runner-friendly credential (its OAuth login is interactive and per-user), so a
+# sign-in made once by hand is kept in Key Vault, restored here, refreshed, and written back.
+# Every refresh rotates the refresh token and spends the old one, so the new value is stored
+# straight after refreshing. Setup and re-seeding: README.md, "Jira sign-in".
+#
+# This repo is public: nothing here may print auth.conf or any value in it.
+
+inputs:
+  version:
+    description: twg version to install
+    required: true
+  vault:
+    description: The Key Vault holding the twg sign-in
+    required: false
+    default: ''
+  secret:
+    description: The secret's name in that vault
+    required: true
+  azure-login:
+    description: The azure/login step's outcome
+    required: true
+
+outputs:
+  restored:
+    description: "'true' once auth.conf holds the vault's sign-in, so twg-store must run"
+    value: ${{ steps.restore.outputs.restored }}
+  signed_in:
+    description: "'true' once twg is refreshed, stored and can reach Atlassian"
+    value: ${{ steps.refresh.outputs.signed_in }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install twg
+      shell: bash
+      env:
+        TWG_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        # Pinned and checksum-verified, into the job's temp directory, so it needs no sudo and
+        # leaves nothing behind on a self-hosted runner.
+        case "$(uname -m)" in
+          x86_64 | amd64) arch=x64 ;;
+          aarch64 | arm64) arch=arm64 ;;
+          *) echo "::error::no twg build for this runner's architecture"; exit 1 ;;
+        esac
+        twg_bin="twg-linux-${arch}-v${TWG_VERSION}"
+        bin="$RUNNER_TEMP/bin"
+        mkdir -p "$bin"
+        cd "$RUNNER_TEMP"
+        curl --proto '=https' --tlsv1.2 -fsSL "https://teamwork-graph.atlassian.com/cli/${twg_bin}" -o "${twg_bin}"
+        curl --proto '=https' --tlsv1.2 -fsSL "https://teamwork-graph.atlassian.com/cli/SHA256SUMS-v${TWG_VERSION}" -o twg-sha256sums
+        grep " ${twg_bin}\$" twg-sha256sums | sha256sum -c -
+        install -m 0755 "${twg_bin}" "$bin/twg"
+        rm -f "${twg_bin}" twg-sha256sums
+        echo "$bin" >> "$GITHUB_PATH"
+        "$bin/twg" --version
+
+    - name: Restore the twg sign-in
+      id: restore
+      shell: bash
+      env:
+        AZURE_LOGIN: ${{ inputs.azure-login }}
+        TWG_VAULT: ${{ inputs.vault }}
+        TWG_SECRET: ${{ inputs.secret }}
+      run: |
+        set -euo pipefail
+        # Without Azure there's nowhere to store a rotated token, and refreshing without
+        # storing it breaks the next run for good. So stand down before twg has a file.
+        if [[ "$AZURE_LOGIN" != "success" || -z "$TWG_VAULT" ]]; then
+          echo "::error::could not sign in to Azure (or the TWG_KEY_VAULT variable is unset), so the twg sign-in was left unspent and Jira and Confluence are skipped"
+          echo "restored=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        umask 077
+        raw="$RUNNER_TEMP/twg-auth.raw"
+        err="$RUNNER_TEMP/twg-kv.err"
+        trap 'rm -f "$raw" "$err"' EXIT
+        kv_code() { grep -oE '\([A-Za-z]+\)' "$err" 2>/dev/null | head -1 | tr -d '()' || true; }
+
+        if ! az keyvault secret show --vault-name "$TWG_VAULT" --name "$TWG_SECRET" \
+            -o tsv --query value > "$raw" 2> "$err"; then
+          code=$(kv_code)
+          echo "::error::could not read $TWG_SECRET from the $TWG_VAULT Key Vault (${code:-no error code}). Seeding it is in README.md"
+          echo "restored=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        refresh=$(tr -d '\r' < "$raw" | sed -n 's/^oauth-refresh-token=//p' | head -1)
+        if [[ -z "$refresh" ]]; then
+          echo "::error::$TWG_SECRET holds no oauth-refresh-token. Re-seed it (README.md)"
+          echo "restored=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        echo "::add-mask::$refresh"
+
+        # Stored without its access token (an hour's life, and most of the file).
+        mkdir -p "$HOME/.config/twg"
+        tr -d '\r' < "$raw" | grep -v '^oauth-access-token=' > "$HOME/.config/twg/auth.conf"
+        # The sha of what the vault holds, so twg-store can tell whether twg rotated again.
+        sha256sum < "$HOME/.config/twg/auth.conf" | cut -d' ' -f1 > "$RUNNER_TEMP/twg-auth.sha"
+        echo "restored=true" >> "$GITHUB_OUTPUT"
+
+    - name: Refresh the twg sign-in
+      id: refresh
+      if: steps.restore.outputs.restored == 'true'
+      shell: bash
+      env:
+        TWG_VAULT: ${{ inputs.vault }}
+        TWG_SECRET: ${{ inputs.secret }}
+      run: |
+        set -uo pipefail
+        conf="$HOME/.config/twg/auth.conf"
+        err="$RUNNER_TEMP/twg-kv.err"
+        pack() { tr -d '\r' < "$conf" | grep -v '^oauth-access-token='; }
+        # From a file, because --value would put the token on a command line, and to
+        # /dev/null, because `secret set` echoes the value it stored.
+        store() {
+          local tmp rc=0
+          tmp=$(mktemp "$RUNNER_TEMP/twg-auth.XXXXXX") || return 1
+          if pack > "$tmp"; then
+            az keyvault secret set --vault-name "$TWG_VAULT" --name "$TWG_SECRET" \
+              --file "$tmp" --encoding utf-8 > /dev/null 2> "$err" || rc=$?
+          else
+            rc=1
+          fi
+          rm -f "$tmp"
+          return "$rc"
+        }
+
+        # Output discarded: nothing twg prints about its credentials belongs in a public log.
+        rc=0
+        twg auth refresh --force >/dev/null 2>&1 || rc=$?
+        if (( rc == 77 )); then
+          # Atlassian rejected the stored token: revoked, 90 days unused, or a lost rotation.
+          touch "$RUNNER_TEMP/twg-rejected"
+          echo "::error::Atlassian rejected the stored twg sign-in (twg auth refresh exit 77). Re-seed $TWG_SECRET as in README.md"
+          echo "signed_in=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        if (( rc != 0 )); then
+          echo "::error::twg auth refresh exited $rc, so Jira and Confluence are skipped this run"
+          echo "signed_in=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        refresh=$(pack | sed -n 's/^oauth-refresh-token=//p' | head -1)
+        if [[ -z "$refresh" ]]; then
+          echo "::error::auth.conf holds no oauth-refresh-token after a refresh"
+          echo "signed_in=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        echo "::add-mask::$refresh"
+
+        # Store the rotated token now, before anything else can fail. If this fails, twg-store
+        # retries, and fails the job if it can't.
+        if store; then
+          pack | sha256sum | cut -d' ' -f1 > "$RUNNER_TEMP/twg-auth.sha"
+          echo "stored the rotated twg sign-in"
+        else
+          echo "::error::could not store the rotated twg sign-in. The store step will retry"
+        fi
+        rm -f "$err"
+
+        # Only the one boolean is read, never the report, which names the account.
+        ok=$(twg doctor -o json --output-summary none 2>/dev/null | jq -r '.data.connectivity.ok // false' 2>/dev/null || true)
+        if [[ "$ok" == "true" ]]; then
+          echo "signed_in=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "::error::twg doctor cannot reach Atlassian after a refresh"
+          echo "signed_in=false" >> "$GITHUB_OUTPUT"
+        fi
