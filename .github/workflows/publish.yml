@@ -30,7 +30,7 @@ on:
 permissions: {}
 
 env:
-  TWG_VERSION: '1.3.9' # as .devcontainer/Dockerfile in hmcts/cft-workspace
+  TWG_VERSION: '1.4.4'
   TWG_VAULT: ${{ vars.TWG_KEY_VAULT }}
   TWG_SECRET: ${{ vars.TWG_SECRET_NAME || 'twg-auth-conf-pcs-progress-tracker' }}
   QA_TWG_SECRET: ${{ vars.QA_TWG_SECRET_NAME || 'twg-auth-conf-pcs-progress-tracker-qa' }}
