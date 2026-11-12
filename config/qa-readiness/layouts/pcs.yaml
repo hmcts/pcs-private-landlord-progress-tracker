@@ -1,0 +1,57 @@
+# The PCS QA readiness report: a "Release Information" table, then a "QA Readiness Checklist"
+# table (No / Question / Status / Comments / Evidence), as on the R1.3A report.
+#
+# Each row names the rule that answers it. `good` is the answer that means "no concern":
+# a passing rule shows it, a failing rule shows the other one. Rules with no mechanical source
+# (`human`) take their answer from the Jira ticket set in the release's human_rows, if any.
+# Rows are matched to a page's rows by `key`, the text of the first cell, or by the regex `match`.
+
+title: QA Readiness Report – {release}
+intro:
+  - As we continue to improve our testing maturity and strengthen our QA processes, the following readiness checklist has been completed to support the Release Approval Meeting.
+  - Where applicable, supporting evidence has been provided. Any items marked as N/A include an explanation.
+
+info:
+  heading: Release Information
+  columns: [Item, Details]
+  widths: [178, 1133]
+  rows:
+    - { key: Release, rule: release }
+    - { key: Release Type, rule: human }
+    - { key: Jira Board, rule: dashboards }
+    - { key: Jira Tickets, rule: human }
+    - { key: Test Environments, rule: human }
+    - { key: External Dependencies, rule: human }
+    - { key: External Risks, rule: human }
+    - { key: Outstanding Bugs, rule: outstanding-bugs }
+    - { key: GIT, rule: repos }
+    - { key: GIT Revision, match: '^GIT Revision\b', rule: revisions }
+
+checklist:
+  heading: QA Readiness Checklist
+  columns: [No, Question, Status, Comments / Evidence]
+  widths: [49, 334, 60, 924]
+  rows:
+    - { key: '1', rule: sonar-coverage, question: Is unit test coverage greater than 80% for all services? }
+    - { key: '2', rule: sonar-quality-gate, question: Have all SonarCloud Quality Gates passed? }
+    - { key: '3', rule: integration-contract, question: Have all Integration and Contract Tests passed? }
+    - { key: '4', rule: functional, question: Have all Functional Automation Tests passed? }
+    - { key: '5', rule: human, question: Have all Cross Browser Tests passed? }
+    - { key: '6', rule: perf-signoff, question: Have all Performance Tests passed? }
+    - { key: '7', rule: perf-required, question: Was any additional Performance Testing required? }
+    - { key: '8', rule: security-signoff, question: Has Security Testing been completed? }
+    - { key: '9', rule: human, good: 'No', question: Was any additional Manual Accessibility Testing required? }
+    - { key: '10', rule: yarn-audit, good: 'No', question: Has Yarn Audit reported any vulnerabilities? }
+    - { key: '11', rule: sonar-security, good: 'No', question: Have SonarJava / Static Analysis checks reported any vulnerabilities? }
+    - { key: '12', rule: dependency-check, good: 'No', question: Has Dependency Checker reported any vulnerabilities? }
+    - { key: '13', rule: human, good: 'No', question: Has OWASP ZAP Scanner reported any High or Medium vulnerabilities? }
+    - { key: '14', rule: deployed-aat, question: Has the Release Candidate been deployed to AAT/SIT? }
+    - { key: '15', rule: ignored-tests, good: 'No', question: 'Are any Automation Tests ignored, removed or pending?' }
+    - { key: '16', rule: human, question: Has the Manual Regression Test Suite passed successfully? }
+    - { key: '17', rule: human, question: Have dependent services completed validation? }
+    - { key: '18', rule: human, question: Was formal Business Acceptance Testing (BAT) required? }
+    - { key: '19', rule: human, question: Has the Product Owner signed off the stories? }
+    - { key: '20', rule: test-complete, question: Have Test Complete comments been added to all Stories and Defects? }
+    - { key: '21', rule: high-defects, question: Have all Critical and High Priority defects been resolved? }
+    - { key: '22', rule: human, question: Have remaining defects been triaged and prioritised? }
+    - { key: '23', rule: human, question: Has testing been completed using representative Production-like environments? }

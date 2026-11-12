@@ -25,7 +25,8 @@ GitHub Pages and rebuilt every weekday morning.
    the generator behind cft-workspace's `/pcs:roadmap` poster. It saves
    `data/snapshots/<date>.json` and commits it. The site is built only from these
    snapshots, and together they give the burn-up chart.
-2. Builds the site with Eleventy and the [GOV.UK Eleventy plugin](https://govuk-eleventy-plugin.x-govuk.org/),
+2. Updates the QA readiness report of each active release on Confluence (below).
+3. Builds the site with Eleventy and the [GOV.UK Eleventy plugin](https://govuk-eleventy-plugin.x-govuk.org/),
    and deploys it to GitHub Pages.
 
 If Jira can't be read, the site is still built from the last snapshot and shows an
@@ -80,6 +81,100 @@ npm test
 npm run typecheck
 ```
 
+## QA readiness report
+
+`npm run qa-report -- --release R1.3A` fills in a release's QA readiness report on Confluence.
+It is internal, not part of the site: nothing it collects is committed, published or printed.
+
+```sh
+npm run qa-report -- --release R1.3A                 # dry run: collect, render, merge
+npm run qa-report -- --release R1.3A --validate      # also have twg check the edits, without writing
+npm run qa-report -- --release R1.3A --publish       # update the page (the release must be active)
+npm run qa-report -- --release R1.3A --evidence      # re-render from the last run's evidence.json
+npm run qa-report -- --release R1.4 --create-under <parentPageId> [--publish]   # no report_page yet
+npm run qa-report -- --release R1.3A --judgement     # rows a person answers, from judgement.yaml
+npm run qa-report -- --all-active [--publish]        # every release with active: true and a report_page
+```
+
+Each release has `config/qa-readiness/<release>.yaml`: the `candidates` (a full commit SHA per
+repo for each release candidate), the `repos` (GitHub name, Sonar project key, the Jenkinsfile's
+`product` and `component` for Cosmos, and `builder`), `jql` for the release's tickets,
+`report_page` and `ria_page` (Confluence page ids), `human_rows` (the Jira ticket whose status
+answers a row a person signs off) and `active`. The page's rows and questions are in
+`config/qa-readiness/layouts/`. `npm run validate` checks both. This repo is public, so these files
+hold only page ids, repo names, SHAs, Sonar keys and Jira keys.
+
+| Source | Rows |
+|---|---|
+| SonarCloud (public API), the analysis of each candidate commit | coverage, quality gate, static analysis |
+| Cosmos `pipeline-metrics` and `cve-reports` (databases `jenkins` and `sds-jenkins`), the Jenkins builds of each candidate commit | integration and contract, functional, deployed to AAT, yarn audit, dependency check |
+| GitHub check runs on each candidate commit | integration and contract, functional, deployed to AAT |
+| The source at each candidate commit | ignored or pending tests |
+| Jira, through twg | outstanding bugs, Critical and High bugs, test complete comments, rows in `human_rows` |
+| The Release Impact Assessment, through twg | performance and security sign-off |
+
+A source that can't be read leaves its rows "To confirm" with the reason, and the run carries on.
+A row passes only when every check it asks for passes: Cosmos and GitHub are alternatives for the
+same build check, but a closed `human_rows` ticket never makes up for a check that couldn't be made.
+Only Jenkins builds that finished count, the latest of each job.
+Cosmos is read with a read-only key in `COSMOS_PIPELINE_METRICS_KEY` if set, else your `az login`,
+which needs a Cosmos DB data-plane reader role. Without one, the rows only Jenkins can answer
+(yarn audit and dependency check) come out "To confirm".
+
+Evidence, the rendered report and the merge go to `.cache/qa/<release>/` (gitignored), or
+`$RUNNER_TEMP/qa` in CI, or `QA_CACHE_DIR`. `diff.txt` there says what a publish would change.
+`--evidence` reuses the `evidence.json` there, and `--judgement` reads `judgement.yaml` (or
+`judgement.json`) beside it. A `--config` file must be in `config/qa-readiness/` or the cache
+directory. When a run fails it prints only what kind of failure it was;
+the error itself is appended to `errors.log` in the cache directory.
+
+The cells the pipeline writes begin with a hidden anchor macro, `qa-auto-<row>-<cell>-<hash>`, the
+hash being of the cell's text, links and macros. A publish replaces only those cells, and only while
+they still match the hash. Edit a cell, even just a link in it, and the pipeline leaves it alone from
+then on, and leaves the other cell of that row alone too; delete a row and it is added back.
+
+Classic pages are edited through their draft. If the draft holds changes nobody has published yet,
+publishing ours would publish theirs too, so `--publish` and `--validate` leave that page alone and
+say "page has unpublished edits; skipped". The run doesn't fail; the next one tries again.
+
+Some rows have nothing to answer them mechanically, and come out "To confirm". `--judgement`
+takes their answers from `judgement.yaml` in the release's cache directory, keyed by row
+number, with a `status` (Yes, No or N/A), a `comment` and optional `links`:
+
+```yaml
+'16': { status: 'Yes', comment: Manual regression on V2 passed., links: [{ text: HDPI-8908, url: 'https://hmcts.atlassian.net/browse/HDPI-8908' }] }
+```
+
+Those cells are written without the marker, so once published they are a person's like any
+other, and no later run changes them. They are written only over a cell the pipeline still owns
+and nobody has edited, or into a missing row: if someone has written either cell of a row, the
+row is left as it is. The file holds internal detail, so it goes in the cache directory. The
+project skill `/qa-readiness-report` (`.claude/skills/qa-readiness-report/`)
+walks an agent through it: the release config, a dry run, researching each row in Jira and
+Confluence, drafting the judgements, and publishing once you've seen the diff and said so.
+Run locally, edits are made as your own twg login.
+
+### In the Publish workflow
+
+The Publish workflow runs `npm run qa-report -- --all-active --publish` after reading the
+roadmap, with the same twg sign-in, so Confluence edits are made as whoever seeded the twg secret
+(see "Jira sign-in"), and that account needs edit rights on each report page. It runs only on
+`master` and only once twg is signed in. Each release is done on its own; if any fails, the run
+is marked as failed, but the site is still deployed. Evidence goes to `$RUNNER_TEMP/qa` and the
+log gets only counts. To stop a release being updated, set `active: false` in its config.
+
+Cosmos needs one of:
+
+- The account's read-only key in the `COSMOS_PIPELINE_METRICS_KEY` repository secret. It's a
+  copy of `cve-cosmos-readonly-key` in the `dtsse-aat` Key Vault, which dtsse-github-metrics'
+  CVE collector also reads; copy it again if that key is rotated. Only the report step gets it.
+- The *Cosmos DB Built-in Data Reader* data-plane role on the `pipeline-metrics` account
+  (subscription DCD-CNP-Prod) for the workflow's app registration, read as the `azure/login`
+  sign-in. That would remove the stored key, but it's a platform request.
+
+With neither, yarn audit and dependency check stay "To confirm", and the rest of the report is
+still filled in.
+
 ## Setup
 
 1. In Settings → Pages, set the source to **GitHub Actions**.
@@ -92,6 +187,7 @@ npm run typecheck
 |---|---|
 | `TWG_AZURE_CLIENT_ID` | Client ID of the app registration the workflow signs in to Azure as |
 | `AZURE_TENANT_ID` | The HMCTS Azure tenant ID |
+| `COSMOS_PIPELINE_METRICS_KEY` | Optional. The `pipeline-metrics` Cosmos read-only key, for the QA readiness report |
 
 | Variable | What it is |
 |---|---|
