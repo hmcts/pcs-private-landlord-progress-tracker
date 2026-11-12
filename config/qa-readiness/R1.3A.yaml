@@ -1,0 +1,46 @@
+# The R1.3A release's QA readiness report, as published on Confluence page 311427238.
+# The fields are explained in README.md, "QA readiness report". This file is public: put only
+# repo names, commit SHAs, Sonar keys, Jira keys and page ids in it.
+
+release: R1.3A
+active: false
+layout: pcs
+report_page: '311427238'
+ria_page: '267481004' # PCS-3.0.0 - Civil Possession Digital EA Release Impact Assessment
+jql: project = HDPI AND labels in ("R1.3A", "R1.3A_Version2")
+bug_types: [Bug, Issue]
+
+candidates:
+  - name: V1 # code freeze 8 to 16 September 2026
+    shas:
+      pcs-api: e11f333989ad16e73efc00a06882f9d36bc26444
+      pcs-frontend: a25f6121da3a13da2acd9377ed8d4df8b37754bd
+  - name: V2 # code freeze 18 September 2026
+    shas:
+      pcs-api: a8606ea0ce95532cd7d270baeb6a07881082259e
+      pcs-frontend: 5b8fb2e8578af40c76312cb1437e387048a78dec
+
+repos:
+  pcs-api:
+    github: hmcts/pcs-api
+    sonar: uk.gov.hmcts.reform:pcs-api-2
+    cosmos_product: pcs
+    cosmos_component: api
+    builder: gradle
+  pcs-frontend:
+    github: hmcts/pcs-frontend
+    sonar: pcs-frontend
+    cosmos_product: pcs
+    cosmos_component: frontend
+    builder: yarn
+
+# Rows a person answers, keyed by row number: the Jira ticket(s) whose status backs the answer.
+human_rows:
+  '6': HDPI-8960 # performance test report
+  '16': HDPI-8908 # manual regression, V2
+  '17': [HDPI-8670, HDPI-8671] # integration testing with Your support and PCQ
+
+dashboards:
+  - { label: R1.3A Release Candidate Version 1, url: 'https://hmcts.atlassian.net/jira/dashboards/10910' }
+  - { label: R1.3A Release Candidate Version 2, url: 'https://hmcts.atlassian.net/jira/dashboards/12291' }
+  - { label: R1.3A Defect release dashboard, url: 'https://hmcts.atlassian.net/jira/dashboards/10750' }

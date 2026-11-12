@@ -3,6 +3,9 @@ name: Publish
 # Reads the roadmap from Jira, commits the day's snapshot, rebuilds the site and deploys it
 # to GitHub Pages. If Jira can't be read, the site is still built from the last snapshot
 # (with an "out of date" warning), and the run is marked as failed so someone notices.
+# While twg is signed in, it also updates the QA readiness report of each active release in
+# Confluence (README.md, "QA readiness report"). A failure there fails the run too, but never
+# stops the site being deployed.
 #
 # Jira is read through twg, the Atlassian CLI, the same way hmcts/cft-workspace's doc-drift
 # workflow reads Confluence. twg has no runner-friendly credential (its OAuth login is
@@ -40,6 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       fetch: ${{ steps.fetch.outcome }}
+      qa: ${{ steps.qa.outcome }}
     steps:
       - uses: actions/checkout@v7
 
@@ -189,6 +193,37 @@ jobs:
         continue-on-error: true
         run: npm run fetch
 
+      # Edits are made as whoever seeded the twg secret. Cosmos is read as the Azure sign-in
+      # above, unless the COSMOS_KEY_SECRET_NAME variable names a read-only key in the same
+      # vault, which then exists only in this step. Evidence stays in $RUNNER_TEMP, and the log
+      # gets only counts.
+      - name: Update the QA readiness reports
+        id: qa
+        if: steps.twg.outputs.signed_in == 'true' && github.ref == 'refs/heads/master'
+        continue-on-error: true
+        timeout-minutes: 20
+        env:
+          QA_CACHE_DIR: ${{ runner.temp }}/qa
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          COSMOS_KEY_SECRET: ${{ vars.COSMOS_KEY_SECRET_NAME }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$COSMOS_KEY_SECRET" ]]; then
+            err="$RUNNER_TEMP/cosmos-kv.err"
+            if key=$(az keyvault secret show --vault-name "$TWG_VAULT" --name "$COSMOS_KEY_SECRET" \
+                -o tsv --query value 2> "$err") && [[ -n "$key" ]]; then
+              echo "::add-mask::$key"
+              export COSMOS_PIPELINE_METRICS_KEY="$key"
+            else
+              code=$(grep -oE '\([A-Za-z]+\)' "$err" 2>/dev/null | head -1 | tr -d '()' || true)
+              echo "::warning::could not read $COSMOS_KEY_SECRET from the $TWG_VAULT Key Vault (${code:-no error code}), so Cosmos is read as the Azure sign-in"
+            fi
+            rm -f "$err"
+            unset key
+          fi
+          npm run qa-report -- --all-active --publish
+
       - name: Store the twg sign-in if it rotated again
         if: always() && steps.twg-restore.outputs.restored == 'true'
         run: |
@@ -273,4 +308,13 @@ jobs:
       - if: needs.build.outputs.fetch != 'success'
         run: |
           echo "::error::Couldn't read the roadmap from Jira, so the site was built from the last snapshot. The build job's log says why."
+          exit 1
+
+  qa:
+    needs: [build, deploy]
+    runs-on: ubuntu-latest
+    steps:
+      - if: needs.build.outputs.qa == 'failure'
+        run: |
+          echo "::error::Couldn't update every active release's QA readiness report. The build job's log says which, and why."
           exit 1

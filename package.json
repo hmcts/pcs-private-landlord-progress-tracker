@@ -8,6 +8,7 @@
   },
   "scripts": {
     "fetch": "node --no-warnings scripts/fetch-roadmap.ts",
+    "qa-report": "node --no-warnings scripts/qa-report.ts",
     "validate": "node --no-warnings scripts/validate-data.ts",
     "build": "npm run validate && eleventy",
     "start": "eleventy --serve",
@@ -16,6 +17,8 @@
   },
   "dependencies": {
     "@11ty/eleventy": "3.1.8",
+    "@azure/cosmos": "4.10.2",
+    "@azure/identity": "4.14.1",
     "@x-govuk/govuk-eleventy-plugin": "9.0.2",
     "js-yaml": "5.5.0",
     "pdfkit": "0.20.2"
