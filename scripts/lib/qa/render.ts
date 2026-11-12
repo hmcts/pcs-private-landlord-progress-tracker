@@ -16,6 +16,7 @@ import type { Layout, LayoutRow, ReleaseConfig } from './config.ts'
 import { type El, esc, find, fingerprint, type Node, parse, shortHash } from './html.ts'
 import type { Judgement, Judgements } from './judgement.ts'
 import { day, short } from './sources/common.ts'
+import { browse } from './sources/jira.ts'
 import type { Answer, Evidence, EvidenceItem, Link, Status } from './types.ts'
 import { str } from './util.ts'
 
@@ -101,8 +102,6 @@ export function evaluateRow(row: LayoutRow, table: 'info' | 'checklist', cfg: Re
   return { table, key: row.key, label: row.question ?? row.key, rule: row.rule, status, answer, needsJudgement, lines, keep }
 }
 
-const browse = (key: string): Link => ({ text: key, url: `https://hmcts.atlassian.net/browse/${key}` })
-
 /** The info table's rows that come from the config rather than evidence. */
 function infoLines(row: LayoutRow, cfg: ReleaseConfig, ev: Evidence): Line[] | null {
   switch (row.rule) {
@@ -155,7 +154,14 @@ export function evaluate(cfg: ReleaseConfig, layout: Layout, ev: Evidence): Resu
     }
     return { ...res, lines: [] }
   })
-  return { info, checklist: layout.checklist.rows.map((r) => evaluateRow(r, 'checklist', cfg, ev)) }
+  const checklist = layout.checklist.rows.map((r) => evaluateRow(r, 'checklist', cfg, ev))
+  // The run date is not the date of every cell: say which kept what an earlier run wrote.
+  const kept = [...info.filter((r) => r.keep).map((r) => r.key), ...checklist.filter((r) => r.keep).map((r) => `row ${r.key}`)]
+  const generated = info.find((r) => r.rule === 'generated')
+  if (generated && kept.length) {
+    generated.lines.push({ text: `Kept from an earlier run, as a source could not be read: ${kept.join(', ')}.`, links: [] })
+  }
+  return { info, checklist }
 }
 
 // ------------------------------------------------------------------ HTML

@@ -76,9 +76,9 @@ export const TEST_COMPLETE = String.raw`test(ing)?\s+(is\s+|has\s+been\s+)?(comp
 const CLOSED_UNDONE = /withdrawn|won.?t|cancel|duplicate|rejected|not required/i
 
 const withdrawn = (i?: JiraIssue) => CLOSED_UNDONE.test(i?.status?.name ?? '')
-const done = (i?: JiraIssue) => i?.status?.statusCategory?.key === 'done' && !withdrawn(i)
+const done = (i?: JiraIssue) => i?.status?.statusCategory?.key === 'done'
 
-const browse = (key: string) => ({ text: key, url: `${JIRA}/browse/${key}` })
+export const browse = (key: string): { text: string; url: string } => ({ text: key, url: `${JIRA}/browse/${key}` })
 const jqlLink = (text: string, jql: string) => ({ text, url: `${JIRA}/issues/?jql=${encodeURIComponent(jql)}` })
 
 type Now = (() => Date) | undefined
@@ -112,7 +112,7 @@ async function bugItems(cfg: ReleaseConfig, run: AsyncTwgRunner, now: Now): Prom
   }
 }
 
-/** Whether a ticket has a test complete comment, or null when its long thread couldn't be read. */
+/** Whether a ticket has a test complete comment, reading the whole of a long thread; null when that read failed. */
 async function hasTestComplete(w: JiraIssue, re: RegExp, run: AsyncTwgRunner): Promise<boolean | null> {
   const comments = w.comment?.comments ?? []
   if (comments.some((c) => re.test(adfText(c.body)))) return true
@@ -128,7 +128,9 @@ async function hasTestComplete(w: JiraIssue, re: RegExp, run: AsyncTwgRunner): P
 /** "Test complete" comments, and how many of the stories, tasks and bugs are done: one query for both. */
 async function workItems(cfg: ReleaseConfig, run: AsyncTwgRunner, now: Now): Promise<Item[]> {
   try {
-    const workJql = `(${cfg.jql}) AND issuetype in (Story, Task, Bug)`
+    // A feature counts every bug type it names among its work; a release keeps to Bug, as it always has.
+    const types = cfg.kind === 'feature' ? ['Story', 'Task', ...(cfg.bug_types ?? ['Bug'])].map((t) => `"${t}"`).join(', ') : 'Story, Task, Bug'
+    const workJql = `(${cfg.jql}) AND issuetype in (${types})`
     const re = new RegExp(cfg.test_complete_pattern ?? TEST_COMPLETE, 'i')
     // Withdrawn or duplicate tickets were never going to be tested.
     const work = (await query(workJql, 'comment,issuetype,status', run)).filter((w) => !CLOSED_UNDONE.test(w.status?.name ?? ''))
@@ -138,18 +140,18 @@ async function workItems(cfg: ReleaseConfig, run: AsyncTwgRunner, now: Now): Pro
       value: `${work.length - open.length} of ${work.length} stories, tasks and bugs are done`, links: [...links, ...open.slice(0, 15).map(browse)],
       note: work.length ? undefined : 'there are no stories, tasks or bugs in scope', data: { total: work.length, open } }, now)
     const missing: string[] = []
-    const truncated: string[] = []
+    const unread: string[] = []
     for (const w of work) {
       const found = await hasTestComplete(w, re, run)
       if (found === false) missing.push(w.key)
-      else if (found === null) truncated.push(w.key)
+      else if (found === null) unread.push(w.key)
     }
-    const tested = work.length - missing.length - truncated.length
-    return [item({ source: SOURCE, rule: 'test-complete', status: missing.length ? 'fail' : truncated.length ? 'unknown' : 'pass',
+    const tested = work.length - missing.length - unread.length
+    return [item({ source: SOURCE, rule: 'test-complete', status: missing.length ? 'fail' : unread.length ? 'unknown' : 'pass',
       value: `${tested} of ${work.length} stories, tasks and bugs have a test complete comment`,
       links: [...links, ...missing.slice(0, 15).map(browse)],
-      note: truncated.length ? `${truncated.length} had more comments than Jira returned` : undefined,
-      unreachable: !missing.length && truncated.length > 0, data: { total: work.length, missing, truncated } }, now), finished]
+      note: unread.length ? `the comments of ${unread.length} could not be read in full` : undefined,
+      unreachable: !missing.length && unread.length > 0, data: { total: work.length, missing, unread } }, now), finished]
   } catch (e) {
     const note = `Jira could not be read: ${reason(e)}`
     return ['test-complete', 'stories-done'].map((rule) => item({ source: SOURCE, rule, status: 'unknown', value: 'not checked', note, unreachable: true }, now))

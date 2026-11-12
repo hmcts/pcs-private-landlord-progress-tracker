@@ -10,7 +10,7 @@
 
 import { gunzipSync } from 'node:zlib'
 import type { Candidate, ReleaseConfig } from '../config.ts'
-import { mapLimit, runCommand } from '../util.ts'
+import { mapLimit, runCommand, SHA } from '../util.ts'
 import { HttpError, item, type Item, reason, short } from './common.ts'
 
 const SOURCE = 'github'
@@ -184,16 +184,38 @@ export function* untar(tar: Buffer): Generator<{ path: string; body: Buffer }> {
 /** Picks the files a scan covers, from a repo-relative path and the file's text. */
 export type ScanScope = (path: string, text: string) => boolean
 
-/** The test files under `testPaths` (a regex over repo-relative paths), or those `scope` picks. */
-export function scanTarball(gz: Buffer, testPaths = DEFAULT_TEST_PATHS, scope?: ScanScope): { files: number; findings: Finding[] } {
+/** Test files named as Playwright, Jest and the Node test runner name them: x.spec.ts, x.test.js. */
+export const SPEC_FILE = /\.(spec|test)\.[cm]?[jt]sx?$/
+
+export interface Scan {
+  files: number
+  findings: Finding[]
+  /** With a scope: every spec file under the test paths, whether in scope or not. */
+  specs?: string[]
+  /** With a scope: the spec files in it. */
+  scoped?: string[]
+}
+
+/**
+ * The test files under `testPaths` (a regex over repo-relative paths). With a `scope`, only the
+ * spec files among them that it picks: a page object or helper that mentions a tag is not a test.
+ */
+export function scanTarball(gz: Buffer, testPaths = DEFAULT_TEST_PATHS, scope?: ScanScope): Scan {
   const isTest = new RegExp(testPaths)
   const findings: Finding[] = []
+  const specs: string[] = []
+  const scoped: string[] = []
   let files = 0
   for (const e of untar(gunzipSync(gz))) {
     const path = e.path.replace(/^[^/]+\//, '') // codeload puts everything under <owner>-<repo>-<sha>/
-    if (!SCANNED.test(path) || path.includes('node_modules/') || (!scope && !isTest.test(path))) continue
+    if (!SCANNED.test(path) || path.includes('node_modules/') || !isTest.test(path)) continue
     const body = e.body.toString('utf8')
-    if (scope && !scope(path, body)) continue
+    if (scope) {
+      if (!SPEC_FILE.test(path)) continue
+      specs.push(path)
+      if (!scope(path, body)) continue
+      scoped.push(path)
+    }
     files++
     const pats = PATTERNS.filter((p) => p.files.test(path))
     body.split('\n').forEach((text, n) => {
@@ -206,7 +228,7 @@ export function scanTarball(gz: Buffer, testPaths = DEFAULT_TEST_PATHS, scope?: 
       }
     })
   }
-  return { files, findings }
+  return scope ? { files, findings, specs, scoped } : { files, findings }
 }
 
 /** The ignored-tests finding for a scan; `c` is null for a scan that belongs to no candidate (a feature's E2E specs). */
@@ -254,27 +276,34 @@ export function githubReader(cfg: ReleaseConfig, api: GitHubApi = defaultGitHubA
 
 // ------------------------------------------------------------------ latest finished build
 
-export const SHA_RE = /^[0-9a-f]{40}$/
-
 /** How far back from the branch head to look for a commit whose Jenkins build has finished. */
 export const LOOKBACK = 30
 
-const JENKINS_STATUS = 'continuous-integration/jenkins/'
+/** The status Jenkins sets on a branch build's commit; PR builds set pr-head or pr-merge instead. */
+export const BRANCH_STATUS = 'continuous-integration/jenkins/branch'
+
+/** Commits whose status is read at once, newest first, before looking further back. */
+export const STATUS_BATCH = 4
 
 /**
- * The newest commit on `branch` whose Jenkins build has finished, passed or failed: the
- * commit status Jenkins sets for the whole build (continuous-integration/jenkins/branch) is
- * anything but pending. Null when none of the last LOOKBACK commits has one.
+ * The newest commit on `branch` whose Jenkins branch build has finished, passed or failed: its
+ * BRANCH_STATUS is anything but pending. Null when none of the last LOOKBACK commits has one.
+ * Statuses are read a batch at a time, so a recent hit costs one round.
  */
 export async function latestFinished(api: GitHubApi, gh: string, branch: string): Promise<{ sha: string; date?: string } | null> {
-  const commits = await api(`repos/${gh}/commits?sha=${encodeURIComponent(branch)}&per_page=${LOOKBACK}`) as
+  const listed = await api(`repos/${gh}/commits?sha=${encodeURIComponent(branch)}&per_page=${LOOKBACK}`) as
     { sha?: unknown; commit?: { committer?: { date?: string } } }[]
-  for (const c of Array.isArray(commits) ? commits : []) {
-    const sha = typeof c.sha === 'string' && SHA_RE.test(c.sha) ? c.sha : null
-    if (!sha) continue
+  const commits = (Array.isArray(listed) ? listed : []).flatMap((c) =>
+    (typeof c.sha === 'string' && SHA.test(c.sha) ? [{ sha: c.sha, date: c.commit?.committer?.date }] : []))
+  const finished = async (sha: string) => {
     const st = await api(`repos/${gh}/commits/${sha}/status`) as { statuses?: { context?: string; state?: string }[] }
-    const jenkins = (st.statuses ?? []).filter((x) => typeof x.context === 'string' && x.context.startsWith(JENKINS_STATUS))
-    if (jenkins.some((x) => x.state && x.state !== 'pending')) return { sha, date: c.commit?.committer?.date }
+    return (st.statuses ?? []).some((x) => x.context === BRANCH_STATUS && !!x.state && x.state !== 'pending')
+  }
+  for (let n = 0; n < commits.length; n += STATUS_BATCH) {
+    const batch = commits.slice(n, n + STATUS_BATCH)
+    const done = await mapLimit(batch, STATUS_BATCH, (c) => finished(c.sha))
+    const hit = batch.find((_, k) => done[k])
+    if (hit) return hit.date ? hit : { sha: hit.sha }
   }
   return null
 }

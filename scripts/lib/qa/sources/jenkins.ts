@@ -4,9 +4,13 @@
 //   <job>/lastCompletedBuild/api/json (or <job>/<n>/api/json): the build, and the commit it built
 //   <job>/<n>/testReport/api/json: each test's result, as the JUnit plugin keeps it
 //
-// The feature's tests are picked by Playwright tag, which Playwright puts in the test's title
-// ("Private landlord makes a claim @privateLandlord › …"), or by spec path, which is the case's
-// className, relative to Playwright's testDir. Playwright's JUnit report has one case per test,
+// The feature's tests are picked by Playwright tag or by spec path. A tag written in a title
+// ("Private landlord makes a claim @privateLandlord › …") is in the case's name, but one given as
+// test('…', { tag: '@x' }) is not: Playwright's JUnit reporter writes the title path as the name
+// and only annotations as properties. So a case is also the feature's when its spec file is one
+// the ignored-tests scan found carrying the tag (or under the paths), which keeps the E2E row and
+// the ignored-tests row about the same tests. The case's className is its spec path relative to
+// Playwright's testDir; it is matched to a repo path through the spec files of that scan. Playwright's JUnit report has one case per test,
 // with its last attempt's result; a test that passed only on a retry still lists its earlier
 // attempt's attachments, from a "-retry<n>/" results folder, in its stdout. That is how a flaky
 // test is told apart: stdout is read for that and never kept. Not every E2E stage publishes its
@@ -25,14 +29,16 @@
 
 import type { E2eConfig, ReleaseConfig, RepoConfig } from '../config.ts'
 import { QaError } from '../errors.ts'
-import { isRec, str } from '../util.ts'
+import { isRec, mapLimit, SEGMENT, SHA, str } from '../util.ts'
 import { HttpError, item, type Item, reason, short } from './common.ts'
 import { repoFromGitUrl } from './cve.ts'
-import { defaultTarball, type GitHubTarball, ignoredItem, scanTarball, SHA_RE } from './github.ts'
+import { defaultTarball, type GitHubTarball, ignoredItem, type Scan, scanTarball } from './github.ts'
 
 const SOURCE = 'jenkins'
 export const JENKINS = 'https://build.hmcts.net'
 export const E2E_RULES = ['e2e-feature', 'e2e-build', 'ignored-tests-feature']
+/** Repos whose E2E builds are read at once. */
+export const E2E_CONCURRENCY = 4
 
 /** GET a Jenkins path (no host), returning parsed JSON. Injected in tests. */
 export type JenkinsGet = (path: string) => Promise<unknown>
@@ -85,13 +91,17 @@ export function defaultJenkins(env: NodeJS.ProcessEnv = process.env): JenkinsGet
   }
 }
 
-const SEGMENT = /^[\w.-]+$/
+const isSegment = (s: string) => SEGMENT.test(s) && s !== '.' && s !== '..'
 
-/** /job/<folder>/job/<repo>/job/<branch>, every segment checked and encoded. */
+/**
+ * /job/<folder>/job/<repo>/job/<branch>, every name checked and encoded. A multibranch job names
+ * a branch's job by the branch URL-encoded (feature/x is the job feature%2Fx), and that name is
+ * encoded again in its URL.
+ */
 export function jobPath(job: string, branch: string): string {
-  const segs = [...job.split('/'), branch]
-  if (!segs.every((s) => SEGMENT.test(s) && s !== '.' && s !== '..')) throw new QaError('bad-argument', 'a Jenkins job is folder names and a branch only')
-  return segs.map((s) => `/job/${encodeURIComponent(s)}`).join('')
+  const folders = job.split('/')
+  if (!folders.every(isSegment) || !branch.split('/').every(isSegment)) throw new QaError('bad-argument', 'a Jenkins job is folder names and a branch only')
+  return [...folders, encodeURIComponent(branch)].map((s) => `/job/${encodeURIComponent(s)}`).join('')
 }
 
 /** lastCompletedBuild, or a build number rebuilt from its value. */
@@ -103,7 +113,7 @@ export function buildRef(build: unknown): string {
 }
 
 const BUILD_TREE = 'number,result,building,url,actions[_class,revision[hash,pullHash],lastBuiltRevision[SHA1],remoteUrls]'
-const REPORT_TREE = 'suites[cases[className,name,status,skipped,errorDetails,flakyFailures[message],rerunFailures[message],stdout]]'
+const REPORT_TREE = 'suites[cases[className,name,status,skipped,errorDetails,flakyFailures[message],rerunFailures[message],properties,stdout]]'
 
 /**
  * The commit the build ran: a PR build's head (pullHash), else the branch revision Jenkins
@@ -112,7 +122,7 @@ const REPORT_TREE = 'suites[cases[className,name,status,skipped,errorDetails,fla
  */
 export function revisionOf(build: unknown, github: string): string | null {
   const actions = isRec(build) && Array.isArray(build.actions) ? build.actions.filter(isRec) : []
-  const sha = (v: unknown) => (typeof v === 'string' && SHA_RE.test(v) ? v : null)
+  const sha = (v: unknown) => (typeof v === 'string' && SHA.test(v) ? v : null)
   for (const key of ['pullHash', 'hash']) {
     const hit = actions.map((a) => (isRec(a.revision) ? sha(a.revision[key]) : null)).find((x) => x)
     if (hit) return hit
@@ -132,11 +142,24 @@ export function hasTag(text: string, tag: string): boolean {
 
 const trimSlash = (p: string) => (p.endsWith('/') ? p.slice(0, -1) : p)
 
+/** The repo path of a case's spec file: the one spec file whose path ends with its className. */
+export function repoPathOf(className: string, specs: string[]): string | null {
+  const hits = specs.filter((s) => s === className || s.endsWith(`/${className}`))
+  return hits.length === 1 ? hits[0] : null
+}
+
 /**
- * Whether a case's className, relative to Playwright's testDir, is under a repo-relative path:
- * some tail of the path, from a folder boundary, is the className or a folder it is in.
+ * Whether a case's className, relative to Playwright's testDir, is under a repo-relative path. With
+ * the repo's spec files, the className is mapped to its repo path, so the path may be a spec file,
+ * a folder inside testDir, testDir itself or a folder above it. Without them, only some tail of the
+ * path, from a folder boundary, can be matched: the className itself or a folder it is in.
  */
-export function underPath(className: string, path: string): boolean {
+export function underPath(className: string, path: string, specs?: string[]): boolean {
+  const full = specs ? repoPathOf(className, specs) : null
+  if (full) {
+    const p = trimSlash(path)
+    return full === p || full.startsWith(`${p}/`)
+  }
   const parts = trimSlash(path).split('/')
   for (let n = 0; n < parts.length; n++) {
     const tail = parts.slice(n).join('/')
@@ -166,19 +189,35 @@ export interface E2eCase {
   error?: string
 }
 
+/** Whether one of the case's JUnit properties names the tag. */
+const propsHaveTag = (props: unknown, tag: string) => isRec(props) && Object.entries(props).some(([k, v]) => hasTag(k, tag) || hasTag(str(v), tag))
+
 const allCases = (report: unknown) => {
   const suites = isRec(report) && Array.isArray(report.suites) ? report.suites.filter(isRec) : []
   return suites.flatMap((s) => (Array.isArray(s.cases) ? s.cases.filter(isRec) : []))
 }
 
-const SPEC_FILE = /\.[cm]?[jt]sx?$/
+const SCRIPT = /\.[cm]?[jt]sx?$/
 
-/** Whether a report holds any Playwright results: a case whose className is a spec file, not a Java class. */
-export const hasPlaywright = (report: unknown): boolean => allCases(report).some((c) => SPEC_FILE.test(str(c.className)))
+/** Whether a report holds any Playwright results: a case whose className is a script file, not a Java class. */
+export const hasPlaywright = (report: unknown): boolean => allCases(report).some((c) => SCRIPT.test(str(c.className)))
 
-/** The report's cases that are the feature's: by tag in the title, or by spec path. */
-export function featureCases(report: unknown, e2e: E2eConfig): E2eCase[] {
-  return allCases(report).filter((c) => (e2e.tags ?? []).some((t) => hasTag(str(c.name), t)) || (e2e.paths ?? []).some((p) => underPath(str(c.className), p)))
+/**
+ * The report's cases that are the feature's: by tag in the title or a property, by spec path, or
+ * because their spec file is one the scan found in scope (scan.scoped). Without a scan, only the
+ * first two.
+ */
+export function featureCases(report: unknown, e2e: E2eConfig, scan?: Scan): E2eCase[] {
+  const tags = e2e.tags ?? []
+  const scoped = new Set(scan?.scoped ?? [])
+  const picked = (c: Record<string, unknown>) => {
+    const className = str(c.className)
+    if (tags.some((t) => hasTag(str(c.name), t) || propsHaveTag(c.properties, t))) return true
+    if ((e2e.paths ?? []).some((p) => underPath(className, p, scan?.specs))) return true
+    const full = scan?.specs ? repoPathOf(className, scan.specs) : null
+    return !!full && scoped.has(full)
+  }
+  return allCases(report).filter(picked)
     .map((c) => {
       const o = outcome(c)
       const out: E2eCase = { className: str(c.className), name: str(c.name), outcome: o }
@@ -195,21 +234,23 @@ export function specScope(e2e: E2eConfig): (path: string, text: string) => boole
 
 type Now = (() => Date) | undefined
 
-async function scopedScan(repo: string, rc: RepoConfig, e2e: E2eConfig, sha: string | null, tarball: GitHubTarball, now: Now): Promise<Item> {
+/** The feature's spec files at the E2E build's commit, and the ignored-tests finding for them. */
+async function scopedScan(repo: string, rc: RepoConfig, e2e: E2eConfig, sha: string | null, tarball: GitHubTarball, now: Now): Promise<{ item: Item; scan?: Scan }> {
   const rule = 'ignored-tests-feature'
   const base = { source: 'github', rule, repo, sha, status: 'unknown' as const, value: 'not checked' }
-  if (!sha) return item({ ...base, note: 'Jenkins did not record the commit the E2E build ran' }, now)
+  if (!sha) return { item: item({ ...base, note: 'Jenkins did not record the commit the E2E build ran' }, now) }
   try {
-    const scan = scanTarball(await tarball(rc.github, sha), undefined, specScope(e2e))
-    if (!scan.files) return item({ ...base, note: `no spec file at ${short(sha)} matches the feature's tags or paths` }, now)
-    return ignoredItem(repo, rc.github, sha, null, scan, now, rule)
+    const scan = scanTarball(await tarball(rc.github, sha), rc.test_paths, specScope(e2e))
+    if (!scan.files) return { scan, item: item({ ...base, note: `no spec file at ${short(sha)} matches the feature's tags or paths` }, now) }
+    return { scan, item: ignoredItem(repo, rc.github, sha, null, scan, now, rule) }
   } catch (e) {
-    return item({ ...base, note: `the source at ${short(sha)} could not be read: ${reason(e)}`, unreachable: true }, now)
+    return { item: item({ ...base, note: `the source at ${short(sha)} could not be read: ${reason(e)}`, unreachable: true }, now) }
   }
 }
 
-function resultItem(repo: string, label: string, sha: string | null, report: unknown, e2e: E2eConfig, links: Item['links'], now: Now): Item {
-  const cases = featureCases(report, e2e)
+function resultItem(repo: string, label: string, sha: string | null, report: unknown, e2e: E2eConfig, scan: Scan | undefined,
+  links: Item['links'], now: Now): Item {
+  const cases = featureCases(report, e2e, scan)
   const n = (o: Outcome) => cases.filter((c) => c.outcome === o).length
   const counts = { passed: n('passed'), failed: n('failed'), flaky: n('flaky'), skipped: n('skipped') }
   const ran = counts.passed + counts.flaky
@@ -249,17 +290,18 @@ async function one(repo: string, rc: RepoConfig, e2e: E2eConfig, get: JenkinsGet
   const header = item({ source: SOURCE, rule: 'e2e-build', repo, sha, status: 'pass', links,
     value: `${repo}: ${label}${sha ? ` at ${short(sha)}` : ''}${result ? `, ${result.toLowerCase()}` : ''}`, data: { job, branch, number, result, sha } }, now)
 
+  const specs = await scopedScan(repo, rc, e2e, sha, tarball, now)
   let e2eItem: Item
   try {
     const report = await get(`${path}/${number}/testReport/api/json?tree=${REPORT_TREE}`)
-    e2eItem = resultItem(repo, label, sha, report, e2e, links, now)
+    e2eItem = resultItem(repo, label, sha, report, e2e, specs.scan, links, now)
   } catch (e) {
     e2eItem = e instanceof HttpError && e.status === 404
       ? item({ source: SOURCE, rule: 'e2e-feature', repo, sha, status: 'fail', value: 'no test results', links, note: `${label} published no test results: the E2E suite did not run` }, now)
       : item({ source: SOURCE, rule: 'e2e-feature', repo, sha, status: 'unknown', value: 'not checked', links,
         note: `the test results of ${label} could not be read: ${reason(e)}`, unreachable: true }, now)
   }
-  return [e2eItem, header, await scopedScan(repo, rc, e2e, sha, tarball, now)]
+  return [e2eItem, header, specs.item]
 }
 
 export function jenkinsReader(cfg: ReleaseConfig, get: JenkinsGet = defaultJenkins(), tarball: GitHubTarball = defaultTarball(),
@@ -269,8 +311,6 @@ export function jenkinsReader(cfg: ReleaseConfig, get: JenkinsGet = defaultJenki
     if (!repos.length) {
       return E2E_RULES.map((rule) => item({ source: SOURCE, rule, status: 'unknown', value: 'not checked', note: 'no repo has an E2E build configured' }, now))
     }
-    const out: Item[] = []
-    for (const [repo, rc] of repos) out.push(...await one(repo, rc, rc.e2e!, get, tarball, now))
-    return out
+    return (await mapLimit(repos, E2E_CONCURRENCY, ([repo, rc]) => one(repo, rc, rc.e2e!, get, tarball, now))).flat()
   }
 }

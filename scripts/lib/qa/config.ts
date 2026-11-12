@@ -20,7 +20,7 @@ import { loadYaml } from '../data.ts'
 import { RELEASE_NAME } from './cache.ts'
 import { QaError } from './errors.ts'
 import { JIRA_KEY, jiraKey, PAGE_ID } from './twg.ts'
-import { isRec, nonEmpty, type Rec, str } from './util.ts'
+import { isRec, nonEmpty, type Rec, SEGMENT, SHA, str } from './util.ts'
 
 export const CONFIG_DIR = 'config/qa-readiness'
 export const LAYOUT_DIR = join(CONFIG_DIR, 'layouts')
@@ -111,7 +111,6 @@ export const RELEASE_RULES = new Set(['release', 'revisions'])
 
 const ROW_FIELDS = ['key', 'match', 'rule', 'question', 'good']
 
-const SHA = /^[0-9a-f]{40}$/
 
 /** Whether `v` is a string that compiles as a regular expression. */
 function isRegex(v: unknown, flags?: string): boolean {
@@ -198,7 +197,6 @@ function checkFields(doc: Rec, rules: FieldRule[], where: string): string[] {
   return rules.filter((r) => (r.required || doc[r.key] !== undefined) && !r.ok(doc[r.key])).map((r) => `${where}: "${r.key}" ${r.message}`)
 }
 
-const SEGMENT = /^[\w.-]+$/
 const BRANCH = /^[A-Za-z0-9][\w./-]*$/
 const TAG = /^@[\w-]+$/
 const shaOrBranch = (v: unknown) => typeof v === 'string' && (SHA.test(v) || (BRANCH.test(v) && !v.includes('..')))
@@ -214,7 +212,7 @@ function validateE2e(e2e: unknown, w: string): string[] {
   if (isRec(j)) {
     for (const k of Object.keys(j)) if (!['job', 'branch', 'build'].includes(k)) errors.push(`${w}.jenkins: unknown field "${k}"`)
     if (!segments(j.job)) errors.push(`${w}.jenkins: "job" must be a Jenkins folder path such as HMCTS_j_to_z/pcs-api`)
-    if (typeof j.branch !== 'string' || !SEGMENT.test(j.branch)) errors.push(`${w}.jenkins: "branch" must be a branch job such as PR-1234 or master`)
+    if (!segments(j.branch)) errors.push(`${w}.jenkins: "branch" must be a branch such as PR-1234, master or feature/x`)
     if (j.build !== undefined && j.build !== 'last-completed' && !(Number.isSafeInteger(j.build) && Number(j.build) > 0)) {
       errors.push(`${w}.jenkins: "build" must be last-completed or a build number`)
     }

@@ -8,9 +8,9 @@ import { loadLayout, loadRelease, type ReleaseConfig, validateAll, validateRelea
 import { merge } from '../scripts/lib/qa/publish.ts'
 import { evaluate, genRows, renderPage } from '../scripts/lib/qa/render.ts'
 import { HttpError, type Item } from '../scripts/lib/qa/sources/common.ts'
-import { latestFinished } from '../scripts/lib/qa/sources/github.ts'
+import { latestFinished, scanTarball } from '../scripts/lib/qa/sources/github.ts'
 import { buildRef, defaultJenkins, E2E_RULES, featureCases, hasTag, jenkinsReader, jobPath, outcome, readJenkins, revisionOf,
-  specScope, underPath, Unreachable } from '../scripts/lib/qa/sources/jenkins.ts'
+  repoPathOf, specScope, underPath, Unreachable } from '../scripts/lib/qa/sources/jenkins.ts'
 import { jiraReader } from '../scripts/lib/qa/sources/jira.ts'
 import { riaReader } from '../scripts/lib/qa/sources/ria.ts'
 import type { Evidence } from '../scripts/lib/qa/types.ts'
@@ -53,7 +53,7 @@ describe('feature config', () => {
     'f', loadLayout('pcs-feature')).join('\n')
     for (const m of [/set "release" or "feature", not both/, /"jql" is not used by a feature/, /"candidates" is not used by a feature/,
       /"epics" must be a list of Jira epic keys/, /"commit" must be a branch name or a full/, /"job" must be a Jenkins folder path/,
-      /"branch" must be a branch job/, /"build" must be last-completed or a build number/, /"tags" must be a list of tags/, /"paths" must be a list of repo-relative/]) {
+      /"branch" must be a branch such as/, /"build" must be last-completed or a build number/, /"tags" must be a list of tags/, /"paths" must be a list of repo-relative/]) {
       assert.match(errors, m)
     }
     assert.match(validateRelease({ ...FEATURE_DOC, repos: { r: { github: 'hmcts/r', e2e: { jenkins: { job: 'a', branch: 'b' } } } } }, 'f').join('\n'), /set "tags", "paths" or both/)
@@ -170,7 +170,7 @@ describe('Jenkins E2E reader', () => {
     assert.deepEqual(get.calls, ['/job/HMCTS_j_to_z/job/pcs-frontend/job/PR-2312/lastCompletedBuild/api/json?tree=' +
       'number,result,building,url,actions[_class,revision[hash,pullHash],lastBuiltRevision[SHA1],remoteUrls]',
     '/job/HMCTS_j_to_z/job/pcs-frontend/job/PR-2312/13/testReport/api/json?tree=' +
-      'suites[cases[className,name,status,skipped,errorDetails,flakyFailures[message],rerunFailures[message],stdout]]'])
+      'suites[cases[className,name,status,skipped,errorDetails,flakyFailures[message],rerunFailures[message],properties,stdout]]'])
     const data = e2e.data as { failures: { name: string; error?: string }[] }
     assert.equal(data.failures[0].error, 'secret-failure-detail')
     assert.ok(!JSON.stringify([e2e.value, e2e.note]).includes('secret-failure-detail'), 'failures stay in the evidence data')
@@ -346,5 +346,113 @@ describe('a source that can\'t be read keeps what the page says', () => {
     const html = renderPage(cfg, layout, res)
     assert.match(html, /<h1>QA Readiness Report – private-landlord-make-a-claim<\/h1>/)
     assert.match(html, /https:\/\/hmcts\.atlassian\.net\/browse\/HDPI-10019/)
+  })
+})
+
+describe('review fixes', () => {
+  test('re-read evidence must have a commit for every repo, and only for its repos', () => {
+    const doc = (shas: Record<string, string>) => ({ release: loaded.release, generatedAt: NOW().toISOString(), candidates: [{ name: SERVICE_WIDE, shas }], items: [] })
+    assert.throws(() => evidenceFor(doc({ 'pcs-api': SHA.api2 }), loaded), /other commits than the config's/)
+    assert.throws(() => evidenceFor(doc({ 'pcs-api': SHA.api2, 'pcs-frontend': SHA.fe2, toString: SHA.fe1 }), loaded), /other commits than the config's/)
+    const { toString: _, ...noProto } = { toString: 1, 'pcs-api': SHA.api2 }
+    assert.throws(() => evidenceFor(doc(noProto as Record<string, string>), { ...loaded, repos: { ...loaded.repos, toString: loaded.repos['pcs-api'] } }), /other commits/)
+  })
+
+  test('only the branch build status counts, and statuses are read a batch at a time, newest first', async () => {
+    const sha = (n: number) => n.toString(16).padStart(40, 'b')
+    const calls: string[] = []
+    const api = async (path: string) => {
+      calls.push(path)
+      if (path.includes('/commits?')) return Array.from({ length: 10 }, (_, n) => ({ sha: sha(n + 1) }))
+      const n = Number.parseInt(path.split('/')[4].slice(-1), 16)
+      if (n === 2) return { statuses: [{ context: 'continuous-integration/jenkins/pr-head', state: 'success' }] }
+      if (n === 6 || n === 7) return { statuses: [{ context: 'continuous-integration/jenkins/branch', state: 'success' }] }
+      return { statuses: [{ context: 'continuous-integration/jenkins/branch', state: 'pending' }] }
+    }
+    assert.deepEqual(await latestFinished(api, 'hmcts/pcs-api', 'master'), { sha: sha(6) })
+    assert.equal(calls.length, 1 + 8, 'two batches of four')
+  })
+
+  const tagged = tarball({
+    'src/test/ui/e2eTest/privateLandlord.spec.ts': "test('claim', { tag: '@privateLandlord' }, () => {})\ntest.skip('later', () => {})\n",
+    'src/test/ui/e2eTest/other.spec.ts': "test('other', () => {})\n",
+    'src/test/ui/smokeTest/smoke.spec.ts': "test('smoke', () => {})\n",
+    'src/test/ui/e2eTest/utils/privateLandlord.journey.ts': "// used by @privateLandlord\ntest.skip('not a spec', () => {})\n",
+    'src/test/ui/config/tags.config.ts': "export const TAG = '@privateLandlord'\n",
+  }, 'hmcts-pcs-frontend-3d0d6bb')
+  const e2eCfg = { jenkins: { job: 'HMCTS_j_to_z/pcs-frontend', branch: 'PR-2312' }, tags: ['@privateLandlord'] }
+
+  test('a scoped scan covers spec files only, never a page object or config that mentions the tag', () => {
+    const scan = scanTarball(tagged, undefined, specScope(e2eCfg))
+    assert.deepEqual(scan.scoped, ['src/test/ui/e2eTest/privateLandlord.spec.ts'])
+    assert.equal(scan.specs!.length, 3)
+    assert.deepEqual(scan.findings.map((f) => f.path), ['src/test/ui/e2eTest/privateLandlord.spec.ts'])
+  })
+
+  test('tags given as { tag } are not in the JUnit name, so cases are also picked by the tagged spec files the scan found', async () => {
+    const report = { suites: [{ cases: [
+      { className: 'e2eTest/privateLandlord.spec.ts', name: 'claim', status: 'PASSED' },
+      { className: 'e2eTest/other.spec.ts', name: 'other', status: 'FAILED' },
+      { className: 'e2eTest/other.spec.ts', name: 'by property', status: 'PASSED', properties: { tag: '@privateLandlord' } },
+    ] }] }
+    const scan = scanTarball(tagged, undefined, specScope(e2eCfg))
+    assert.deepEqual(featureCases(report, e2eCfg, scan).map((c) => c.name), ['claim', 'by property'])
+    assert.deepEqual(featureCases(report, e2eCfg).map((c) => c.name), ['by property'], 'without a scan, only names and properties')
+    const items = await jenkinsReader(cfg, jenkins({ report }), async () => tagged, NOW)()
+    assert.equal(items.find((i) => i.rule === 'e2e-feature')!.value, "2 of the feature's tests: 2 passed, 0 failed, 0 flaky, 0 skipped")
+    assert.equal(items.find((i) => i.rule === 'ignored-tests-feature')!.value, '1 ignored or pending (skip ×1) in 1 files')
+  })
+
+  test('a configured path may be a spec file, a folder in testDir, testDir itself or above it, but not a sibling', () => {
+    const specs = ['src/test/ui/e2eTest/a.spec.ts', 'src/test/ui/smokeTest/b.spec.ts']
+    const c = 'e2eTest/a.spec.ts'
+    assert.equal(repoPathOf(c, specs), 'src/test/ui/e2eTest/a.spec.ts')
+    for (const p of ['src/test/ui/e2eTest', 'src/test/ui/e2eTest/', 'src/test/ui', 'src', 'src/test/ui/e2eTest/a.spec.ts']) assert.ok(underPath(c, p, specs), p)
+    for (const p of ['src/test/ui/smokeTest', 'src/test/ui/e2eTest/b.spec.ts', 'src/test/uix']) assert.ok(!underPath(c, p, specs), p)
+    assert.ok(underPath(c, 'src/test/ui/e2eTest'))
+    assert.ok(underPath(c, 'src/test/ui/e2eTest/a.spec.ts'))
+    assert.ok(!underPath(c, 'src/test/ui/smokeTest'))
+  })
+
+  test('a branch with a slash is valid, and its job name is encoded as multibranch encodes it', () => {
+    assert.equal(jobPath('HMCTS_j_to_z/pcs-api', 'feature/x'), '/job/HMCTS_j_to_z/job/pcs-api/job/feature%252Fx')
+    assert.throws(() => jobPath('a', 'feature/../x'), /folder names and a branch only/)
+    const doc = { ...FEATURE_DOC, repos: { r: { github: 'hmcts/r', e2e: { jenkins: { job: 'a/b', branch: 'feature/HDPI-1-x' }, tags: ['@x'] } } } }
+    assert.deepEqual(validateRelease(doc, 'f'), [])
+  })
+
+  test("stories-done counts the config's bug types for a feature; a release's query is as it was", async () => {
+    const jqls: string[] = []
+    const run = fakeTwg((args) => {
+      jqls.push(jqlOf(args))
+      return { data: { issues: [] } }
+    })
+    await jiraReader({ ...cfg, bug_types: ['Bug', 'Issue'] }, run, NOW)()
+    assert.ok(jqls.includes('(parent in (HDPI-10019)) AND issuetype in ("Story", "Task", "Bug", "Issue")'))
+    jqls.length = 0
+    await jiraReader({ ...cfg, kind: 'release', jql: 'project = HDPI' }, run, NOW)()
+    assert.ok(jqls.includes('(project = HDPI) AND issuetype in (Story, Task, Bug)'))
+  })
+
+  test('a long comment thread is read in full; only a failed read leaves it unknown and unreachable', async () => {
+    const work = (key: string) => ({ key, status: { name: 'Closed', statusCategory: { key: 'done' } }, comment: { total: 30, comments: [{ body: 'chatter' }] } })
+    const answer = (failThread: boolean) => fakeTwg((args) => {
+      if (args[2] === 'comment') return failThread ? new Error('twg exited 1') : { data: [{ body: 'Testing is complete' }], pageInfo: { hasNextPage: false } }
+      return { data: { issues: jqlOf(args).includes('issuetype in') ? [work('HDPI-5')] : [] } }
+    })
+    const read = (await jiraReader(cfg, answer(false), NOW)()).find((i) => i.rule === 'test-complete')!
+    assert.equal(read.status, 'pass')
+    const failed = (await jiraReader(cfg, answer(true), NOW)()).find((i) => i.rule === 'test-complete')!
+    assert.deepEqual([failed.status, failed.unreachable, failed.note], ['unknown', true, 'the comments of 1 could not be read in full'])
+  })
+
+  test('the Generated row is the run date, and names the rows kept from an earlier run', () => {
+    const e = { release: cfg.release, generatedAt: NOW().toISOString(), candidates: cfg.candidates,
+      items: fileUnderRows(layout, [fact({ rule: 'e2e-feature', status: 'unknown', repo: 'pcs-frontend', unreachable: true }),
+        fact({ rule: 'e2e-build', status: 'unknown', repo: 'pcs-frontend', unreachable: true })]) }
+    const gen = evaluate(cfg, layout, e).info.find((r) => r.rule === 'generated')!
+    assert.deepEqual(gen.lines.map((l) => l.text), ['19 Sep 2026', 'Kept from an earlier run, as a source could not be read: E2E build, row 9.'])
+    const fresh = evaluate(cfg, layout, { ...e, items: [] }).info.find((r) => r.rule === 'generated')!
+    assert.deepEqual(fresh.lines.map((l) => l.text), ['19 Sep 2026'])
   })
 })

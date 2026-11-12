@@ -9,6 +9,12 @@ import { QaError } from './errors.ts'
 
 export type Rec = Record<string, unknown>
 
+/** A full commit SHA. */
+export const SHA = /^[0-9a-f]{40}$/
+
+/** One name in a path: a Jenkins folder or job, a repo folder or file. */
+export const SEGMENT = /^[\w.-]+$/
+
 export const isRec = (v: unknown): v is Rec => !!v && typeof v === 'object' && !Array.isArray(v)
 
 export const nonEmpty = (v: unknown): v is string => typeof v === 'string' && v.trim() !== ''
