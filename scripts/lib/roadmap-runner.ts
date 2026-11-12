@@ -34,6 +34,7 @@ import { execFileSync } from 'node:child_process'
 import { createWriteStream, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import PDFDocument from 'pdfkit'
+import { inside } from './paths.ts'
 
 // ------------------------------------------------------------------ types
 
@@ -112,6 +113,7 @@ export const toDate = (iso: string): Date => new Date(`${iso.slice(0, 10)}T00:00
 export const iso = (d: Date): string => d.toISOString().slice(0, 10)
 export const addDays = (isoDate: string, n: number): string => iso(new Date(toDate(isoDate).getTime() + n * DAY))
 export const daysBetween = (a: string, b: string): number => Math.round((toDate(b).getTime() - toDate(a).getTime()) / DAY)
+const byCodeUnit = (a: string, b: string): number => Number(a > b) - Number(a < b)
 
 /** Last day of the month that `isoDate` falls in. */
 export function endOfMonth(isoDate: string): string {
@@ -141,7 +143,7 @@ export function fmt(isoDate: string, style: 'dd Mon' | 'dd Mon yyyy' | 'd Mon' |
 // ------------------------------------------------------------------ config + model
 
 export function loadConfig(path: string): Config {
-  const cfg = JSON.parse(readFileSync(path, 'utf8')) as Config
+  const cfg = JSON.parse(readFileSync(inside('config', path), 'utf8')) as Config
   for (const k of ['title', 'project', 'jira_url', 'start', 'lanes'] as const) {
     if (cfg[k] === undefined) throw new Error(`config ${path} is missing "${k}"`)
   }
@@ -168,7 +170,10 @@ export function laneOf(issue: Issue, lanes: Lane[]): number | null {
 const isEpic = (i: Issue) => i.issuetype.name === 'Epic'
 
 /** Strips the "(Product Cat Ref: …)" suffixes HDPI puts in epic summaries. */
-export const clean = (t: string): string => t.replace(/\s*\(Product Cat Ref[^)]*\)?/g, '').trim()
+export const clean = (t: string): string => {
+  const parts = t.split(/\(Product Cat Ref[^)]*\)?/)
+  return parts.map((p, i) => (i < parts.length - 1 ? p.trimEnd() : p)).join('').trim()
+}
 
 export function buildModel(cfg: Config, all: Issue[], today: string): Model {
   const issues = new Map(all.map((i) => [i.key, i]))
@@ -190,8 +195,8 @@ export function buildModel(cfg: Config, all: Issue[], today: string): Model {
     if (!(start && due)) {
       const dated = (children.get(e.key) ?? []).filter((c) => c.customfield_10015 && c.duedate)
       if (dated.length) {
-        start = dated.map((c) => c.customfield_10015!.slice(0, 10)).sort()[0]
-        due = dated.map((c) => c.duedate!.slice(0, 10)).sort().at(-1)!
+        start = dated.map((c) => c.customfield_10015!.slice(0, 10)).sort(byCodeUnit)[0]
+        due = dated.map((c) => c.duedate!.slice(0, 10)).sort(byCodeUnit).at(-1)!
         derived = dated.length
       } else {
         start = due = null
@@ -220,7 +225,7 @@ export function buildModel(cfg: Config, all: Issue[], today: string): Model {
   })
 
   const dueDates = [...dates.values()].map((d) => d.due).filter((d): d is string => !!d)
-  const last = [...dueDates, cfg.end ?? addDays(cfg.start, 89)].sort().at(-1)!
+  const last = [...dueDates, cfg.end ?? addDays(cfg.start, 89)].sort(byCodeUnit).at(-1)!
   const end = endOfMonth(last)
 
   const fsSet = new Set<string>()
@@ -231,7 +236,7 @@ export function buildModel(cfg: Config, all: Issue[], today: string): Model {
       else if (l.inwardIssue) fsSet.add(`${l.inwardIssue.key}>${i.key}`)
     }
   }
-  const fs = [...fsSet].sort().map((p) => p.split('>') as [string, string])
+  const fs = [...fsSet].sort(byCodeUnit).map((p) => p.split('>') as [string, string])
     .filter(([p, s]) => dates.get(p)?.start && dates.get(s)?.start)
   const clashes = fs.filter(([p, s]) => dates.get(p)!.due! >= dates.get(s)!.start!)
 
@@ -273,7 +278,7 @@ export function twgQuery(jql: string, run: TwgRunner = defaultRunner): Issue[] {
 }
 
 export function epicJql(cfg: Config): string {
-  const labels = [...new Set(cfg.lanes.map((l) => l.label))].sort().map((l) => `"${l}"`).join(', ')
+  const labels = [...new Set(cfg.lanes.map((l) => l.label))].sort(byCodeUnit).map((l) => `"${l}"`).join(', ')
   return `project = ${cfg.project} AND issuetype = Epic AND labels in (${labels}) ORDER BY key`
 }
 
@@ -302,7 +307,7 @@ const CAT_BG: Record<string, string> = { new: '#dfe1e6', indeterminate: '#deebff
 
 /** Mixes `hex` towards white by fraction f (0 = unchanged, 1 = white). */
 export function tint(hex: string, f: number): string {
-  const n = parseInt(hex.slice(1), 16)
+  const n = Number.parseInt(hex.slice(1), 16)
   const ch = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((c) => Math.round(c + (255 - c) * f))
   return '#' + ch.map((c) => c.toString(16).padStart(2, '0')).join('')
 }

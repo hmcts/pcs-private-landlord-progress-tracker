@@ -30,7 +30,7 @@ const truncate = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}
 
 /** Mixes a hex colour with white; f = 0 is the colour, 1 is white. */
 function tint(hex: string, f: number): string {
-  const n = parseInt(hex.slice(1), 16)
+  const n = Number.parseInt(hex.slice(1), 16)
   const ch = (s: number) => Math.round(((n >> s) & 255) + (255 - ((n >> s) & 255)) * f)
   return `#${[16, 8, 0].map((s) => ch(s).toString(16).padStart(2, '0')).join('')}`
 }
