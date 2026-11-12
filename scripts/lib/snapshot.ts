@@ -91,7 +91,7 @@ export function itemRows(children: Issue[], start: string, end: string, browse: 
   const share = Math.max(1, Math.floor((daysBetween(start, end) + 1) / Math.max(1, undated.length)))
   const forecast = new Map(undated.map((w, i) => {
     const from = addDays(start, i * share)
-    const to = i === undated.length - 1 ? [end, from].sort().at(-1)! : addDays(from, share - 1)
+    const to = i === undated.length - 1 ? (from > end ? from : end) : addDays(from, share - 1)
     return [w.key, { start: from, due: to }]
   }))
   return work.map(({ issue: c, key, summary }) => {
