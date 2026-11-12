@@ -13,10 +13,12 @@ export const NOT_PUBLIC = 'not-public'
 
 /** Adds the not-public exclusion, keeping any ORDER BY at the end. */
 export function publicJql(jql: string): string {
-  const m = /\s+ORDER\s+BY\s+.*$/i.exec(jql)
-  const where = m ? jql.slice(0, m.index) : jql
+  const m = [...jql.matchAll(/\sORDER\s+BY(?=\s)/gi)]
+    .find((o) => !/[\n\r\u2028\u2029]/.test(jql.slice(o.index + o[0].length).trimStart()))
+  let cut = m ? m.index : jql.length
+  while (m && cut > 0 && /\s/.test(jql[cut - 1])) cut--
   // `labels not in (...)` alone would also drop every issue that has no labels at all.
-  return `(${where}) AND (labels is EMPTY OR labels not in ("${NOT_PUBLIC}"))${m ? m[0] : ''}`
+  return `(${jql.slice(0, cut)}) AND (labels is EMPTY OR labels not in ("${NOT_PUBLIC}"))${jql.slice(cut)}`
 }
 
 export function publicRunner(run: TwgRunner = defaultRunner): TwgRunner {

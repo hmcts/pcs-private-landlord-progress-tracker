@@ -10,6 +10,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parseArgs } from 'node:util'
+import { inside } from './lib/paths.ts'
 import { buildModel, fetchIssues, loadConfig, renderPdf } from './lib/roadmap-runner.ts'
 import { toSnapshot } from './lib/snapshot.ts'
 import { publicRunner } from './public-twg.ts'
@@ -23,13 +24,14 @@ const { values } = parseArgs({
 
 const now = new Date()
 const today = values.today ?? now.toISOString().slice(0, 10)
+if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) throw new Error(`--today must be YYYY-MM-DD, got "${today}"`)
 const cfg = loadConfig(values.config!)
 const { issues, epics } = fetchIssues(cfg, publicRunner())
 const model = buildModel(cfg, issues, today)
 const snapshot = toSnapshot(cfg, model, now)
 
 mkdirSync('data/snapshots', { recursive: true })
-const out = join('data/snapshots', `${today}.json`)
+const out = inside('data/snapshots', join('data/snapshots', `${today}.json`))
 writeFileSync(out, JSON.stringify(snapshot, null, 2) + '\n')
 
 mkdirSync('build', { recursive: true })
