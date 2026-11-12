@@ -78,6 +78,26 @@ describe('Jira', () => {
     assert.deepEqual(items.map((i) => [i.data!.row, i.status, i.answer]), [['16', 'pass', undefined], ['17', 'pass', 'N/A'], ['18', 'unknown', undefined]])
   })
 
+  test('a key Jira refuses leaves only its own row unknown', async () => {
+    const cfg = { ...CFG, human_rows: { '16': 'HDPI-8908', '17': ['HDPI-8670', 'HDPI-9999'] } }
+    const inner = jira({ human: [{ key: 'HDPI-8908', status: status('Closed') }, { key: 'HDPI-8670', status: status('Closed') }] })
+    const keyQueries: string[] = []
+    const run = fakeTwg((args) => {
+      const jql = jqlOf(args)
+      if (jql.startsWith('key in')) {
+        keyQueries.push(jql)
+        if (jql.includes('HDPI-9999')) return new Error('twg exited 1')
+        const all = JSON.parse(inner(args)) as { data: { issues: { key: string }[] } }
+        return page(all.data.issues.filter((i) => jql.includes(i.key)))
+      }
+      return JSON.parse(inner(args))
+    })
+    const items = (await jiraReader(cfg, run, NOW)()).filter((i) => i.rule === 'human')
+    assert.deepEqual(items.map((i) => [i.data!.row, i.status]), [['16', 'pass'], ['17', 'unknown']])
+    assert.match(items[1].note!, /^Jira could not read HDPI-9999/)
+    assert.equal(keyQueries.length, 1 + 3)
+  })
+
   test('only reads, and a failing query leaves just its rows unknown', async () => {
     const run = jira({ failWork: true })
     const items = await jiraReader(CFG, run, NOW)()

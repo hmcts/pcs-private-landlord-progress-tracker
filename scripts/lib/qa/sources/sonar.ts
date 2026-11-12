@@ -18,15 +18,20 @@ interface Analysis {
   revision?: string
 }
 
-export async function findAnalysis(project: string, sha: string, get: HttpJson = httpJson): Promise<Analysis | null> {
+/** Every analysis SonarCloud keeps for a project, newest first. */
+export async function analyses(project: string, get: HttpJson = httpJson): Promise<Analysis[]> {
+  const out: Analysis[] = []
   for (let p = 1; p <= MAX_PAGES; p++) {
     const page = await get(`${SONAR}/api/project_analyses/search?project=${encodeURIComponent(project)}&ps=500&p=${p}`) as
       { paging: { total: number; pageSize: number }; analyses: Analysis[] }
-    const hit = page.analyses.find((a) => a.revision === sha)
-    if (hit) return hit
-    if (p * page.paging.pageSize >= page.paging.total || page.analyses.length === 0) return null
+    out.push(...page.analyses)
+    if (p * page.paging.pageSize >= page.paging.total || page.analyses.length === 0) break
   }
-  return null
+  return out
+}
+
+export async function findAnalysis(project: string, sha: string, get: HttpJson = httpJson): Promise<Analysis | null> {
+  return (await analyses(project, get)).find((a) => a.revision === sha) ?? null
 }
 
 const METRICS = ['coverage', 'vulnerabilities', 'security_hotspots', 'security_rating']
@@ -47,6 +52,12 @@ export function sonarReader(cfg: ReleaseConfig, get: HttpJson = httpJson, now?: 
   const threshold = cfg.coverage_threshold ?? 80
   return async () => {
     const out: Item[] = []
+    // Each candidate's commits are looked up in the same history, so read it once per project.
+    const history = new Map<string, Promise<Analysis[]>>()
+    const find = async (project: string, sha: string) => {
+      if (!history.has(project)) history.set(project, analyses(project, get))
+      return (await history.get(project)!).find((a) => a.revision === sha) ?? null
+    }
     for (const c of cfg.candidates) {
       for (const [repo, sha] of Object.entries(c.shas)) {
         const project = cfg.repos[repo]?.sonar
@@ -55,7 +66,7 @@ export function sonarReader(cfg: ReleaseConfig, get: HttpJson = httpJson, now?: 
             note: 'no Sonar project is configured for the repo' }, now)))
           continue
         }
-        out.push(...await one(repo, project, sha, c, threshold, get, now))
+        out.push(...await one(repo, project, sha, c, threshold, get, find, now))
       }
     }
     return out
@@ -63,13 +74,13 @@ export function sonarReader(cfg: ReleaseConfig, get: HttpJson = httpJson, now?: 
 }
 
 async function one(repo: string, project: string, sha: string, c: Candidate, threshold: number, get: HttpJson,
-  now?: () => Date): Promise<Item[]> {
+  find: (project: string, sha: string) => Promise<Analysis | null>, now?: () => Date): Promise<Item[]> {
   const base = { source: SOURCE, sha, repo, candidate: c.name }
   const links = [{ text: `SonarCloud ${repo}`, url: `${SONAR}/summary/overall?id=${encodeURIComponent(project)}` }]
   const unknown = (note: string) => SONAR_RULES.map((rule) => item({ ...base, rule, status: 'unknown', value: 'not checked', links, note }, now))
   let analysis: Analysis | null
   try {
-    analysis = await findAnalysis(project, sha, get)
+    analysis = await find(project, sha)
   } catch (e) {
     return unknown(`SonarCloud could not be read: ${reason(e)}`)
   }

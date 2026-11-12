@@ -16,6 +16,9 @@ import type { Layout, LayoutTable, ReleaseConfig } from './config.ts'
 import { cellsOf, type El, esc, parse, rowsOf, shortHash, splice, tableAfterHeading, textOf } from './html.ts'
 import { cellText, type CellName, type GenCell, type GenRow, MARKER, markerRow, markers, rowHtml, tableHtml } from './render.ts'
 import type { TwgRunner } from '../roadmap-runner.ts'
+import { QaError } from './errors.ts'
+import { pageId } from './twg.ts'
+import { str } from './util.ts'
 
 export interface Edit {
   name: 'replaceNode' | 'insertNodeAfter' | 'appendNodeToEnd'
@@ -122,12 +125,14 @@ export function merge(page: string, layout: Layout, rows: GenRow[]): MergeResult
                 : undefined
         return [{ gen, td, base, held, before }]
       })
-      // A judgement's status and comment go in together or not at all, so a person's answer is
-      // never left beside a comment that disagrees with it.
-      const blocked = cells.some((c) => c.gen.judged && c.held)
+      // A row's status and comment are replaced together or not at all, so a person's answer is
+      // never left beside a comment that disagrees with it. A judgement also waits for a row it
+      // can write whole.
+      const personal = (c: Cell) => c.held?.action === 'keep-human' || c.held?.action === 'keep-edited'
+      const blocked = cells.some(personal) || cells.some((c) => c.gen.judged && c.held)
       for (const c of cells) {
         if (c.held) changes.push(c.gen.judged && !c.held.why ? { ...c.held, why: 'the judgement was not written' } : c.held)
-        else if (c.gen.judged && blocked) changes.push({ ...c.base, action: 'skipped', why: 'a person has written the rest of this row' })
+        else if (blocked) changes.push({ ...c.base, action: 'skipped', why: 'a person has written the rest of this row' })
         else {
           const td = c.td!
           const inner = c.gen.html.replace(/^<td[^>]*>/, '').replace(/<\/td>$/, '')
@@ -200,20 +205,21 @@ export function twgJson(run: TwgRunner, args: string[]): { ok: boolean; out: Rec
   try {
     return { ok: true, out: JSON.parse(run(args)) }
   } catch (e) {
-    const stdout = String((e as { stdout?: unknown }).stdout ?? '')
+    const raw = (e as { stdout?: unknown }).stdout
+    const stdout = typeof raw === 'string' ? raw : Buffer.isBuffer(raw) ? raw.toString('utf8') : ''
     try {
       return { ok: false, out: JSON.parse(stdout) }
     } catch {
-      throw new Error(`twg ${args.slice(0, 3).join(' ')} failed`)
+      throw new QaError('twg', `twg ${args.slice(0, 3).join(' ')} failed: ${(e as Error).message}`)
     }
   }
 }
 
 export function getPage(run: TwgRunner, id: string, draft: boolean): Page {
-  const args = ['confluence', 'content', 'get', id, '--detail', 'full', '--format', 'html', ...(draft ? ['--draft'] : []), '-o', 'json', '--output-summary', 'none']
+  const args = ['confluence', 'content', 'get', pageId(id), '--detail', 'full', '--format', 'html', ...(draft ? ['--draft'] : []), '-o', 'json', '--output-summary', 'none']
   const { ok, out } = twgJson(run, args)
   const d = out.data
-  if (!ok || !d?.snapshotToken || typeof d.body?.value !== 'string') throw new Error(`could not read page ${id}`)
+  if (!ok || !d?.snapshotToken || typeof d.body?.value !== 'string') throw new QaError('page-read', `could not read page ${id}${draft ? ' (draft)' : ''}`)
   return { id, html: d.body.value, token: d.snapshotToken, spaceId: d.spaceId, title: d.title }
 }
 
@@ -244,24 +250,25 @@ export const sameBody = (a: string, b: string): boolean => {
  * publishing ours would publish theirs, so the page is left alone. `validate` has twg check the
  * edits without writing; `publish` updates with the draft's snapshot token.
  */
-export function publishToPage(run: TwgRunner, pageId: string, layout: Layout, rows: GenRow[], dir: string,
+export function publishToPage(run: TwgRunner, pageArg: string, layout: Layout, rows: GenRow[], dir: string,
   opts: { publish?: boolean; validate?: boolean } = {}): PublishResult {
+  const id = pageId(pageArg)
   const viaDraft = !!(opts.publish || opts.validate)
   const attempt = () => {
-    const live = getPage(run, pageId, false)
-    const page = viaDraft ? getPage(run, pageId, true) : live
+    const live = getPage(run, id, false)
+    const page = viaDraft ? getPage(run, id, true) : live
     if (viaDraft && !sameBody(live.html, page.html)) return { page, m: null }
     const m = merge(page.html, layout, rows)
     writeFileSync(join(dir, 'page.html'), page.html)
     writeFileSync(join(dir, 'merged.html'), m.html)
     writeFileSync(join(dir, 'edits.json'), JSON.stringify(m.edits, null, 2) + '\n')
-    writeFileSync(join(dir, 'diff.txt'), diffSummary(`Page ${pageId}, snapshot ${page.token}`, m.changes))
+    writeFileSync(join(dir, 'diff.txt'), diffSummary(`Page ${id}, snapshot ${page.token}`, m.changes))
     return { page, m }
   }
   const held = (retried: boolean): PublishResult => ({ counts: count([]), published: false, retried, unpublishedEdits: true })
   let { page, m } = attempt()
   if (!m) return held(false)
-  const update = (dry: boolean) => twgJson(run, ['confluence', 'content', 'update', pageId, '--snapshot-token', page.token,
+  const update = (dry: boolean) => twgJson(run, ['confluence', 'content', 'update', id, '--snapshot-token', page.token,
     '--edits-file', join(dir, 'edits.json'), '--ack-body-formats', '--version-message', VERSION_MESSAGE, '-y',
     ...(dry ? ['--dry-run'] : []), '-o', 'json', '--output-summary', 'none'])
 
@@ -282,7 +289,7 @@ export function publishToPage(run: TwgRunner, pageId: string, layout: Layout, ro
     if (!m.edits.length) return { counts: count(m.changes), published: false, retried }
     res = update(false)
   }
-  if (!res.ok || res.out.data?.ok === false) throw new Error(`twg could not update page ${pageId}${retried ? ' after re-reading it' : ''}`)
+  if (!res.ok || res.out.data?.ok === false) throw new QaError('page-update', `twg could not update page ${id}${retried ? ' after re-reading it' : ''}`)
   return { counts: count(m.changes), published: true, retried }
 }
 
@@ -291,12 +298,13 @@ export function createPage(run: TwgRunner, parentId: string, title: string, html
   writeFileSync(file, html)
   if (!publish) return null
   const parent = getPage(run, parentId, false)
-  const { ok, out } = twgJson(run, ['confluence', 'content', 'create', '--content-type', 'page', '--parent-id', parentId,
-    ...(parent.spaceId ? ['--space-id', String(parent.spaceId)] : []), '--title', title, '--body-file', file, '--format', 'html',
+  const space = str(parent.spaceId)
+  const { ok, out } = twgJson(run, ['confluence', 'content', 'create', '--content-type', 'page', '--parent-id', pageId(parentId),
+    ...(/^\d+$/.test(space) ? ['--space-id', space] : []), '--title', title, '--body-file', file, '--format', 'html',
     '--ack-body-formats', '-y', '-o', 'json', '--output-summary', 'none'])
   const id = out.data?.id ?? out.data?.content?.id
-  if (!ok || !id) throw new Error(`twg could not create the page under ${parentId}`)
-  return String(id)
+  if (!ok || !/^\d+$/.test(str(id))) throw new QaError('page-create', `twg could not create the page under ${parentId}`)
+  return str(id)
 }
 
 export function releaseTitle(cfg: ReleaseConfig, layout: Layout): string {

@@ -48,9 +48,18 @@ describe('pipeline-metrics builds', () => {
     assert.ok(!builds[0].stages.has('deprecated_gradle'))
   })
 
-  test('a stage reporting a non-SUCCESS result is the failure', () => {
-    const [b] = toBuilds(build(API_MASTER, 1, 'master', SHA.api2, [['build'], ['test', 'UNSTABLE'], ['sonarscan']], 'Pipeline Failed'))
-    assert.deepEqual([...b.stages], [['build', 'pass'], ['test', 'fail']])
+  test('the first stage reporting a non-SUCCESS result, and the one before it, may be the failure', () => {
+    const [b] = toBuilds(build(API_MASTER, 1, 'master', SHA.api2, [['checkout'], ['build'], ['test', 'UNSTABLE'], ['sonarscan']], 'Pipeline Failed'))
+    assert.deepEqual([...b.stages], [['checkout', 'pass'], ['build', 'fail'], ['test', 'fail']])
+    assert.deepEqual(b.suspects, ['build', 'test'])
+  })
+
+  test('builds that never finished, or were aborted, are not counted', () => {
+    const aborted = build(API_MASTER, 3, 'master', SHA.api2, [['checkout'], ['functionalTest:aat']], 'Pipeline Failed')
+    aborted.at(-1)!.current_build_current_result = 'ABORTED'
+    const builds = toBuilds([...build(API_MASTER, 2, 'master', SHA.api2, [['checkout'], ['functionalTest:aat']]), ...aborted,
+      ...build(API_MASTER, 1, 'master', SHA.api2, [['checkout'], ['functionalTest:aat']], 'Pipeline Succeeded')])
+    assert.deepEqual(builds.map((b) => b.number), [1])
   })
 })
 
@@ -102,6 +111,22 @@ describe('cosmosReader', () => {
     assert.equal(calls, 1)
     assert.equal(items.length, 4 * 4)
     assert.ok(items.every((i) => i.status === 'unknown' && i.note === 'Cosmos pipeline-metrics could not be read: access denied (403)'))
+  })
+
+  test('uses the latest completed build of each job, and says when Jenkins cannot tell which stage failed', async () => {
+    const events = [
+      ...build(API_MASTER, 10, 'master', SHA.api2, [['checkout'], ['smoketest:aat'], ['functionalTest:aat', 'FAILURE']], 'Pipeline Failed'),
+      ...build(API_MASTER, 11, 'master', SHA.api2, [['checkout'], ['smoketest:aat']]),
+      ...build('HMCTS_j_to_z/pcs-api/main', 4, 'main', SHA.api2, [['checkout'], ['pact-consumer-tests']], 'Pipeline Succeeded'),
+    ]
+    const items = await cosmosReader({ ...cfg, candidates: [{ name: 'V2', shas: { 'pcs-api': SHA.api2 } }] },
+      async (container) => (container === 'pipeline-metrics' ? events : []), NOW)()
+    const api = Object.fromEntries(items.map((i) => [i.rule, i]))
+    assert.equal(api.functional.status, 'fail')
+    assert.match(api.functional.value, /master #10/)
+    assert.equal(api.functional.note, "master #10: Jenkins can't tell whether smoketest:aat or functionalTest:aat failed")
+    assert.equal(api['integration-contract'].status, 'pass')
+    assert.match(api['integration-contract'].value, /master #4/)
   })
 
   test('a commit with no build recorded is unknown', async () => {

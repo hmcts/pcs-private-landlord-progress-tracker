@@ -4,8 +4,12 @@
 //   pipeline-metrics: one document per stage of every build, from MetricsPublisher.groovy. The
 //     library's `after:all` callback publishes the stage name as current_step_name once the
 //     stage has run, and "Pipeline Succeeded" / "Pipeline Failed" when the build ends.
-//     current_build_current_result is the build's result at that moment, so a failing stage can
-//     still say SUCCESS: in a failed build, the last stage to report is taken as the failure.
+//     current_build_current_result is the build's result at that moment, and a failing stage can
+//     still say SUCCESS, so the first event that doesn't may come from the stage after the one
+//     that failed. In a failed build, that stage and the one before it are both taken as the
+//     failure (the last stage, if none says otherwise); only stages before them passed, and
+//     nothing is known about later ones. Builds with no final event, or that were aborted,
+//     aren't counted.
 //   cve-reports: one document per security check, from CVEPublisher.groovy:
 //     { build: { build_tag, build_display_name, branch_name, git_url, codebase_type }, report }.
 //     A java report is OWASP dependency-check JSON trimmed to vulnerable dependencies
@@ -79,8 +83,10 @@ export interface Build {
   url: string
   tag: string
   started: string
-  outcome: 'SUCCESS' | 'FAILURE' | 'UNFINISHED'
+  outcome: 'SUCCESS' | 'FAILURE'
   stages: Map<string, 'pass' | 'fail'>
+  /** In a failed build, the stages that may have failed: one, or two Jenkins can't tell apart. */
+  suspects: string[]
 }
 
 export function toBuilds(events: StageEvent[]): Build[] {
@@ -97,18 +103,20 @@ export function toBuilds(events: StageEvent[]): Build[] {
     if (!nightly && !master) continue
     ev.sort((a, b) => (a.current_build_duration ?? 0) - (b.current_build_duration ?? 0))
     const final = ev.filter((e) => FINAL.has(e.current_step_name)).at(-1)
-    const outcome = !final ? 'UNFINISHED' : final.current_step_name === 'Pipeline Succeeded' ? 'SUCCESS' : 'FAILURE'
+    if (!final || final.current_build_current_result === 'ABORTED') continue
+    const outcome = final.current_step_name === 'Pipeline Succeeded' ? 'SUCCESS' : 'FAILURE'
     const stages = ev.filter((e) => !FINAL.has(e.current_step_name) && !WARNING.test(e.current_step_name))
-    let failed = stages.findIndex((e) => e.current_build_current_result && e.current_build_current_result !== 'SUCCESS')
-    if (failed < 0 && outcome === 'FAILURE' && stages.length) failed = stages.length - 1
+    const bad = stages.findIndex((e) => e.current_build_current_result && e.current_build_current_result !== 'SUCCESS')
+    const suspect = outcome === 'SUCCESS' || !stages.length ? [] : bad < 0 ? [stages.length - 1] : [bad - 1, bad].filter((n) => n >= 0)
     const map = new Map<string, 'pass' | 'fail'>()
     stages.forEach((e, n) => {
-      if (failed < 0 || n < failed) map.set(e.current_step_name, 'pass')
-      else if (n === failed) map.set(e.current_step_name, 'fail')
+      if (!suspect.length || n < suspect[0]) map.set(e.current_step_name, 'pass')
+      else if (suspect.includes(n)) map.set(e.current_step_name, 'fail')
     })
     out.push({ job: first.job_name, number: Number(first.build_number), kind: nightly ? 'nightly' : 'master',
       url: ev.find((e) => e.build_url)?.build_url ?? '', tag: ev.find((e) => e.build_tag)?.build_tag ?? '',
-      started: ev.find((e) => e.current_build_scheduled_time)?.current_build_scheduled_time ?? '', outcome, stages: map })
+      started: ev.find((e) => e.current_build_scheduled_time)?.current_build_scheduled_time ?? '', outcome, stages: map,
+      suspects: suspect.map((n) => stages[n].current_step_name) })
   }
   return out.sort((a, b) => b.number - a.number)
 }
@@ -121,18 +129,22 @@ export const STAGE_RULES: Record<string, RegExp> = {
 }
 
 export function stageItems(repo: string, sha: string, c: Candidate, builds: Build[], now?: () => Date): Item[] {
-  const latest = (kind: Build['kind']) => builds.find((b) => b.kind === kind)
-  const picked = [latest('master'), latest('nightly')].filter((b): b is Build => !!b)
+  const picked = [...new Map(builds.map((b) => [b.job, b] as const).reverse()).values()].sort((a, b) =>
+    a.kind === b.kind ? a.job.localeCompare(b.job) : a.kind === 'master' ? -1 : 1)
   const base = { source: SOURCE, sha, repo, candidate: c.name }
   return Object.entries(STAGE_RULES).map(([rule, re]) => {
     const hits: string[] = []
     const links = []
     let pass = 0
     let fail = 0
+    const unsure: string[] = []
     for (const b of picked) {
       const st = [...b.stages].filter(([name]) => re.test(name))
       if (!st.length) continue
       for (const [, s] of st) s === 'pass' ? pass++ : fail++
+      if (b.suspects.length > 1 && st.some(([name, s]) => s === 'fail' && b.suspects.includes(name))) {
+        unsure.push(`${b.kind} #${b.number}: Jenkins can't tell whether ${b.suspects.join(' or ')} failed`)
+      }
       hits.push(`${b.kind} #${b.number}${b.started ? ` (${day(b.started)})` : ''}: ` +
         st.map(([name, s]) => `${name} ${s === 'pass' ? 'passed' : 'failed'}`).join(', '))
       if (b.url) links.push({ text: `${repo} ${b.kind} #${b.number}`, url: b.url })
@@ -141,7 +153,7 @@ export function stageItems(repo: string, sha: string, c: Candidate, builds: Buil
       return item({ ...base, rule, status: 'unknown', value: 'not run',
         note: picked.length ? `no matching stage ran in the Jenkins builds of ${short(sha)}` : `no master or nightly Jenkins build of ${short(sha)} is recorded` }, now)
     }
-    return item({ ...base, rule, status: fail ? 'fail' : 'pass', value: hits.join('; '), links,
+    return item({ ...base, rule, status: fail ? 'fail' : 'pass', value: hits.join('; '), links, note: unsure.join('; ') || undefined,
       data: { builds: picked.map((b) => ({ job: b.job, number: b.number, outcome: b.outcome })) } }, now)
   })
 }

@@ -54,12 +54,17 @@ describe('merge', () => {
   const action = (table: string, key: string, cell: string | null) => m.changes.find((c) => c.table === table && c.key === key && c.cell === cell)?.action
 
   test('replaces generator cells whose evidence changed, keeping their local id and width', () => {
-    assert.equal(action('checklist', '1', 'comments'), 'update')
     assert.equal(action('info', 'Outstanding Bugs', 'details'), 'update')
-    const e = m.edits.find((x) => x.name === 'replaceNode' && x.value.includes('96.1%'))!
-    assert.match(e.value, new RegExp(`^<td data-local-id="${e.localId}" data-colwidth="924">`))
-    assert.match(m.html, /96\.1%/)
-    assert.doesNotMatch(m.html, /95\.0%/)
+    const e = m.edits.find((x) => x.name === 'replaceNode' && x.value.includes('Medium – 1'))!
+    assert.match(e.value, new RegExp(`^<td data-local-id="${e.localId}" data-colwidth="1133">`))
+    assert.doesNotMatch(m.html, /Medium – 2/)
+  })
+
+  test('leaves a row alone once a person has written either of its cells', () => {
+    const c = m.changes.find((x) => x.table === 'checklist' && x.key === '1' && x.cell === 'comments')!
+    assert.deepEqual([c.action, c.why], ['skipped', 'a person has written the rest of this row'])
+    assert.match(m.html, /95\.0%/)
+    assert.doesNotMatch(m.html, /96\.1%/)
   })
 
   test('keeps cells a person wrote, and generator cells a person has since edited', () => {
@@ -72,7 +77,7 @@ describe('merge', () => {
 
   test('leaves unchanged cells alone', () => {
     assert.equal(action('checklist', '2', 'status'), 'unchanged')
-    assert.equal(m.edits.filter((e) => e.name === 'replaceNode').length, 2)
+    assert.equal(m.edits.filter((e) => e.name === 'replaceNode').length, 1)
   })
 
   test('adds a missing row after the row before it', () => {
@@ -145,9 +150,9 @@ describe('publishToPage', () => {
     assert.equal(res.published, false)
     assert.equal(run.calls.length, 1)
     assert.ok(!run.calls[0].includes('--draft'))
-    assert.equal(res.counts.change, 2)
-    assert.match(readFileSync(join(dir, 'diff.txt'), 'utf8'), /2 cells would change, 0 would take a judgement, 1 rows would be added/)
-    assert.equal(JSON.parse(readFileSync(join(dir, 'edits.json'), 'utf8')).length, 3)
+    assert.equal(res.counts.change, 1)
+    assert.match(readFileSync(join(dir, 'diff.txt'), 'utf8'), /1 cells would change, 0 would take a judgement, 1 rows would be added/)
+    assert.equal(JSON.parse(readFileSync(join(dir, 'edits.json'), 'utf8')).length, 2)
   })
 
   // The draft of an unchanged page carries the same content under different local ids.

@@ -5,6 +5,7 @@
 
 import type { ReleaseConfig } from '../config.ts'
 import { defaultRunner, type TwgRunner, twgQuery } from '../../roadmap-runner.ts'
+import { jiraKey } from '../twg.ts'
 import { item, type Item, reason } from './common.ts'
 
 const SOURCE = 'jira'
@@ -28,7 +29,7 @@ export function commentThread(key: string, run: TwgRunner = defaultRunner): { bo
   const out: { body?: unknown }[] = []
   let cursor: string | undefined
   for (;;) {
-    const args = ['jira', 'workitem', 'comment', 'query', '--issue-id', key, '--first', '100', '-o', 'json', '--output-summary', 'none']
+    const args = ['jira', 'workitem', 'comment', 'query', '--issue-id', jiraKey(key), '--first', '100', '-o', 'json', '--output-summary', 'none']
     if (cursor) args.push('--after', cursor)
     const page = JSON.parse(run(args)) as { data: { body?: unknown }[]; pageInfo?: { hasNextPage?: boolean; nextCursor?: string | null } }
     out.push(...page.data)
@@ -126,14 +127,25 @@ export function jiraReader(cfg: ReleaseConfig, run: TwgRunner = defaultRunner, n
     const human = Object.entries(cfg.human_rows ?? {}).map(([row, v]) => [row, Array.isArray(v) ? v : [v]] as const)
     const all = [...new Set(human.flatMap(([, ks]) => ks))]
     if (all.length) {
-      let byKey = new Map<string, JiraIssue>()
-      let error: string | null = null
+      const byKey = new Map<string, JiraIssue>()
+      const failed = new Map<string, string>()
+      const read = (ks: string[]) => {
+        for (const i of query(`key in (${ks.map(jiraKey).join(', ')})`, 'status,issuetype', run)) byKey.set(i.key, i)
+      }
       try {
-        byKey = new Map(query(`key in (${all.join(', ')})`, 'status,issuetype', run).map((i) => [i.key, i]))
-      } catch (e) {
-        error = `Jira could not be read: ${reason(e)}`
+        read(all)
+      } catch {
+        // One deleted or restricted key fails the whole query, so ask for each on its own.
+        for (const k of all) {
+          try {
+            read([k])
+          } catch (e) {
+            failed.set(k, `Jira could not read ${k}: ${reason(e)}`)
+          }
+        }
       }
       for (const [row, keys] of human) {
+        const error = keys.map((k) => failed.get(k)).find((x) => x) ?? null
         const issues = keys.map((k) => byKey.get(k))
         const withdrawn = (i?: JiraIssue) => CLOSED_UNDONE.test(i?.status?.name ?? '')
         const done = (i?: JiraIssue) => i?.status?.statusCategory?.key === 'done' && !withdrawn(i)

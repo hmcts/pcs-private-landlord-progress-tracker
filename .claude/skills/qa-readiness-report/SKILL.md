@@ -53,7 +53,8 @@ npm run qa-report -- --release <release> --validate   # also has twg check the e
 ```
 
 Locally, Cosmos usually answers 403 (no data-plane role), so the Jenkins rows come out
-unknown with a note; that's expected, not a fault to fix. The output is counts only. The detail
+unknown with a note; that's expected, not a fault to fix. The output is counts only, and a
+failure prints only its kind: the reason is in `.cache/qa/errors.log`. The detail
 is in `.cache/qa/<release>/`: `evidence.json` (what each source said), `report.html`,
 `page.html` (the page as read), `merged.html`, `edits.json` and `diff.txt` (what a publish would
 change, and which cells are kept because a person wrote them).

@@ -9,8 +9,10 @@
 import { existsSync } from 'node:fs'
 import { isAbsolute, relative, resolve } from 'node:path'
 import { loadYaml } from '../data.ts'
+import { QaError } from './errors.ts'
 import type { RowResult } from './render.ts'
 import type { Answer, Link } from './types.ts'
+import { isRec, str } from './util.ts'
 
 export interface Judgement {
   status: Answer
@@ -20,8 +22,6 @@ export interface Judgement {
 
 export type Judgements = Record<string, Judgement>
 
-type Rec = Record<string, unknown>
-const isRec = (v: unknown): v is Rec => !!v && typeof v === 'object' && !Array.isArray(v)
 const ANSWERS = ['Yes', 'No', 'N/A']
 const FIELDS = ['status', 'comment', 'links']
 
@@ -38,10 +38,10 @@ export function validateJudgements(doc: unknown, checklist: RowResult[], name = 
       continue
     }
     for (const k of Object.keys(j)) if (!FIELDS.includes(k)) errors.push(`${w}: unknown field "${k}"`)
-    if (!ANSWERS.includes(String(j.status))) errors.push(`${w}: "status" must be Yes, No or N/A (leave the row out to keep it To confirm)`)
+    if (!ANSWERS.includes(str(j.status))) errors.push(`${w}: "status" must be Yes, No or N/A (leave the row out to keep it To confirm)`)
     if (typeof j.comment !== 'string' || !j.comment.trim()) errors.push(`${w}: "comment" is required`)
     if (j.links !== undefined && !(Array.isArray(j.links) && j.links.every((l) =>
-      isRec(l) && typeof l.text === 'string' && l.text.trim() && /^https:\/\/\S+$/.test(String(l.url ?? ''))))) {
+      isRec(l) && typeof l.text === 'string' && l.text.trim() && /^https:\/\/\S+$/.test(str(l.url))))) {
       errors.push(`${w}: "links" must be a list of { text, url } with https urls`)
     }
   }
@@ -52,11 +52,16 @@ export function validateJudgements(doc: unknown, checklist: RowResult[], name = 
 export function loadJudgements(path: string, checklist: RowResult[], root = process.cwd()): Judgements {
   const rel = relative(resolve(root), resolve(root, path))
   if (!rel.startsWith('..') && !isAbsolute(rel) && rel.split(/[\\/]/)[0] !== '.cache') {
-    throw new Error('the judgement file must be outside the repo or under .cache/, as it holds internal detail')
+    throw new QaError('bad-path', 'the judgement file must be outside the repo or under .cache/, as it holds internal detail')
   }
-  if (!existsSync(path)) throw new Error('no judgement file at the path given')
-  const doc = loadYaml(path)
+  if (!existsSync(path)) throw new QaError('judgement-invalid', 'no judgement file at the path given')
+  let doc: unknown
+  try {
+    doc = loadYaml(path)
+  } catch (e) {
+    throw new QaError('judgement-invalid', `not valid YAML or JSON: ${(e as Error).message}`)
+  }
   const errors = validateJudgements(doc, checklist, 'judgement')
-  if (errors.length) throw new Error(errors.join('\n'))
+  if (errors.length) throw new QaError('judgement-invalid', errors.join('\n'))
   return doc as Judgements
 }

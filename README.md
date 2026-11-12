@@ -114,17 +114,23 @@ hold only page ids, repo names, SHAs, Sonar keys and Jira keys.
 | The Release Impact Assessment, through twg | performance and security sign-off |
 
 A source that can't be read leaves its rows "To confirm" with the reason, and the run carries on.
+A row passes only when every check it asks for passes: Cosmos and GitHub are alternatives for the
+same build check, but a closed `human_rows` ticket never makes up for a check that couldn't be made.
+Only Jenkins builds that finished count, the latest of each job.
 Cosmos is read with a read-only key in `COSMOS_PIPELINE_METRICS_KEY` if set, else your `az login`,
 which needs a Cosmos DB data-plane reader role. Without one, the rows only Jenkins can answer
 (yarn audit and dependency check) come out "To confirm".
 
 Evidence, the rendered report and the merge go to `.cache/qa/<release>/` (gitignored), or
 `$RUNNER_TEMP/qa` in CI, or `QA_CACHE_DIR`. `diff.txt` there says what a publish would change.
+`--evidence` and `--judgement` files must be in that directory, and `--config` in
+`config/qa-readiness/` or there. When a run fails it prints only what kind of failure it was;
+the error itself is appended to `errors.log` in the cache directory.
 
 The cells the pipeline writes begin with a hidden anchor macro, `qa-auto-<row>-<cell>-<hash>`, the
 hash being of the cell's text, links and macros. A publish replaces only those cells, and only while
 they still match the hash. Edit a cell, even just a link in it, and the pipeline leaves it alone from
-then on; delete a row and it is added back.
+then on, and leaves the other cell of that row alone too; delete a row and it is added back.
 
 Classic pages are edited through their draft. If the draft holds changes nobody has published yet,
 publishing ours would publish theirs too, so `--publish` and `--validate` leave that page alone and
@@ -141,8 +147,8 @@ takes their answers from a file, keyed by row number, with a `status` (Yes, No o
 Those cells are written without the marker, so once published they are a person's like any
 other, and no later run changes them. They are written only over a cell the pipeline still owns
 and nobody has edited, or into a missing row: if someone has written either cell of a row, the
-row is left as it is. The file holds internal detail, so it must be outside the repo or under
-`.cache/`. The project skill `/qa-readiness-report` (`.claude/skills/qa-readiness-report/`)
+row is left as it is. The file holds internal detail, so it goes in the cache directory. The
+project skill `/qa-readiness-report` (`.claude/skills/qa-readiness-report/`)
 walks an agent through it: the release config, a dry run, researching each row in Jira and
 Confluence, drafting the judgements, and publishing once you've seen the diff and said so.
 Run locally, edits are made as your own twg login.

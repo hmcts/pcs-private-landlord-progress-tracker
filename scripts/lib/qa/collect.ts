@@ -11,6 +11,8 @@ import { sonarReader } from './sources/sonar.ts'
 import { quietRunner } from './twg.ts'
 import type { TwgRunner } from '../roadmap-runner.ts'
 import type { Evidence, EvidenceItem } from './types.ts'
+import { QaError } from './errors.ts'
+import { isRec, str } from './util.ts'
 
 export interface Sources {
   http?: HttpJson
@@ -37,7 +39,7 @@ export function fileUnderRows(layout: Layout, items: Item[]): EvidenceItem[] {
   const out: EvidenceItem[] = []
   for (const it of items) {
     if (it.rule === 'human') {
-      const row = String(it.data?.row ?? '')
+      const row = str(it.data?.row)
       if (layout.checklist.rows.some((r) => r.key === row)) out.push({ ...it, row })
       continue
     }
@@ -63,4 +65,21 @@ export async function collect(cfg: ReleaseConfig, layout: Layout, rs: Record<str
     evidence: { release: cfg.release, generatedAt: now().toISOString(), candidates: cfg.candidates, items: fileUnderRows(layout, items) },
     errors,
   }
+}
+
+/** An evidence file read back, checked to be this release's, for exactly its candidate commits. */
+export function evidenceFor(doc: unknown, cfg: ReleaseConfig): Evidence {
+  if (!isRec(doc) || !Array.isArray(doc.items) || !Array.isArray(doc.candidates)) {
+    throw new QaError('evidence-invalid', 'expected { release, candidates, items }')
+  }
+  const same = (a: unknown, b: { name: string; shas: Record<string, string> }) => {
+    if (!isRec(a) || a.name !== b.name || !isRec(a.shas)) return false
+    const shas = a.shas
+    return Object.keys(shas).length === Object.keys(b.shas).length && Object.entries(b.shas).every(([r, sha]) => shas[r] === sha)
+  }
+  const given: unknown[] = doc.candidates
+  if (doc.release !== cfg.release || given.length !== cfg.candidates.length || !cfg.candidates.every((c, n) => same(given[n], c))) {
+    throw new QaError('evidence-mismatch', `the evidence is for ${str(doc.release)}, or other candidates than the config's`)
+  }
+  return doc as unknown as Evidence
 }

@@ -52,7 +52,7 @@ export function reason(e: unknown): string {
   if (code === 403 || code === 'Forbidden') return 'access denied (403)'
   if (code === 401) return 'not signed in (401)'
   if (code === 404) return 'not found (404)'
-  const msg = String(err?.message ?? e).split('\n')[0].slice(0, 200)
+  const msg = (typeof err?.message === 'string' ? err.message : typeof e === 'string' ? e : 'unknown error').split('\n')[0].slice(0, 200)
   return code !== undefined ? `${msg} (${code})` : msg
 }
 

@@ -7,6 +7,8 @@
 import type { ReleaseConfig } from '../config.ts'
 import { defaultRunner, type TwgRunner } from '../../roadmap-runner.ts'
 import { find, parse, textOf, type El } from '../html.ts'
+import { pageId } from '../twg.ts'
+import { str } from '../util.ts'
 import { day, item, type Item, reason } from './common.ts'
 
 const SOURCE = 'ria'
@@ -27,6 +29,15 @@ const BLOCKS = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'td', 'th
 const SIGNED = /^signed by\b/i
 const GUIDANCE = /^(performance|security) team\s*:|please ensure|^note:\s*if the activity|required for 100% complete date/i
 
+/** "Signed by Perf Test:- @Name   Date:- 17 Aug" into the name and the date, by position. */
+export function splitSignOff(text: string): { who: string; date: string } | null {
+  const colon = text.indexOf(':')
+  if (colon < 0) return null
+  const at = text.toLowerCase().indexOf('date', colon)
+  const trim = (t: string) => t.replace(/^[\s:-]+/, '').trim()
+  return at < 0 ? { who: trim(text.slice(colon + 1)), date: '' } : { who: trim(text.slice(colon + 1, at)), date: trim(text.slice(at + 4)) }
+}
+
 function signOff(blocks: { el: El; text: string }[], heading: RegExp, line: RegExp): SignOff {
   const end = blocks.findIndex((b) => line.test(b.text))
   if (end < 0) return { who: null, date: null, required: null }
@@ -41,10 +52,10 @@ function signOff(blocks: { el: El; text: string }[], heading: RegExp, line: RegE
     : /\b(is|are|will be|be)\s+required\b|\brequired\s*:|\bmust\b|\bcritical\b/i.test(section) ? true : null
 
   const b = blocks[end]
-  const m = /signed by[^:]*:\s*-?\s*(.*?)\s*date\s*:?\s*-?\s*(.*)$/i.exec(b.text)
-  const who = m?.[1].replace(/^@/, '').trim() || null
+  const m = splitSignOff(b.text)
+  const who = m?.who.replace(/^@/, '').trim() || null
   const time = find(b.el, (e) => e.tag === 'time')[0]?.attrs.datetime
-  const date = time || m?.[2].trim() || null
+  const date = time || m?.date || null
   return { who, date: who || time ? date : null, required }
 }
 
@@ -64,12 +75,12 @@ export function riaReader(cfg: ReleaseConfig, run: TwgRunner = defaultRunner, no
     if (!cfg.ria_page) {
       return rules.map((rule) => item({ source: SOURCE, rule, status: 'unknown', value: 'not checked', note: 'no ria_page is configured' }, now))
     }
-    const page = String(cfg.ria_page)
+    const page = pageId(cfg.ria_page)
     const links = [{ text: 'Release Impact Assessment', url: `https://hmcts.atlassian.net/wiki/pages/viewpage.action?pageId=${page}` }]
     let facts: RiaFacts
     try {
       const out = JSON.parse(run(['confluence', 'content', 'get', page, '--detail', 'full', '--format', 'html', '-o', 'json', '--output-summary', 'none']))
-      facts = parseRia(String(out.data?.body?.value ?? ''))
+      facts = parseRia(str(out.data?.body?.value))
     } catch (e) {
       return rules.map((rule) => item({ source: SOURCE, rule, status: 'unknown', value: 'not checked', links,
         note: `the RIA could not be read: ${reason(e)}` }, now))

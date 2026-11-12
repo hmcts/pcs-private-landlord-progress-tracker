@@ -4,7 +4,7 @@
 //   GitHub Actions runs pcs-api's integration tests, so these answer the build rows when Cosmos
 //   can't, and add the GitHub Actions results when it can.
 // - the ignored or pending tests scan: the commit's source tarball, read in memory, searched for
-//   @Disabled, @Ignore, test.skip, it.skip, xit, describe.skip, test.fixme and the like.
+//   JUnit's @Disabled and @Ignore, and the skip, pending and fix-me markers of the Node test runners.
 //
 // Uses GITHUB_TOKEN when set (CI), else `gh api` when it's installed, else anonymous requests.
 
@@ -149,6 +149,20 @@ export interface Finding {
 
 const UNCONDITIONAL = /\.(skip|fixme)\s*\(\s*(['"`)]|$)/
 
+const untilNul = (s: string) => {
+  const n = s.indexOf('\0')
+  return n < 0 ? s : s.slice(0, n)
+}
+
+/** The path record of a pax header: lines of "<length> <key>=<value>". */
+function paxPath(records: string): string | null {
+  for (const line of records.split('\n')) {
+    const sp = line.indexOf(' ')
+    if (sp > 0 && line.startsWith('path=', sp + 1)) return line.slice(sp + 6)
+  }
+  return null
+}
+
 /** Entries of a ustar/pax tarball, as GitHub's codeload serves them. */
 export function* untar(tar: Buffer): Generator<{ path: string; body: Buffer }> {
   let off = 0
@@ -156,18 +170,18 @@ export function* untar(tar: Buffer): Generator<{ path: string; body: Buffer }> {
   while (off + 512 <= tar.length) {
     const h = tar.subarray(off, off + 512)
     if (h.every((b) => b === 0)) return
-    const str = (a: number, n: number) => h.subarray(a, a + n).toString('utf8').replace(/\0.*$/s, '')
+    const str = (a: number, n: number) => untilNul(h.subarray(a, a + n).toString('utf8'))
     const size = parseInt(str(124, 12).trim() || '0', 8)
     const type = String.fromCharCode(h[156] || 48)
     const body = tar.subarray(off + 512, off + 512 + size)
     off += 512 + Math.ceil(size / 512) * 512
     if (type === 'x') {
-      const m = /\d+ path=([^\n]*)\n/.exec(body.toString('utf8'))
-      if (m) longName = m[1]
+      const path = paxPath(body.toString('utf8'))
+      if (path !== null) longName = path
       continue
     }
     if (type === 'L') {
-      longName = body.toString('utf8').replace(/\0.*$/s, '')
+      longName = untilNul(body.toString('utf8'))
       continue
     }
     if (type === 'g') continue
@@ -218,11 +232,19 @@ export function githubReader(cfg: ReleaseConfig, api: GitHubApi = defaultGitHubA
   now?: () => Date): () => Promise<Item[]> {
   return async () => {
     const out: Item[] = []
+    // A repo unchanged between candidates has the same commit in each: read it once.
+    const runs = new Map<string, Promise<CheckRun[]>>()
+    const scans = new Map<string, Promise<ReturnType<typeof scanTarball>>>()
+    const once = <T>(m: Map<string, Promise<T>>, k: string, f: () => Promise<T>) => {
+      if (!m.has(k)) m.set(k, f())
+      return m.get(k)!
+    }
     for (const c of cfg.candidates) {
       for (const [repo, sha] of Object.entries(c.shas)) {
         const gh = cfg.repos[repo].github
+        const k = `${gh}@${sha}`
         try {
-          out.push(...checkItems(repo, sha, c, await checkRuns(api, gh, sha), now))
+          out.push(...checkItems(repo, sha, c, await once(runs, k, () => checkRuns(api, gh, sha)), now))
         } catch (e) {
           for (const rule of Object.keys(CHECK_RULES)) {
             out.push(item({ source: SOURCE, sha, repo, candidate: c.name, rule, status: 'unknown', value: 'not checked',
@@ -230,7 +252,7 @@ export function githubReader(cfg: ReleaseConfig, api: GitHubApi = defaultGitHubA
           }
         }
         try {
-          out.push(ignoredItem(repo, gh, sha, c, scanTarball(await tarball(gh, sha), cfg.repos[repo].test_paths), now))
+          out.push(ignoredItem(repo, gh, sha, c, await once(scans, k, async () => scanTarball(await tarball(gh, sha), cfg.repos[repo].test_paths)), now))
         } catch (e) {
           out.push(item({ source: SOURCE, sha, repo, candidate: c.name, rule: 'ignored-tests', status: 'unknown', value: 'not checked',
             note: `the source at ${short(sha)} could not be read: ${reason(e)}` }, now))

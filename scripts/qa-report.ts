@@ -15,35 +15,49 @@
 // rest, but fails the run.
 //
 // This repo and its logs are public, so this prints only counts and each row's pass, fail or
-// unknown. Everything else, evidence included, stays in the cache directory.
+// unknown. Everything else, evidence included, stays in the cache directory. A failure prints
+// only a fixed message for its kind (lib/qa/errors.ts); the error itself goes to errors.log
+// there. Files named on the command line must be in config/qa-readiness or the cache directory.
 
 import { readFileSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { parseArgs } from 'node:util'
-import { releaseDir } from './lib/qa/cache.ts'
-import { collect, readers } from './lib/qa/collect.ts'
-import { activeReleases, loadRelease, releasePath } from './lib/qa/config.ts'
+import { cacheDir, releaseDir, releaseName, within } from './lib/qa/cache.ts'
+import { collect, evidenceFor, readers } from './lib/qa/collect.ts'
+import { activeReleases, CONFIG_DIR, loadRelease, releasePath } from './lib/qa/config.ts'
+import { logError, publicMessage, QaError } from './lib/qa/errors.ts'
 import { type Judgements, loadJudgements } from './lib/qa/judgement.ts'
 import { createPage, publishToPage, releaseTitle } from './lib/qa/publish.ts'
 import { evaluate, genRows, renderPage } from './lib/qa/render.ts'
-import { quietRunner } from './lib/qa/twg.ts'
+import { pageId, quietRunner } from './lib/qa/twg.ts'
 import type { Evidence } from './lib/qa/types.ts'
 
-const { values } = parseArgs({
-  options: {
-    release: { type: 'string' },
-    config: { type: 'string' },
-    evidence: { type: 'string' },
-    judgement: { type: 'string' },
-    publish: { type: 'boolean', default: false },
-    validate: { type: 'boolean', default: false },
-    'create-under': { type: 'string' },
-    'all-active': { type: 'boolean', default: false },
-  },
-})
+const USAGE = 'usage: npm run qa-report -- --release <name> [--evidence <file>] [--judgement <file>] [--publish] [--validate] [--create-under <pageId>]\n' +
+  '       npm run qa-report -- --all-active [--publish] [--validate]'
+
+const OPTIONS = {
+  release: { type: 'string' },
+  config: { type: 'string' },
+  evidence: { type: 'string' },
+  judgement: { type: 'string' },
+  publish: { type: 'boolean', default: false },
+  validate: { type: 'boolean', default: false },
+  'create-under': { type: 'string' },
+  'all-active': { type: 'boolean', default: false },
+} as const
+
+function args() {
+  try {
+    return parseArgs({ options: OPTIONS }).values
+  } catch {
+    console.error(USAGE)
+    process.exit(2)
+  }
+}
+
+const values = args()
 
 const say = (s: string) => console.log(s)
-const firstLine = (e: unknown) => String((e as Error)?.message ?? e).split('\n')[0].slice(0, 300)
 
 interface Options {
   release?: string
@@ -57,14 +71,20 @@ interface Options {
 /** 'skipped' when the page has unpublished edits, so it was left alone. */
 async function report(path: string, o: Options): Promise<'done' | 'skipped'> {
   const { cfg, layout } = loadRelease(path)
-  if (o.release && o.release !== cfg.release) throw new Error(`the config is for ${cfg.release}, not ${o.release}`)
-  if (o.publish && !cfg.active) throw new Error(`${cfg.release} is not active: set active: true in its config to publish`)
-  if (o.createUnder && !/^\d+$/.test(o.createUnder)) throw new Error('--create-under needs a Confluence page id')
+  if (o.release && o.release !== cfg.release) throw new QaError('config-mismatch', `the config is for ${cfg.release}, not ${o.release}`)
+  if (o.publish && !cfg.active) throw new QaError('not-active', `${cfg.release} is not active`)
+  const createUnder = o.createUnder === undefined ? undefined : pageId(o.createUnder)
   const dir = releaseDir(cfg.release)
 
   let evidence: Evidence
   if (o.evidence) {
-    evidence = JSON.parse(readFileSync(o.evidence, 'utf8')) as Evidence
+    let doc: unknown
+    try {
+      doc = JSON.parse(readFileSync(o.evidence, 'utf8'))
+    } catch (e) {
+      throw new QaError('evidence-invalid', `the evidence file could not be read as JSON: ${(e as Error).message}`)
+    }
+    evidence = evidenceFor(doc, cfg)
     say(`evidence: ${evidence.items.length} items from a file`)
   } else {
     const res = await collect(cfg, layout, readers(cfg))
@@ -93,7 +113,7 @@ async function report(path: string, o: Options): Promise<'done' | 'skipped'> {
 
   const run = quietRunner
   if (cfg.report_page) {
-    const res = publishToPage(run, String(cfg.report_page), layout, rows, dir, { publish: o.publish, validate: o.validate })
+    const res = publishToPage(run, pageId(cfg.report_page), layout, rows, dir, { publish: o.publish, validate: o.validate })
     if (res.unpublishedEdits) {
       say(`${process.env.GITHUB_ACTIONS ? '::warning::' : ''}${cfg.release}: page has unpublished edits; skipped`)
       return 'skipped'
@@ -104,8 +124,8 @@ async function report(path: string, o: Options): Promise<'done' | 'skipped'> {
     say(res.published ? `${c.change} cells changed, ${tail}${res.retried ? ' (after re-reading the page)' : ''}`
       : `${c.change} cells would change, ${tail}`)
     if (res.validated !== undefined) say(`twg validation: ${res.validated ? 'passed' : 'failed'}`)
-  } else if (o.createUnder) {
-    const id = createPage(run, o.createUnder, releaseTitle(cfg, layout), page, dir, o.publish)
+  } else if (createUnder) {
+    const id = createPage(run, createUnder, releaseTitle(cfg, layout), page, dir, o.publish)
     say(id ? `created page ${id}: set report_page: '${id}' in the config` : `a new page with ${rows.length} rows would be created`)
   } else {
     say('no report_page in the config, so the report was only rendered (use --create-under <pageId> to create one)')
@@ -128,12 +148,14 @@ async function main(): Promise<number> {
     let failed = 0
     let skipped = 0
     for (const path of paths) {
-      say(`release ${basename(path, '.yaml')}`)
+      const name = basename(path, '.yaml')
+      say(`release ${name}`)
       try {
         if (await report(path, { publish: values.publish, validate: values.validate }) === 'skipped') skipped++
       } catch (e) {
         failed++
-        console.error(`qa-report failed for ${basename(path, '.yaml')}: ${firstLine(e)}`)
+        logError(cacheDir(), name, e)
+        console.error(`qa-report failed for ${name}: ${publicMessage(e)}`)
       }
     }
     say(`${paths.length} releases: ${paths.length - failed - skipped} done, ${skipped} skipped for unpublished edits, ${failed} failed`)
@@ -141,18 +163,27 @@ async function main(): Promise<number> {
   }
 
   if (!values.release && !values.config) {
-    console.error('usage: npm run qa-report -- --release <name> [--evidence <file>] [--judgement <file>] [--publish] [--validate] [--create-under <pageId>]\n' +
-      '       npm run qa-report -- --all-active [--publish] [--validate]')
+    console.error(USAGE)
     return 2
   }
-  await report(values.config ?? releasePath(values.release!), {
-    release: values.release, evidence: values.evidence, judgement: values.judgement, createUnder: values['create-under'],
-    publish: values.publish, validate: values.validate,
+  const cache = cacheDir()
+  const release = values.release === undefined ? undefined : releaseName(values.release)
+  const config = values.config === undefined ? releasePath(release!) : within(values.config, [CONFIG_DIR, cache])
+  await report(config, {
+    release,
+    evidence: values.evidence === undefined ? undefined : within(values.evidence, [cache]),
+    judgement: values.judgement === undefined ? undefined : within(values.judgement, [cache]),
+    createUnder: values['create-under'], publish: values.publish, validate: values.validate,
   })
   return 0
 }
 
 main().then((code) => process.exit(code), (e) => {
-  console.error(`qa-report failed: ${firstLine(e)}`)
+  try {
+    logError(cacheDir(), values.release ?? 'qa-report', e)
+  } catch {
+    // No cache directory to log to; the message below is all there is.
+  }
+  console.error(`qa-report failed: ${publicMessage(e)}`)
   process.exit(1)
 })

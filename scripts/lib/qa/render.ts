@@ -13,6 +13,7 @@ import { type El, esc, find, fingerprint, type Node, parse, shortHash } from './
 import type { Judgement, Judgements } from './judgement.ts'
 import { short } from './sources/common.ts'
 import type { Answer, Evidence, EvidenceItem, Link, Status } from './types.ts'
+import { str } from './util.ts'
 
 export interface Line {
   text: string
@@ -34,15 +35,17 @@ const RANK: Record<Status, number> = { pass: 0, unknown: 1, fail: 2 }
 const worst = (s: Status[]): Status => s.reduce<Status>((a, b) => (RANK[b] > RANK[a] ? b : a), 'pass')
 
 /**
- * Items for the same repo and candidate are alternatives (Cosmos, then GitHub): the ones that
- * could tell count, and an unknown counts only when nothing could. The row's status comes from
+ * Items answering the same rule for the same repo and candidate are alternatives (Cosmos, then
+ * GitHub): the ones that could tell count, and an unknown counts only when nothing could. A row
+ * that also has a human_rows ticket answers a second rule, and both must pass: a done ticket
+ * never hides a mechanical check that couldn't be made. The row's status comes from
  * each repo's latest candidate, the one being released (a candidate may list only the repos
  * that changed); earlier candidates are listed.
  */
 function groups(items: EvidenceItem[]): EvidenceItem[][] {
   const by = new Map<string, EvidenceItem[]>()
   for (const i of items) {
-    const k = `${i.candidate ?? ''}|${i.repo ?? ''}`
+    const k = `${i.candidate ?? ''}|${i.repo ?? ''}|${i.rule}`
     by.set(k, [...(by.get(k) ?? []), i])
   }
   return [...by.values()].map((g) => (g.some((i) => i.status !== 'unknown') ? g.filter((i) => i.status !== 'unknown') : g))
@@ -159,7 +162,7 @@ const para = (l: Line) => {
 export function anchorName(e: El): string | null {
   if (e.attrs['data-extension-key'] !== 'anchor') return null
   try {
-    return String(JSON.parse(e.attrs['data-parameters'] ?? '{}').macroParams?.['']?.value ?? '')
+    return str(JSON.parse(e.attrs['data-parameters'] ?? '{}').macroParams?.['']?.value)
   } catch {
     return ''
   }

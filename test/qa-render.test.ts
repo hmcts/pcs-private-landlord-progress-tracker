@@ -76,7 +76,8 @@ describe('render', () => {
     assert.deepEqual(res.checklist.map((r) => [r.key, r.label]), GOLDEN.map(([k, q]) => [k, q]))
     for (const [key, , answer] of GOLDEN) {
       const r = res.checklist.find((x) => x.key === key)!
-      if (r.needsJudgement && !cfg.human_rows?.[key]) assert.equal(r.answer, 'To confirm', `row ${key}`)
+      // Row 6: the page says Yes, and its ticket is closed, but the RIA has no Perf Test sign-off.
+      if ((r.needsJudgement && !cfg.human_rows?.[key]) || key === '6') assert.equal(r.answer, 'To confirm', `row ${key}`)
       else assert.equal(r.answer, answer, `row ${key}`)
     }
   })
@@ -126,6 +127,14 @@ describe('render', () => {
     assert.deepEqual([res.find((x) => x.key === '4')!.status, res.find((x) => x.key === '4')!.answer], ['fail', 'No'])
     const sonar = evaluate(partial, layout, { ...ev, items: ev.items.map((i) => (i.row === '1' && i.candidate === 'V1' && i.repo === 'pcs-api' ? { ...i, status: 'unknown' as const } : i)) })
     assert.equal(sonar.checklist.find((x) => x.key === '1')!.status, 'unknown')
+  })
+
+  test('a done human_rows ticket never hides a mechanical check that could not be made', () => {
+    const ev = goldenEvidence()
+    const six = (e: Evidence) => evaluate(cfg, layout, e).checklist.find((x) => x.key === '6')!
+    assert.deepEqual([six(ev).status, six(ev).answer], ['unknown', 'To confirm'])
+    ev.items = ev.items.map((i) => (i.rule === 'perf-signoff' ? { ...i, status: 'pass' as const } : i))
+    assert.deepEqual([six(ev).status, six(ev).answer], ['pass', 'Yes'])
   })
 
   test('an unknown is To confirm, with its reason, and never a guess', () => {

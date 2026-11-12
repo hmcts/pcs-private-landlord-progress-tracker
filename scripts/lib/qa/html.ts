@@ -3,6 +3,7 @@
 // cells and leave every other byte of the page as it was.
 
 import { createHash } from 'node:crypto'
+import { esc } from '../svg.ts'
 
 export interface El {
   type: 'el'
@@ -31,13 +32,16 @@ const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"'
 
 export function decode(s: string): string {
   return s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e: string) => {
-    if (e[0] === '#') return String.fromCodePoint(e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10))
+    if (e[0] === '#') {
+      const cp = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10)
+      // Out of range, or half a surrogate pair: not a character, so left as written.
+      return cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff) ? m : String.fromCodePoint(cp)
+    }
     return ENTITIES[e.toLowerCase()] ?? m
   })
 }
 
-export const esc = (s: string): string =>
-  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+export { esc }
 
 function parseAttrs(s: string): Record<string, string> {
   const out: Record<string, string> = {}
@@ -105,7 +109,7 @@ export function textOf(n: Node): string {
     }
   }
   go(n)
-  return parts.join('').replace(/[\s ]+/g, ' ').trim()
+  return parts.join('').replace(/\s+/g, ' ').trim()
 }
 
 const PARAM_VOLATILE = new Set(['macroMetadata', 'legacyAnchorId', 'localId'])
@@ -149,7 +153,7 @@ export function fingerprint(n: Node, skip: (e: El) => boolean = () => false): st
     }
   }
   go(n)
-  return parts.join('').replace(/[\s ]+/g, ' ').trim()
+  return parts.join('').replace(/\s+/g, ' ').trim()
 }
 
 /** Rows of a table in document order, whether or not they sit in thead/tbody. */
