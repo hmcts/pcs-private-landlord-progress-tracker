@@ -20,10 +20,7 @@ on:
   push:
     branches: [master]
 
-permissions:
-  contents: write # commit the daily snapshot
-  pages: write
-  id-token: write # azure/login over OIDC, and deploy-pages
+permissions: {}
 
 # One run at a time, so two runs never spend the same refresh token.
 concurrency:
@@ -38,6 +35,9 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # commit the daily snapshot
+      id-token: write # azure/login over OIDC
     outputs:
       fetch: ${{ steps.fetch.outcome }}
     steps:
@@ -259,6 +259,9 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write # deploy-pages
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -269,6 +272,7 @@ jobs:
   jira:
     needs: [build, deploy]
     runs-on: ubuntu-latest
+    permissions: {}
     steps:
       - if: needs.build.outputs.fetch != 'success'
         run: |
