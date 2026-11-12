@@ -35,7 +35,6 @@ const javaReport: CveDoc = { _ts: 1_790_000_000, build: { branch_name: 'master',
   { fileName: 'a.jar', vulnerabilities: [], suppressedVulnerabilities: [{ name: 'CVE-2026-0001', cvssv3: { baseSeverity: 'HIGH', baseScore: 7.5 } }, { name: 'CVE-2026-0002', cvssv2: { severity: 'LOW' } }] },
   { fileName: 'b.jar', suppressedVulnerabilities: [{ name: 'CVE-2026-0001', cvssv3: { baseSeverity: 'HIGH' } }] },
   { fileName: 'b.jar', suppressedVulnerabilities: [{ name: 'CVE-2026-0001', cvssv3: { baseSeverity: 'HIGH' } }] },
-  { vulnerabilities: [{ name: 'CVE-2026-0003', severity: 'HIGH' }] },
 ] } }
 
 // YarnBuilder.prepareCVEReport: the whole audit in `vulnerabilities` (accepted advisories included),
@@ -48,7 +47,7 @@ const nodeReport = (open: boolean): CveDoc => ({ _ts: 1_790_000_000, build: { br
   summary: { vulnerabilities: { critical: 0, high: open ? 1 : 0, moderate: 1, low: 0, info: 0 } },
 } })
 
-// PythonBuilder: uv audit, with no grades and no suppression.
+// PythonBuilder: uv audit, which no layout row asks about.
 const pythonReport: CveDoc = { build: { branch_name: 'master', build_tag: 't', git_url: 'git@github.com:hmcts/py-app.git', codebase_type: 'python' }, report: {
   vulnerabilities: [{ display_id: 'GHSA-xxxx', aliases: ['CVE-2026-2000'], package: 'requests' }, { aliases: [], dependency: { name: 'urllib3' } }] } }
 
@@ -82,21 +81,42 @@ describe('cve-reports', () => {
     assert.deepEqual(summariseCve(javaReport), { type: 'java', open: 0, suppressed: 3, bySeverity: {} })
     assert.deepEqual(summariseCve(nodeReport(true)), { type: 'node', open: 1, suppressed: 1, bySeverity: { high: 1 } })
     assert.deepEqual(summariseCve(nodeReport(false)), { type: 'node', open: 0, suppressed: 1, bySeverity: {} })
-    assert.deepEqual(summariseCve(pythonReport), { type: 'python', open: 1, suppressed: 0, bySeverity: { unrated: 1 } })
+    assert.equal(summariseCve(pythonReport), undefined)
     assert.equal(summariseCve({ build: { codebase_type: 'go' }, report: {} }), undefined)
   })
 
-  test('grades from CVSS, worse first, and folds moderate to medium', () => {
+  test('reads the type case-insensitively, falls back to the repo\'s builder, and never guesses past that', () => {
+    const report = { dependencies: [{ fileName: 'a.jar', vulnerabilities: [{ name: 'CVE-1' }] }] }
+    assert.equal(summariseCve({ build: { codebase_type: 'Java' }, report })!.type, 'java')
+    assert.equal(summariseCve({ build: {}, report }, 'gradle')!.open, 1)
+    assert.equal(summariseCve({ build: {}, report: { vulnerabilities: [] } }, 'yarn')!.type, 'node')
+    assert.equal(summariseCve({ build: {}, report }), undefined)
+  })
+
+  test('a finding that names no CVE or no package still counts as open', () => {
+    const java: CveDoc = { build: { codebase_type: 'java' }, report: { dependencies: [
+      { vulnerabilities: [{ name: 'CVE-1', severity: 'HIGH' }] }, { fileName: 'b.jar', vulnerabilities: [{ cvssv3: { baseSeverity: 'LOW' } }, {}] }] } }
+    assert.deepEqual(summariseCve(java), { type: 'java', open: 3, suppressed: 0, bySeverity: { high: 1, low: 1, unrated: 1 } })
+    const node: CveDoc = { build: { codebase_type: 'node' }, report: { vulnerabilities: [NULL_ENTRY, {}, { ...NULL_ENTRY, title: 'Untitled advisory' },
+      { ...NULL_ENTRY, module_name: 'z', severity: 'critical' }] } }
+    assert.deepEqual(summariseCve(node), { type: 'node', open: 2, suppressed: 0, bySeverity: { critical: 1, unrated: 1 } })
+  })
+
+  test('grades from CVSS, then the entry\'s own severity, worse first, and folds moderate to medium', () => {
     const doc: CveDoc = { build: { codebase_type: 'java' }, report: { dependencies: [{ fileName: 'c.jar', vulnerabilities: [
-      { name: 'CVE-1', severity: 'MEDIUM', cvssv3: { baseSeverity: 'HIGH' } }, { name: 'CVE-1', cvssv2: { severity: 'LOW' } }, { name: 'CVE-2' }] }] } }
-    assert.deepEqual(summariseCve(doc)!.bySeverity, { high: 1, unrated: 1 })
+      { name: 'CVE-1', severity: 'MEDIUM', cvssv3: { baseSeverity: 'HIGH' } }, { name: 'CVE-1', cvssv2: { severity: 'LOW' } }, { name: 'CVE-2' },
+      { name: 'CVE-3', severity: 'Moderate' }] }] } }
+    assert.deepEqual(summariseCve(doc)!.bySeverity, { high: 1, unrated: 1, medium: 1 })
   })
 
   test('attributes a report by git_url, stripping .git only as a suffix', () => {
     assert.equal(repoFromGitUrl('https://github.com/HMCTS/pcs-api.git'), 'hmcts/pcs-api')
     assert.equal(repoFromGitUrl('https://github.com/hmcts/foo.github.io.git'), 'hmcts/foo.github.io')
     assert.equal(repoFromGitUrl('git@github.com:hmcts/py-app.git'), 'hmcts/py-app')
-    for (const bad of ['https://gitlab.com/hmcts/x.git', 'https://github.com/hmcts', 'https://github.com/a/b/c', 7]) assert.equal(repoFromGitUrl(bad), undefined)
+    for (const url of ['https://github.com/hmcts/pcs-api/', 'https://github.com/hmcts/pcs-api.git/', 'ssh://git@github.com/hmcts/pcs-api.git',
+      'ssh://git@github.com/hmcts/pcs-api', 'git@github.com:hmcts/pcs-api', 'git://github.com/hmcts/pcs-api.git', 'https://user:tok@github.com/hmcts/pcs-api.git',
+      'http://x-access-token:abc@github.com/hmcts/pcs-api']) assert.equal(repoFromGitUrl(url), 'hmcts/pcs-api', url)
+    for (const bad of ['https://gitlab.com/hmcts/x.git', 'https://github.com/hmcts', 'https://github.com/a/b/c', 'https://a@b@github.com/o/r', 7]) assert.equal(repoFromGitUrl(bad), undefined)
   })
 
   test('keeps the newest report per build and type, and only the repo\'s own', () => {
@@ -140,7 +160,9 @@ describe('cosmosReader', () => {
     assert.deepEqual([fe['yarn-audit'].status, fe['yarn-audit'].answer], ['fail', 'Yes'])
     assert.ok(queries.filter((q) => q.container === 'pipeline-metrics').every((q) => q.params.some((p) => p.name === '@sha')))
     assert.deepEqual([...new Set(queries.map((q) => q.db))].sort(), ['jenkins', 'sds-jenkins'])
-    assert.ok(queries.every((q) => /ARRAY_CONTAINS\(@branches, c\.(build\.)?branch_name\)/.test(q.query)))
+    // Nightly builds are told apart by job name, so the stage query filters no branch.
+    assert.ok(queries.filter((q) => q.container === 'pipeline-metrics').every((q) => !/WHERE.*branch_name/.test(q.query)))
+    assert.ok(queries.filter((q) => q.container === 'cve-reports').every((q) => /NOT IS_DEFINED\(c\.build\.branch_name\).*ARRAY_CONTAINS\(@branches, c\.build\.branch_name\)/.test(q.query)))
   })
 
   test('access denied gives unknown rows, and Cosmos is not asked again', async () => {
@@ -170,7 +192,24 @@ describe('cosmosReader', () => {
     assert.match(api['integration-contract'].value, /master #4/)
   })
 
-  test('a commit with no build recorded is unknown', async () => {
+  test('a report nothing here reads is unknown, never a pass, and one with no branch still joins its build', async () => {
+    const events = build(API_MASTER, 20, 'master', SHA.api2, [['checkout'], ['securitychecks']], 'Pipeline Succeeded')
+    const tag = events[0].build_tag!
+    const cfgNoBuilder = { ...cfg, candidates: [{ name: 'V2', shas: { 'pcs-api': SHA.api2 } }],
+      repos: { 'pcs-api': { ...cfg.repos['pcs-api'], builder: undefined } } }
+    const run = (docs: CveDoc[]) => cosmosReader(cfgNoBuilder, async (db, container) =>
+      (db !== 'jenkins' ? [] : container === 'pipeline-metrics' ? events : docs), NOW)()
+    const odd = await run([{ build: { build_tag: tag, git_url: API_GIT, codebase_type: 'go' }, report: { vulnerabilities: [{ id: 'x' }] } }])
+    for (const rule of ['dependency-check', 'yarn-audit']) {
+      const it = odd.find((i) => i.rule === rule)!
+      assert.equal(it.status, 'unknown')
+      assert.match(it.note!, /1 report of a type nothing here reads/)
+    }
+    const noBranch = await run([{ build: { build_tag: tag, git_url: API_GIT, codebase_type: 'JAVA' }, report: { dependencies: [] } }])
+    assert.equal(noBranch.find((i) => i.rule === 'dependency-check')!.status, 'pass')
+  })
+
+    test('a commit with no build recorded is unknown', async () => {
     const items = await cosmosReader(cfg, async () => [], NOW)()
     assert.ok(items.every((i) => i.status === 'unknown'))
     assert.match(items[0].note!, /no master or nightly Jenkins build of a8606ea/)

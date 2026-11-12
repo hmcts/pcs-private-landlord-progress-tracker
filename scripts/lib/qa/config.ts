@@ -69,7 +69,7 @@ export interface Layout {
 export const CHECKLIST_RULES = [
   'sonar-coverage', 'sonar-quality-gate', 'sonar-security', 'integration-contract', 'functional',
   'deployed-aat', 'yarn-audit', 'dependency-check', 'ignored-tests', 'test-complete', 'high-defects',
-  'uv-audit', 'perf-signoff', 'perf-required', 'security-signoff', 'human',
+  'perf-signoff', 'perf-required', 'security-signoff', 'human',
 ] as const
 
 export const INFO_RULES = ['release', 'dashboards', 'outstanding-bugs', 'repos', 'revisions', 'human'] as const

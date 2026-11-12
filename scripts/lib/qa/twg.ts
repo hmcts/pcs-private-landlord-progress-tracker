@@ -1,6 +1,7 @@
 // twg for the QA report: the roadmap's runner, with stderr captured rather than passed through,
 // since twg's notices can name the page or query it read and this runs in a public log. The
-// readers use the asynchronous one, so their calls overlap; publishing uses the synchronous one.
+// readers use the asynchronous one, which doesn't block other sources' reads but still runs one
+// twg at a time; publishing uses the synchronous one, after the readers have finished.
 //
 // Ids and keys go to twg as arguments, so every caller passes them through pageId or jiraKey
 // first: digits only, or an issue key, never anything twg could read as an option.
@@ -34,6 +35,21 @@ export type AsyncTwgRunner = (args: string[]) => string | Promise<string>
 
 const options = () => ({ encoding: 'utf8' as const, env: { ...process.env, TWG_AGENT_DEFAULTS: '1' }, maxBuffer: 256 * 1024 * 1024 })
 
-export const quietRunnerAsync: AsyncTwgRunner = (args) => runCommand('twg', args, options())
+/**
+ * A runner that starts each call only once the one before it has finished. Every twg call can
+ * refresh the sign-in, which rotates the refresh token in the one auth.conf they all share: two
+ * at once could spend a token twice or tear the file, and sign the workflow out for good.
+ */
+export function oneAtATime(run: (args: string[]) => Promise<string>): (args: string[]) => Promise<string> {
+  let last: Promise<unknown> = Promise.resolve()
+  return (args) => {
+    const next = last.then(() => run(args))
+    last = next.catch(() => undefined)
+    return next
+  }
+}
+
+/** twg for the readers: awaitable, but never more than one twg process at a time, across all of them. */
+export const quietRunnerAsync: AsyncTwgRunner = oneAtATime((args) => runCommand('twg', args, options()))
 
 export const quietRunner: TwgRunner = (args) => execFileSync(commandPath('twg'), args, { ...options(), stdio: ['ignore', 'pipe', 'pipe'] })

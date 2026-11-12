@@ -22,7 +22,7 @@
 
 import type { Candidate, ReleaseConfig } from '../config.ts'
 import { day, item, type Item, reason, short } from './common.ts'
-import { type CodebaseType, type CveDoc, repoFromGitUrl, summariseCve } from './cve.ts'
+import { codebaseType, type CodebaseType, type CveDoc, repoFromGitUrl, summariseCve } from './cve.ts'
 
 export type { CveDoc } from './cve.ts'
 export { summariseCve } from './cve.ts'
@@ -177,11 +177,12 @@ export function stageItems(repo: string, sha: string, c: Candidate, builds: Buil
   return Object.entries(STAGE_RULES).map(([rule, re]) => stageItem(rule, re, picked, repo, sha, base, now))
 }
 
-export const CVE_RULE: Record<CodebaseType, string> = { java: 'dependency-check', node: 'yarn-audit', python: 'uv-audit' }
-const CHECKER: Record<CodebaseType, string> = { java: 'OWASP dependency-check', node: 'yarn audit', python: 'uv audit' }
+export const CVE_RULE: Record<CodebaseType, string> = { java: 'dependency-check', node: 'yarn-audit' }
+const CHECKER: Record<CodebaseType, string> = { java: 'OWASP dependency-check', node: 'yarn audit' }
+type Builder = 'gradle' | 'yarn' | undefined
 
-export function cveItem(repo: string, sha: string, c: Candidate, build: Build, doc: CveDoc, now?: () => Date): Item | null {
-  const s = summariseCve(doc)
+export function cveItem(repo: string, sha: string, c: Candidate, build: Build, doc: CveDoc, now?: () => Date, builder?: Builder): Item | null {
+  const s = summariseCve(doc, builder)
   if (!s) return null
   const sev = Object.entries(s.bySeverity).map(([k, v]) => `${v} ${k}`).join(', ')
   // Suppressed findings were reported and then accepted, so the answer is Yes even when they pass.
@@ -193,11 +194,11 @@ export function cveItem(repo: string, sha: string, c: Candidate, build: Build, d
 }
 
 /** Per build tag and codebase type, the newest report about this repo; ties keep the first read. */
-export function newestReports(docs: CveDoc[], github: string): Map<string, CveDoc> {
+export function newestReports(docs: CveDoc[], github: string, builder?: Builder): Map<string, CveDoc> {
   const out = new Map<string, CveDoc>()
   for (const d of docs) {
     if (repoFromGitUrl(d.build.git_url) !== github.toLowerCase()) continue
-    const k = `${d.build.build_tag}|${d.build.codebase_type}`
+    const k = `${d.build.build_tag}|${codebaseType(d, builder)}`
     const had = out.get(k)
     if (!had || (d._ts ?? 0) > (had._ts ?? 0)) out.set(k, d)
   }
@@ -205,13 +206,13 @@ export function newestReports(docs: CveDoc[], github: string): Map<string, CveDo
 }
 
 /** The newest master build's report of each type, else the newest nightly's. */
-function cveItems(repo: string, sha: string, c: Candidate, builds: Build[], reports: Map<string, CveDoc>, now?: () => Date): Item[] {
+function cveItems(repo: string, sha: string, c: Candidate, builds: Build[], reports: Map<string, CveDoc>, builder: Builder, now?: () => Date): Item[] {
   const ordered = [...builds].sort((a, b) => (a.kind === b.kind ? b.number - a.number : a.kind === 'master' ? -1 : 1))
   const found = new Map<string, Item>()
   for (const b of ordered) {
     for (const [k, d] of reports) {
       if (!k.startsWith(`${b.tag}|`)) continue
-      const it = cveItem(repo, sha, c, b, d, now)
+      const it = cveItem(repo, sha, c, b, d, now, builder)
       if (it && !found.has(it.rule)) found.set(it.rule, it)
     }
   }
@@ -222,8 +223,11 @@ const STAGE_FIELDS = ['job_name', 'branch_name', 'build_number', 'build_tag', 'b
   'current_build_current_result', 'current_build_duration', 'current_build_scheduled_time', 'git_commit']
 
 const STAGE_QUERY = `SELECT ${STAGE_FIELDS.map((f) => `c.${f}`).join(', ')} FROM c ` +
-  'WHERE c.git_commit = @sha AND c.product = @p AND c.component = @c AND ARRAY_CONTAINS(@branches, c.branch_name)'
-const CVE_QUERY = 'SELECT c._ts, c.build, c.report FROM c WHERE ARRAY_CONTAINS(@tags, c.build.build_tag) AND ARRAY_CONTAINS(@branches, c.build.branch_name)'
+  'WHERE c.git_commit = @sha AND c.product = @p AND c.component = @c'
+// Joined to master and nightly builds of the commit through build_tag; a report that names no
+// branch is kept, since the build it joins to already says which.
+const CVE_QUERY = 'SELECT c._ts, c.build, c.report FROM c WHERE ARRAY_CONTAINS(@tags, c.build.build_tag) AND ' +
+  '(NOT IS_DEFINED(c.build.branch_name) OR IS_NULL(c.build.branch_name) OR ARRAY_CONTAINS(@branches, c.build.branch_name))'
 
 export function cosmosReader(cfg: ReleaseConfig, query: CosmosQuery = defaultCosmosQuery(), now?: () => Date): () => Promise<Item[]> {
   return async () => {
@@ -246,7 +250,7 @@ export function cosmosReader(cfg: ReleaseConfig, query: CosmosQuery = defaultCos
         let builds: Build[]
         try {
           builds = toBuilds(await everywhere(query, 'pipeline-metrics', STAGE_QUERY, [{ name: '@sha', value: sha },
-            { name: '@p', value: rc.cosmos_product }, { name: '@c', value: rc.cosmos_component }, { name: '@branches', value: BRANCHES }]) as StageEvent[])
+            { name: '@p', value: rc.cosmos_product }, { name: '@c', value: rc.cosmos_component }]) as StageEvent[])
         } catch (e) {
           down = `Cosmos pipeline-metrics could not be read: ${reason(e)}`
           out.push(...unknown(down))
@@ -265,12 +269,15 @@ export function cosmosReader(cfg: ReleaseConfig, query: CosmosQuery = defaultCos
             cveError = `Cosmos cve-reports could not be read: ${reason(e)}`
           }
         }
-        const found = cveItems(repo, sha, c, withCve, newestReports(docs, rc.github), now)
+        const reports = newestReports(docs, rc.github, rc.builder)
+        const found = cveItems(repo, sha, c, withCve, reports, rc.builder, now)
+        const unread = [...reports.values()].filter((d) => !summariseCve(d, rc.builder)).length
         out.push(...found)
         for (const rule of cveRules.filter((r) => !found.some((i) => i.rule === r))) {
-          if (!cveError && rc.builder === undefined && found.length) continue
+          if (!cveError && !unread && rc.builder === undefined && found.length) continue
+          const missing = `no ${rule === 'yarn-audit' ? 'yarn audit' : 'dependency-check'} report is recorded for the Jenkins builds of ${short(sha)}`
           out.push(item({ source: SOURCE, sha, repo, candidate: c.name, rule, status: 'unknown', value: 'not checked',
-            note: cveError ?? `no ${rule === 'yarn-audit' ? 'yarn audit' : 'dependency-check'} report is recorded for the Jenkins builds of ${short(sha)}` }, now))
+            note: cveError ?? (unread ? `${missing}, and ${unread} report${unread === 1 ? '' : 's'} of a type nothing here reads` : missing) }, now))
         }
       }
     }

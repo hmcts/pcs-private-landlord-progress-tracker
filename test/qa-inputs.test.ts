@@ -9,10 +9,11 @@ import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { decode } from '../scripts/lib/qa/html.ts'
 import { createPage, getPage } from '../scripts/lib/qa/publish.ts'
-import { commentThread } from '../scripts/lib/qa/sources/jira.ts'
+import { commentThread, jiraReader } from '../scripts/lib/qa/sources/jira.ts'
+import { riaReader } from '../scripts/lib/qa/sources/ria.ts'
 import { githubReader } from '../scripts/lib/qa/sources/github.ts'
 import { sonarReader } from '../scripts/lib/qa/sources/sonar.ts'
-import { jiraKey, pageId } from '../scripts/lib/qa/twg.ts'
+import { jiraKey, oneAtATime, pageId } from '../scripts/lib/qa/twg.ts'
 import { commandPath, mapLimit } from '../scripts/lib/qa/util.ts'
 import { CFG, fakeTwg, NOW, SHA, tarball } from './qa-helpers.ts'
 
@@ -102,5 +103,41 @@ describe('mapLimit', () => {
     })
     assert.deepEqual(out, [50, 10, 40, 20, 30, 0])
     assert.equal(peak, 2)
+  })
+})
+
+describe('twg one at a time', () => {
+  // A twg that takes a while, and records when each call ran.
+  function slowTwg(answer: (args: string[]) => string = () => '{}') {
+    const spans: { args: string; start: number; end: number }[] = []
+    let t = 0
+    const run = async (args: string[]) => {
+      const start = ++t
+      await new Promise((r) => setTimeout(r, 5))
+      spans.push({ args: args.join(' '), start, end: ++t })
+      if (args[0] === 'fail') throw new Error('twg exited 1')
+      return answer(args)
+    }
+    return { run, spans }
+  }
+  const overlapping = (spans: { start: number; end: number }[]) =>
+    spans.some((a, i) => spans.some((b, j) => i !== j && a.start < b.end && b.start < a.end))
+
+  test('concurrent calls run one after another, in order, and a failure does not stop the queue', async () => {
+    const fake = slowTwg()
+    const run = oneAtATime(fake.run)
+    const results = await Promise.allSettled([run(['a']), run(['fail']), run(['c'])])
+    assert.deepEqual(results.map((r) => r.status), ['fulfilled', 'rejected', 'fulfilled'])
+    assert.deepEqual(fake.spans.map((s) => s.args), ['a', 'fail', 'c'])
+    assert.ok(!overlapping(fake.spans))
+  })
+
+  test('the Jira and RIA readers, run together, never overlap their twg calls', async () => {
+    const fake = slowTwg((args) => JSON.stringify(args[0] === 'confluence' ? { data: { body: { value: '' } } } : { data: { issues: [] } }))
+    const run = oneAtATime(fake.run)
+    const cfg = { ...CFG, ria_page: '123' }
+    await Promise.all([jiraReader(cfg, run, NOW)(), riaReader(cfg, run, NOW)()])
+    assert.ok(fake.spans.length >= 4)
+    assert.ok(!overlapping(fake.spans))
   })
 })
