@@ -44,11 +44,12 @@ export interface CveDoc {
 /** owner/name, lower-cased, from a git remote; undefined for anything that isn't a GitHub repo. */
 export function repoFromGitUrl(url: unknown): string | undefined {
   if (typeof url !== 'string') return undefined
-  const s = url.trim().toLowerCase()
+  let s = url.trim().toLowerCase()
     .replace(/^git@github\.com:/, 'https://github.com/')
     .replace(/^(ssh:\/\/git@|git:\/\/)github\.com\//, 'https://github.com/')
     .replace(/^https?:\/\/[^@/]+@github\.com\//, 'https://github.com/')
-    .replace(/\/+$/, '').replace(/\.git$/, '')
+  while (s.endsWith('/')) s = s.slice(0, -1)
+  if (s.endsWith('.git')) s = s.slice(0, -'.git'.length)
   return /^https:\/\/github\.com\/[^/]+\/[^/]+$/.test(s) ? s.slice('https://github.com/'.length) : undefined
 }
 
