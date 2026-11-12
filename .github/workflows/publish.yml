@@ -301,6 +301,7 @@ jobs:
   qa:
     needs: [build, deploy]
     runs-on: ubuntu-latest
+    permissions: {}
     steps:
       - if: needs.build.outputs.qa == 'failure'
         run: |
