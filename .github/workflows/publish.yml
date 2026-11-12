@@ -156,7 +156,7 @@ jobs:
     if: github.ref == 'refs/heads/master' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on:
       group: azure-nonprod
-    timeout-minutes: 25
+    timeout-minutes: 45
     permissions:
       contents: read
       id-token: write # azure/login over OIDC
@@ -165,30 +165,29 @@ jobs:
         with:
           persist-credentials: false
 
-      # The sign-in steps need curl, jq and sha256sum, and az for Key Vault. Anything missing is
-      # installed only where sudo needs no password; otherwise the job stops here.
+      # The sign-in steps need these. Nothing is installed on a shared runner: one that lacks
+      # them is the wrong runner, and the job says which are missing.
       - name: Check the runner's tools
         run: |
           set -euo pipefail
           missing=()
-          for tool in curl jq sha256sum; do
+          for tool in az jq curl sha256sum; do
             command -v "$tool" > /dev/null || missing+=("$tool")
           done
           if (( ${#missing[@]} )); then
-            if ! sudo -n true 2> /dev/null; then
-              echo "::error::the runner lacks ${missing[*]}, and can't install it without sudo"
-              exit 1
-            fi
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq curl jq coreutils > /dev/null
+            echo "::error::the runner lacks ${missing[*]}, which the twg and Key Vault steps need"
+            exit 1
           fi
-          if ! command -v az > /dev/null; then
-            if ! sudo -n true 2> /dev/null; then
-              echo "::error::the runner lacks the Azure CLI, and can't install it without sudo"
-              exit 1
-            fi
-            curl --proto '=https' --tlsv1.2 -fsSL https://aka.ms/InstallAzureCLIDeb | sudo -n bash > /dev/null
-          fi
+
+      # The runner is shared and may outlive the job, so the Azure and twg sign-ins live in
+      # directories of this job's own, never in the runner's home. AZURE_CONFIG_DIR is set for
+      # every later step, azure/login included; twg's HOME is given to each step that runs it.
+      - name: Keep this job's sign-ins to itself
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP:?}/azure" "${RUNNER_TEMP:?}/twg-home"
+          chmod 700 "${RUNNER_TEMP:?}/azure" "${RUNNER_TEMP:?}/twg-home"
+          echo "AZURE_CONFIG_DIR=${RUNNER_TEMP:?}/azure" >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -214,32 +213,23 @@ jobs:
           vault: ${{ env.TWG_VAULT }}
           secret: ${{ env.QA_TWG_SECRET }}
           azure-login: ${{ steps.azure-login.outcome }}
+          home: ${{ runner.temp }}/twg-home
 
-      # Unauthenticated, and only the status is read, so the first run on this runner group shows
-      # whether it can reach Jenkins. The report runs either way; rows it can't read keep their
-      # published answer.
+      # Judged as the report's own Jenkins reader judges it, with the same credentials, so the
+      # first run on this runner group shows whether the E2E rows can be read: reachable, a sign-in
+      # redirect, unauthorised or unreachable. Only that is printed. The report runs either way;
+      # rows it can't read keep their published answer.
       - name: Check Jenkins can be reached
-        run: |
-          set -uo pipefail
-          out=$(curl --proto '=https' --tlsv1.2 -s -o /dev/null -m 20 -w '%{http_code} %{redirect_url}' https://build.hmcts.net/api/json || true)
-          code=${out%% *}
-          where=${out#* }
-          case "$code" in
-            2?? | 401 | 403) echo "::notice::Jenkins is reachable from this runner (HTTP $code)" ;;
-            3??)
-              if [[ "$where" == *login.microsoftonline.com* || "$where" == *msappproxy* ]]; then
-                echo "::notice::Jenkins answered with a sign-in redirect (Azure App Proxy): this runner is outside its network, so the E2E rows keep their published answers"
-              else
-                echo "::notice::Jenkins answered with a redirect (HTTP $code)"
-              fi
-              ;;
-            *) echo "::notice::Jenkins could not be reached from this runner (HTTP ${code:-none}), so the E2E rows keep their published answers" ;;
-          esac
+        env:
+          JENKINS_USERNAME: ${{ vars.JENKINS_USER }}
+          JENKINS_PASSWORD: ${{ secrets.JENKINS_TOKEN }}
+        run: node --no-warnings scripts/qa-jenkins-check.ts
 
-      # Edits are made as whoever seeded the twg secret, and Jenkins is read as the owner of the
-      # JENKINS_TOKEN API token. Cosmos is read with the read-only key in the
-      # COSMOS_PIPELINE_METRICS_KEY secret, or as the Azure sign-in above if it's unset. Evidence
-      # stays in $RUNNER_TEMP, and the log gets only counts.
+      # Edits are made as whoever seeded the QA twg secret, and Jenkins is read as the owner of the
+      # JENKINS_TOKEN API token. Cosmos is read only with the read-only key in the
+      # COSMOS_PIPELINE_METRICS_KEY secret: the Azure sign-in has no Cosmos role, so without the
+      # key the Cosmos rows are unknown and keep their published answer. Evidence stays in
+      # $RUNNER_TEMP, and the log gets only counts.
       - name: Update the QA readiness reports
         id: qa
         if: steps.twg.outputs.signed_in == 'true'
@@ -251,6 +241,8 @@ jobs:
           COSMOS_PIPELINE_METRICS_KEY: ${{ secrets.COSMOS_PIPELINE_METRICS_KEY }}
           JENKINS_USERNAME: ${{ vars.JENKINS_USER }}
           JENKINS_PASSWORD: ${{ secrets.JENKINS_TOKEN }}
+          HOME: ${{ runner.temp }}/twg-home
+          XDG_CONFIG_HOME: ${{ runner.temp }}/twg-home/.config
         run: npm run qa-report -- --all-active --publish
 
       # Fails the job so it's seen; it never affects the site. An unseeded secret stands down in
@@ -272,10 +264,10 @@ jobs:
         with:
           vault: ${{ env.TWG_VAULT }}
           secret: ${{ env.QA_TWG_SECRET }}
+          home: ${{ runner.temp }}/twg-home
 
-      # A self-hosted runner can outlive the job, so neither sign-in, twg nor the evidence is left on it.
-      - name: Sign out of Azure and twg
+      # A self-hosted runner can outlive the job, so neither sign-in, twg nor the evidence is left
+      # on it. Only this job's own directories are removed: the runner's home is never touched.
+      - name: Remove this job's sign-ins and evidence
         if: always()
-        run: |
-          az logout > /dev/null 2>&1 || true
-          rm -rf "${HOME:?}/.azure" "${HOME:?}/.config/twg" "${RUNNER_TEMP:?}/qa" "${RUNNER_TEMP:?}/bin"
+        run: rm -rf "${RUNNER_TEMP:?}/azure" "${RUNNER_TEMP:?}/twg-home" "${RUNNER_TEMP:?}/qa" "${RUNNER_TEMP:?}/bin"

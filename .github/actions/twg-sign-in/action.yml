@@ -26,6 +26,12 @@ inputs:
   azure-login:
     description: The azure/login step's outcome
     required: true
+  home:
+    description: >
+      A directory to keep twg's sign-in in, instead of the runner's home: set it on a shared
+      self-hosted runner. Every later step that runs twg needs the same HOME and XDG_CONFIG_HOME.
+    required: false
+    default: ''
 
 outputs:
   restored:
@@ -70,8 +76,11 @@ runs:
         AZURE_LOGIN: ${{ inputs.azure-login }}
         TWG_VAULT: ${{ inputs.vault }}
         TWG_SECRET: ${{ inputs.secret }}
+        TWG_HOME: ${{ inputs.home }}
       run: |
         set -euo pipefail
+        # On a shared runner, keep the sign-in out of the runner's own home.
+        if [[ -n "$TWG_HOME" ]]; then export HOME="$TWG_HOME" XDG_CONFIG_HOME="$TWG_HOME/.config"; fi
         # Without Azure there's nowhere to store a rotated token, and refreshing without
         # storing it breaks the next run for good. So stand down before twg has a file.
         if [[ "$AZURE_LOGIN" != "success" || -z "$TWG_VAULT" ]]; then
@@ -116,8 +125,11 @@ runs:
       env:
         TWG_VAULT: ${{ inputs.vault }}
         TWG_SECRET: ${{ inputs.secret }}
+        TWG_HOME: ${{ inputs.home }}
       run: |
         set -uo pipefail
+        # On a shared runner, keep the sign-in out of the runner's own home.
+        if [[ -n "$TWG_HOME" ]]; then export HOME="$TWG_HOME" XDG_CONFIG_HOME="$TWG_HOME/.config"; fi
         conf="$HOME/.config/twg/auth.conf"
         err="$RUNNER_TEMP/twg-kv.err"
         pack() { tr -d '\r' < "$conf" | grep -v '^oauth-access-token='; }

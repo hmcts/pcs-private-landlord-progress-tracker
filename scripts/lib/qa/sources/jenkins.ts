@@ -43,8 +43,17 @@ export const E2E_CONCURRENCY = 4
 /** GET a Jenkins path (no host), returning parsed JSON. Injected in tests. */
 export type JenkinsGet = (path: string) => Promise<unknown>
 
+/** Why Jenkins couldn't be asked. */
+export type UnreachableKind = 'config' | 'no-credentials' | 'network' | 'sign-in-redirect' | 'unauthorised' | 'not-json'
+
 /** Jenkins couldn't be asked: off the VPN, signed out, or down. */
-export class Unreachable extends Error {}
+export class Unreachable extends Error {
+  kind: UnreachableKind
+  constructor(message: string, kind: UnreachableKind = 'network') {
+    super(message)
+    this.kind = kind
+  }
+}
 
 function baseUrl(env: NodeJS.ProcessEnv): string {
   let b = env.JENKINS_URL || JENKINS
@@ -53,22 +62,22 @@ function baseUrl(env: NodeJS.ProcessEnv): string {
   try {
     url = new URL(b)
   } catch {
-    throw new Unreachable('JENKINS_URL is not a URL')
+    throw new Unreachable('JENKINS_URL is not a URL', 'config')
   }
-  if (url.protocol !== 'https:') throw new Unreachable('JENKINS_URL is not an https URL')
+  if (url.protocol !== 'https:') throw new Unreachable('JENKINS_URL is not an https URL', 'config')
   return b
 }
 
 /** A Jenkins response as JSON, or why it can't be read: a redirect or a web page is the App Proxy's sign-in. */
 export async function readJenkins(res: Response): Promise<unknown> {
-  if (res.type === 'opaqueredirect' || (res.status >= 300 && res.status < 400)) throw new Unreachable('Jenkins redirected to a sign-in page (off the VPN?)')
-  if (res.status === 401 || res.status === 403) throw new Unreachable(`Jenkins refused the sign-in (${res.status})`)
+  if (res.type === 'opaqueredirect' || (res.status >= 300 && res.status < 400)) throw new Unreachable('Jenkins redirected to a sign-in page (off the VPN?)', 'sign-in-redirect')
+  if (res.status === 401 || res.status === 403) throw new Unreachable(`Jenkins refused the sign-in (${res.status})`, 'unauthorised')
   if (!res.ok) throw new HttpError(res.status, `HTTP ${res.status}`)
-  if (!(res.headers.get('content-type') ?? '').includes('json')) throw new Unreachable('Jenkins answered with a web page, not JSON (a sign-in page?)')
+  if (!(res.headers.get('content-type') ?? '').includes('json')) throw new Unreachable('Jenkins answered with a web page, not JSON (a sign-in page?)', 'not-json')
   try {
     return await res.json()
   } catch {
-    throw new Unreachable('Jenkins answered with something that is not JSON')
+    throw new Unreachable('Jenkins answered with something that is not JSON', 'not-json')
   }
 }
 
@@ -77,7 +86,7 @@ export function defaultJenkins(env: NodeJS.ProcessEnv = process.env): JenkinsGet
     const base = baseUrl(env)
     const user = env.JENKINS_USERNAME
     const pass = env.JENKINS_PASSWORD
-    if (!user || !pass) throw new Unreachable('JENKINS_USERNAME and JENKINS_PASSWORD are not set')
+    if (!user || !pass) throw new Unreachable('JENKINS_USERNAME and JENKINS_PASSWORD are not set', 'no-credentials')
     let res: Response
     try {
       res = await fetch(`${base}${path}`, {
@@ -312,5 +321,17 @@ export function jenkinsReader(cfg: ReleaseConfig, get: JenkinsGet = defaultJenki
       return E2E_RULES.map((rule) => item({ source: SOURCE, rule, status: 'unknown', value: 'not checked', note: 'no repo has an E2E build configured' }, now))
     }
     return (await mapLimit(repos, E2E_CONCURRENCY, ([repo, rc]) => one(repo, rc, rc.e2e!, get, tarball, now))).flat()
+  }
+}
+
+export type Reachability = 'reachable' | UnreachableKind | 'error'
+
+/** Whether Jenkins can be read with the configured credentials, judged exactly as the reader judges it. */
+export async function reachability(get: JenkinsGet = defaultJenkins()): Promise<Reachability> {
+  try {
+    await get('/api/json?tree=mode')
+    return 'reachable'
+  } catch (e) {
+    return e instanceof Unreachable ? e.kind : 'error'
   }
 }

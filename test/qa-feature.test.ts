@@ -9,7 +9,7 @@ import { merge } from '../scripts/lib/qa/publish.ts'
 import { evaluate, genRows, renderPage } from '../scripts/lib/qa/render.ts'
 import { HttpError, type Item } from '../scripts/lib/qa/sources/common.ts'
 import { latestFinished, scanTarball } from '../scripts/lib/qa/sources/github.ts'
-import { buildRef, defaultJenkins, E2E_RULES, featureCases, hasTag, jenkinsReader, jobPath, outcome, readJenkins, revisionOf,
+import { buildRef, defaultJenkins, reachability, E2E_RULES, featureCases, hasTag, jenkinsReader, jobPath, outcome, readJenkins, revisionOf,
   repoPathOf, specScope, underPath, Unreachable } from '../scripts/lib/qa/sources/jenkins.ts'
 import { jiraReader } from '../scripts/lib/qa/sources/jira.ts'
 import { riaReader } from '../scripts/lib/qa/sources/ria.ts'
@@ -273,6 +273,16 @@ describe('reading Jenkins', () => {
   test('without credentials, or with a URL that isn\'t https, nothing is fetched', async () => {
     await assert.rejects(defaultJenkins({})('/api/json'), /JENKINS_USERNAME and JENKINS_PASSWORD are not set/)
     await assert.rejects(defaultJenkins({ JENKINS_URL: 'http://build.example', JENKINS_USERNAME: 'u', JENKINS_PASSWORD: 'p' })('/api/json'), /not an https URL/)
+  })
+
+  test('the workflow\'s check judges reachability as the reader does', async () => {
+    assert.equal(await reachability(async () => ({ mode: 'NORMAL' })), 'reachable')
+    assert.equal(await reachability(defaultJenkins({})), 'no-credentials')
+    const answer = (res: Response) => async () => readJenkins(res)
+    assert.equal(await reachability(answer(new Response(null, { status: 302, headers: { location: 'https://login.microsoftonline.com/x' } }))), 'sign-in-redirect')
+    assert.equal(await reachability(answer(new Response('{}', { status: 403, headers: { 'content-type': 'application/json' } }))), 'unauthorised')
+    assert.equal(await reachability(answer(new Response('{}', { status: 500, headers: { 'content-type': 'application/json' } }))), 'error')
+    assert.equal(await reachability(async () => { throw new Unreachable('Jenkins could not be reached') }), 'network')
   })
 
   test('readers include Jenkins only for a feature', () => {

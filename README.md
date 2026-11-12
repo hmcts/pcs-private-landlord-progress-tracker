@@ -222,19 +222,36 @@ in its config.
 The job runs on HMCTS's self-hosted runner group `azure-nonprod`, as hmcts/cath-service's E2E
 job does, so that it can reach Jenkins (`build.hmcts.net`), which GitHub's own runners can't.
 
-- **It runs only on the schedule and on a manual dispatch from `master`**, never on a push or
-  from another branch. This repo is public, and a self-hosted runner must never run code from a
-  pull request: the workflow has no `pull_request` trigger, and `ci.yml`, which has, stays on
-  GitHub's runners.
+- **The job runs only on the schedule and on a manual dispatch from `master`.** It never runs on
+  a push or from another branch.
+- **Nothing in this repo can stop a pull request using the runners.** This repo is public, and a
+  self-hosted runner must never run code from a pull request. Publish has no `pull_request`
+  trigger, but that protects nothing: a pull request from a fork can edit `ci.yml` to say
+  `runs-on: { group: azure-nonprod }`, and its run would get a runner if the group allowed it. The
+  safeguards are two settings outside the code:
+  - The runner group's **"selected workflows"** restriction. An org admin limits
+    `azure-nonprod`, for this repo, to
+    `hmcts/pcs-private-landlord-progress-tracker/.github/workflows/publish.yml@refs/heads/master`,
+    so no other workflow, and no other ref of this one, can use it.
+  - The repo setting (Settings → Actions → General) that **requires approval for fork pull request
+    workflows from all outside contributors**, so a fork's run waits for a maintainer.
 - **The repo must be allowed to use the `azure-nonprod` runner group**, an organisation setting
-  only an org admin can change. Until it is, the job sits queued: its 25-minute timeout counts
-  only once a runner picks it up, and GitHub cancels it after 24 hours in the queue. It has its
-  own concurrency group (`qa-report`) and nothing waits for it, so a queued `qa-report` delays
-  only the next `qa-report`, never the site.
-- A step before the report checks whether Jenkins answers from the runner, reading only the HTTP
-  status, and says so as a notice: reachable, a sign-in redirect (Azure App Proxy, so the runner
-  is outside the network), or unreachable. The report runs either way; if Jenkins can't be read,
-  a feature's E2E rows, and its header's "E2E build" row, keep what the page already says.
+  only an org admin can change. Until it is, the job sits queued. Its 45-minute timeout counts only
+  once a runner picks it up, and GitHub cancels it after 24 hours in the queue. It has its own
+  concurrency group (`qa-report`) and nothing waits for it, so a queued `qa-report` delays only
+  the next `qa-report`, never the site.
+- **The runner's home is never used.** The Azure and twg sign-ins go in directories of the job's
+  own under `$RUNNER_TEMP` (`AZURE_CONFIG_DIR`, and `HOME` and `XDG_CONFIG_HOME` for the steps
+  that run twg), made readable only by the runner's user, and deleted at the end. On a runner that
+  isn't ephemeral, though, another job running as the same user at the same time could still read
+  them while this one runs. That is one more reason the group must be limited to this workflow.
+  Nothing is installed on the runner: if it lacks `az`, `jq`, `curl` or `sha256sum`, the job
+  fails and says which are missing.
+- **A step before the report checks Jenkins** with the report's own logic and credentials, and says
+  so in one notice: reachable, a sign-in redirect (Azure App Proxy, so the runner is outside the
+  network), unauthorised (401 or 403), credentials not set, or unreachable. Run it yourself with
+  `node --no-warnings scripts/qa-jenkins-check.ts`. The report runs either way. If Jenkins can't
+  be read, a feature's E2E rows, and its header's "E2E build" row, keep what the page already says.
 - Jenkins is read with the `JENKINS_USER` variable (an Entra object id) and the `JENKINS_TOKEN`
   secret (that person's Jenkins API token), passed to the report as `JENKINS_USERNAME` and
   `JENKINS_PASSWORD`. The runs call Jenkins as that person, so use a token made for this,
@@ -243,17 +260,14 @@ job does, so that it can reach Jenkins (`build.hmcts.net`), which GitHub's own r
 Locally, run the report on the VPN with `JENKINS_USERNAME` and `JENKINS_PASSWORD` set to refresh
 the E2E rows yourself.
 
-Cosmos needs one of:
-
-- The account's read-only key in the `COSMOS_PIPELINE_METRICS_KEY` repository secret. It's a
-  copy of `cve-cosmos-readonly-key` in the `dtsse-aat` Key Vault, which dtsse-github-metrics'
-  CVE collector also reads; copy it again if that key is rotated. Only the report step gets it.
-- The *Cosmos DB Built-in Data Reader* data-plane role on the `pipeline-metrics` account
-  (subscription DCD-CNP-Prod) for the workflow's app registration, read as the `azure/login`
-  sign-in. That would remove the stored key, but it's a platform request.
-
-With neither, yarn audit and dependency check stay "To confirm", and the rest of the report is
-still filled in.
+Cosmos is read with the account's read-only key in the `COSMOS_PIPELINE_METRICS_KEY` repository
+secret. It's a copy of `cve-cosmos-readonly-key` in the `dtsse-aat` Key Vault, which
+dtsse-github-metrics' CVE collector also reads; copy it again if that key is rotated. Only the
+report step gets it. The workflow's Azure sign-in has no Cosmos role, so without the key the Cosmos
+rows (yarn audit, dependency check, and the Jenkins stage rows GitHub doesn't answer) are unknown,
+and a publish keeps their published answers. Giving the app registration the *Cosmos DB Built-in
+Data Reader* data-plane role on the `pipeline-metrics` account (subscription DCD-CNP-Prod) would
+remove the stored key, but that's a platform request.
 
 ## Setup
 
