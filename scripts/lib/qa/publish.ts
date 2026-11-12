@@ -3,7 +3,8 @@
 // Only cells carrying this generator's marker, with text that still matches its hash, are
 // replaced (see render.ts). Every other cell is a person's and is kept as it is. A judgement
 // (judgement.ts) replaces cells on the same terms, but unmarked, so it becomes a person's once
-// written. Rows the page lacks are added after the row before them in the layout. The change
+// written. A cell of a row whose source couldn't be read (render.ts, `keep`) is left as the page
+// has it. Rows the page lacks are added after the row before them in the layout. The change
 // goes to Confluence as targeted edits (replaceNode / insertNodeAfter on the cells' local ids),
 // so the rest of the page, mentions, images and macros included, is never re-sent. Updates
 // carry the snapshot token from the read; on a stale token the page is read again and the
@@ -14,7 +15,7 @@ import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Layout, LayoutTable, ReleaseConfig } from './config.ts'
 import { cellsOf, type El, esc, parse, rowsOf, shortHash, splice, tableAfterHeading, textOf } from './html.ts'
-import { cellText, type CellName, type GenCell, type GenRow, MARKER, markerRow, markers, rowHtml, tableHtml } from './render.ts'
+import { cellText, type CellName, type GenCell, type GenRow, MARKER, markerRow, markers, rowHtml, tableHtml, titleOf } from './render.ts'
 import type { TwgRunner } from '../roadmap-runner.ts'
 import { QaError } from './errors.ts'
 import { pageId } from './twg.ts'
@@ -26,7 +27,7 @@ export interface Edit {
   value: string
 }
 
-export type Action = 'update' | 'judgement' | 'unchanged' | 'keep-human' | 'keep-edited' | 'add-row' | 'add-table' | 'skipped'
+export type Action = 'update' | 'judgement' | 'unchanged' | 'keep-human' | 'keep-edited' | 'keep-unreachable' | 'add-row' | 'add-table' | 'skipped'
 
 export interface CellChange {
   table: 'info' | 'checklist'
@@ -85,6 +86,7 @@ function cellOf(page: string, table: TableName, key: string, gen: GenCell, td: E
   if (!marker) held = { ...base, action: 'keep-human', before }
   else if (hash !== shortHash(cellText(page.slice(td.start, td.end)))) held = { ...base, action: 'keep-edited', before }
   else if (hash === gen.hash) held = { ...base, action: 'unchanged' }
+  else if (gen.keep) held = { ...base, action: 'keep-unreachable', before }
   else if (!td.attrs['data-local-id']) held = { ...base, action: 'skipped', why: 'the cell has no local id' }
   return { gen, td, base, held, before }
 }
@@ -170,16 +172,19 @@ export interface Counts {
   human: number
   added: number
   skipped: number
+  /** Kept as published, because their source couldn't be read. */
+  kept: number
 }
 
 export function count(changes: CellChange[]): Counts {
-  const c = { change: 0, judged: 0, unchanged: 0, human: 0, added: 0, skipped: 0 }
+  const c = { change: 0, judged: 0, unchanged: 0, human: 0, added: 0, skipped: 0, kept: 0 }
   for (const x of changes) {
     if (x.action === 'update') c.change++
     else if (x.action === 'judgement') c.judged++
     else if (x.action === 'unchanged') c.unchanged++
     else if (x.action === 'keep-human' || x.action === 'keep-edited') c.human++
     else if (x.action === 'add-row' || x.action === 'add-table') c.added++
+    else if (x.action === 'keep-unreachable') c.kept++
     else c.skipped++
   }
   return c
@@ -187,14 +192,14 @@ export function count(changes: CellChange[]): Counts {
 
 const WHAT: Record<Action, string> = {
   update: 'would change', judgement: 'would take the judgement, unmarked', unchanged: 'unchanged', 'keep-human': 'kept: written by a person (no marker)',
-  'keep-edited': 'kept: edited by a person since it was generated', 'add-row': 'row would be added',
+  'keep-edited': 'kept: edited by a person since it was generated', 'keep-unreachable': 'kept as published: its source could not be read', 'add-row': 'row would be added',
   'add-table': 'table would be added', skipped: 'skipped',
 }
 
 export function diffSummary(title: string, changes: CellChange[]): string {
   const c = count(changes)
   const out = [title, `${c.change} cells would change, ${c.judged} would take a judgement, ${c.added} rows would be added, ${c.human} cells kept as people wrote them, ` +
-    `${c.unchanged} unchanged, ${c.skipped} skipped`, '']
+    `${c.kept} kept as published because a source could not be read, ${c.unchanged} unchanged, ${c.skipped} skipped`, '']
   for (const x of changes) {
     if (x.action === 'unchanged') continue
     out.push(`${x.table} ${x.key}${x.cell ? ` ${x.cell}` : ''}: ${WHAT[x.action]}${x.why ? ` (${x.why})` : ''}`)
@@ -322,5 +327,5 @@ export function createPage(run: TwgRunner, parentId: string, title: string, html
 }
 
 export function releaseTitle(cfg: ReleaseConfig, layout: Layout): string {
-  return layout.title.replace('{release}', cfg.release)
+  return titleOf(cfg, layout)
 }

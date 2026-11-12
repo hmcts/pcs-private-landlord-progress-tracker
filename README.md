@@ -83,7 +83,8 @@ npm run typecheck
 
 ## QA readiness report
 
-`npm run qa-report -- --release R1.3A` fills in a release's QA readiness report on Confluence.
+`npm run qa-report -- --release R1.3A` fills in a release's QA readiness report on Confluence, and
+`npm run qa-report -- --feature <name>` a feature's.
 It is internal, not part of the site: nothing it collects is committed, published or printed.
 
 ```sh
@@ -93,7 +94,8 @@ npm run qa-report -- --release R1.3A --publish       # update the page (the rele
 npm run qa-report -- --release R1.3A --evidence      # re-render from the last run's evidence.json
 npm run qa-report -- --release R1.4 --create-under <parentPageId> [--publish]   # no report_page yet
 npm run qa-report -- --release R1.3A --judgement     # rows a person answers, from judgement.yaml
-npm run qa-report -- --all-active [--publish]        # every release with active: true and a report_page
+npm run qa-report -- --feature private-landlord-make-a-claim   # a feature: the same options apply
+npm run qa-report -- --all-active [--publish]        # every release and feature with active: true and a report_page
 ```
 
 Each release has `config/qa-readiness/<release>.yaml`: the `candidates` (a full commit SHA per
@@ -102,7 +104,55 @@ repo for each release candidate), the `repos` (GitHub name, Sonar project key, t
 `report_page` and `ria_page` (Confluence page ids), `human_rows` (the Jira ticket whose status
 answers a row a person signs off) and `active`. The page's rows and questions are in
 `config/qa-readiness/layouts/`. `npm run validate` checks both. This repo is public, so these files
-hold only page ids, repo names, SHAs, Sonar keys and Jira keys.
+hold only page ids, repo names, SHAs, Sonar keys and Jira keys (and, for a feature, Jenkins job
+names, E2E tags and spec paths).
+
+### Feature reports
+
+The Private Landlord workstream has no releases, so a report can cover a feature instead:
+`config/qa-readiness/<feature>.yaml` with `feature: <name>` in place of `release`, and no
+`candidates` or `jql`. It uses the `pcs-feature` layout. See
+`config/qa-readiness/private-landlord-make-a-claim.yaml`.
+
+```yaml
+feature: private-landlord-make-a-claim
+active: false
+layout: pcs-feature
+epics: [HDPI-10019]                # Jira scope: these epics' child tickets
+repos:
+  pcs-frontend:
+    github: hmcts/pcs-frontend     # sonar, cosmos_product, cosmos_component, builder as for a release
+    commit: master                 # service-wide rows: this branch's latest finished build, or a full SHA
+    e2e:                           # optional: where the feature's E2E tests ran
+      jenkins: { job: HMCTS_j_to_z/pcs-frontend, branch: PR-2312, build: last-completed }   # or a build number
+      tags: ['@privateLandlord']   # Playwright tags in the test titles
+      paths: [src/test/ui/e2eTest/privateLandlordMakeAClaim.spec.ts]   # spec files or folders
+```
+
+- **Service-wide rows** (coverage, quality gate, static analysis, integration and contract,
+  functional, yarn audit, dependency check, ignored tests) are about each repo as a whole. They are
+  read at one commit per repo, picked when the evidence is collected: the newest commit on
+  `commit` (default: the repo's default branch) whose Jenkins build has finished, passed or
+  failed, going by its `continuous-integration/jenkins/branch` status. A full SHA pins it. The
+  header's "Service-wide revision" row names the commit, and each row's comment says
+  "service-wide" and the commit.
+- **Feature rows** are about the feature only. The E2E row counts the passed, failed, flaky and
+  skipped tests among the configured Jenkins build's results that carry one of `tags` in their
+  title or come from one of `paths`; the header's "E2E build" row names the build and the commit
+  it ran. No matching test is a failure (the scope is wrong, or the suite didn't run), not a pass.
+  The results come from the build's JUnit report: pcs-frontend's PR builds publish their Playwright
+  results there, but pcs-api's "E2E Test - AKS preview" stage doesn't (only an HTML report), so a
+  pcs-api E2E build fails the row with a note saying its report holds no Playwright tests.
+  The feature's ignored-tests row scans only those specs, at that commit. Outstanding bugs,
+  Critical and High bugs, test complete comments and "are the stories done" read the epics' child
+  tickets (`parent in (…)`, as the roadmap does). Performance and security rows come from
+  `ria_page` if set, and are N/A ("no RIA for this feature") if not.
+
+Jenkins (`build.hmcts.net`) is reachable only on the VPN, with Basic auth: set
+`JENKINS_USERNAME` (your Entra object id) and `JENKINS_PASSWORD` (a Jenkins API token), the
+same variables cft-workspace's `scripts/mcp-jenkins` uses. `JENKINS_URL` overrides the host.
+Off the VPN Jenkins answers with a redirect to a sign-in page; that, a 401 or 403, or missing
+variables all count as unreachable.
 
 | Source | Rows |
 |---|---|
@@ -114,6 +164,11 @@ hold only page ids, repo names, SHAs, Sonar keys and Jira keys.
 | The Release Impact Assessment, through twg | performance and security sign-off |
 
 A source that can't be read leaves its rows "To confirm" with the reason, and the run carries on.
+The evidence marks those items `unreachable`, apart from items that are unknown because what was
+asked about isn't there (no analysis of the commit, no matching check, a ticket not done). When a
+row is unknown only because of an unreachable source, a publish leaves its cells as the page has
+them, so a published "Yes" isn't turned back into "To confirm". That is what lets the scheduled
+run, which has no VPN and so no Jenkins, leave alone the E2E rows a local run filled in.
 A row passes only when every check it asks for passes: Cosmos and GitHub are alternatives for the
 same build check, but a closed `human_rows` ticket never makes up for a check that couldn't be made.
 Only Jenkins builds that finished count, the latest of each job.
@@ -159,9 +214,14 @@ Run locally, edits are made as your own twg login.
 The Publish workflow runs `npm run qa-report -- --all-active --publish` after reading the
 roadmap, with the same twg sign-in, so Confluence edits are made as whoever seeded the twg secret
 (see "Jira sign-in"), and that account needs edit rights on each report page. It runs only on
-`master` and only once twg is signed in. Each release is done on its own; if any fails, the run
-is marked as failed, but the site is still deployed. Evidence goes to `$RUNNER_TEMP/qa` and the
-log gets only counts. To stop a release being updated, set `active: false` in its config.
+`master` and only once twg is signed in. Each active release and feature is done on its own; if
+any fails, the run is marked as failed, but the site is still deployed. Evidence goes to
+`$RUNNER_TEMP/qa` and the log gets only counts. To stop a report being updated, set
+`active: false` in its config.
+
+The workflow has no VPN, so it can't reach Jenkins: a feature's E2E rows, and its header's
+"E2E build" row, keep what the page already says. Refresh them by running the report locally
+on the VPN, with the `JENKINS_*` variables set, and `--publish`.
 
 Cosmos needs one of:
 

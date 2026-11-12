@@ -27,9 +27,16 @@ export interface EvidenceItem {
   answer?: Answer
   /** Facts the info table shows verbatim, such as bug counts by priority. */
   data?: Record<string, unknown>
+  /**
+   * The status is unknown because the source couldn't be read (down, signed out, off the VPN),
+   * not because what it was asked about is absent. A row unknown only for this reason leaves
+   * the published cells as they are.
+   */
+  unreachable?: boolean
 }
 
 export interface Evidence {
+  /** The release, or the feature, the evidence is for. */
   release: string
   generatedAt: string
   candidates: { name: string; shas: Record<string, string> }[]

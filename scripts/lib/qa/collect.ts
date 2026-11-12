@@ -1,13 +1,19 @@
 // Runs every source reader and files their findings under the layout's rows. A reader that
 // fails outright leaves its rows without evidence, which the report shows as "To confirm".
+//
+// A feature has no candidate commits of its own. scopeFeature picks, per repo, the commit its
+// service-wide rows are read at (the latest default-branch commit with a finished Jenkins build,
+// or the config's pinned SHA) and makes that the one candidate, "service-wide", so the
+// per-commit readers work as they do for a release. The E2E rows come from the Jenkins reader.
 
-import type { Layout, ReleaseConfig } from './config.ts'
-import { type CosmosQuery, cosmosReader } from './sources/cosmos.ts'
-import { type GitHubApi, type GitHubTarball, githubReader } from './sources/github.ts'
+import type { Layout, ReleaseConfig, RepoConfig } from './config.ts'
+import { CVE_RULE, type CosmosQuery, cosmosReader, STAGE_RULES } from './sources/cosmos.ts'
+import { CHECK_RULES, defaultGitHubApi, type GitHubApi, type GitHubTarball, githubReader, latestFinished, LOOKBACK, SHA_RE } from './sources/github.ts'
+import { type JenkinsGet, jenkinsReader } from './sources/jenkins.ts'
 import { jiraReader } from './sources/jira.ts'
 import { riaReader } from './sources/ria.ts'
-import { type HttpJson, type Item, reason } from './sources/common.ts'
-import { sonarReader } from './sources/sonar.ts'
+import { day, type HttpJson, item, type Item, reason, short } from './sources/common.ts'
+import { SONAR_RULES, sonarReader } from './sources/sonar.ts'
 import { type AsyncTwgRunner, quietRunnerAsync } from './twg.ts'
 import type { Evidence, EvidenceItem } from './types.ts'
 import { QaError } from './errors.ts'
@@ -19,6 +25,7 @@ export interface Sources {
   githubApi?: GitHubApi
   tarball?: GitHubTarball
   twg?: AsyncTwgRunner
+  jenkins?: JenkinsGet
   now?: () => Date
 }
 
@@ -29,7 +36,52 @@ export function readers(cfg: ReleaseConfig, s: Sources = {}): Record<string, () 
     github: githubReader(cfg, s.githubApi, s.tarball, s.now),
     jira: jiraReader(cfg, s.twg ?? quietRunnerAsync, s.now),
     ria: riaReader(cfg, s.twg ?? quietRunnerAsync, s.now),
+    ...(cfg.kind === 'feature' ? { jenkins: jenkinsReader(cfg, s.jenkins, s.tarball, s.now) } : {}),
   }
+}
+
+export const SERVICE_WIDE = 'service-wide'
+
+/** Every rule the per-commit readers answer for a repo. */
+export function serviceRules(rc: RepoConfig): string[] {
+  const cve = rc.builder === 'gradle' ? [CVE_RULE.java] : rc.builder === 'yarn' ? [CVE_RULE.node] : Object.values(CVE_RULE)
+  return [...new Set([...SONAR_RULES, ...Object.keys(STAGE_RULES), ...Object.keys(CHECK_RULES), 'ignored-tests', ...cve])]
+}
+
+/**
+ * A feature config with its service-wide commits: one candidate, "service-wide", with a commit
+ * per repo, and the evidence of how each was picked. A repo whose commit can't be picked is left
+ * out of the candidate, and its service-wide rules answered unknown here instead.
+ */
+export async function scopeFeature(cfg: ReleaseConfig, api: GitHubApi = defaultGitHubApi(), now?: () => Date): Promise<{ cfg: ReleaseConfig; items: Item[] }> {
+  if (cfg.kind !== 'feature') return { cfg, items: [] }
+  const shas: Record<string, string> = {}
+  const items: Item[] = []
+  for (const [repo, rc] of Object.entries(cfg.repos)) {
+    const base = { source: 'github', repo, rule: 'service-revision' }
+    const link = (sha: string) => [{ text: `${repo} ${short(sha)}`, url: `https://github.com/${rc.github}/commit/${sha}` }]
+    const missing = (note: string, unreachable: boolean) => [item({ ...base, status: 'unknown', value: `${repo}: not known`, note, unreachable }, now),
+      ...serviceRules(rc).map((rule) => item({ source: 'github', repo, rule, status: 'unknown', value: 'not checked', note, unreachable }, now))]
+    if (rc.commit && SHA_RE.test(rc.commit)) {
+      shas[repo] = rc.commit
+      items.push(item({ ...base, status: 'pass', sha: rc.commit, value: `${repo}: ${short(rc.commit)}, pinned in the config`, links: link(rc.commit) }, now))
+      continue
+    }
+    try {
+      const branch = rc.commit ?? (str((await api(`repos/${rc.github}`) as Record<string, unknown>).default_branch) || 'master')
+      const hit = await latestFinished(api, rc.github, branch)
+      if (!hit) {
+        items.push(...missing(`none of the last ${LOOKBACK} ${branch} commits has a finished Jenkins build`, false))
+        continue
+      }
+      shas[repo] = hit.sha
+      items.push(item({ ...base, status: 'pass', sha: hit.sha, links: link(hit.sha), data: { branch },
+        value: `${repo}: ${short(hit.sha)}, the latest ${branch} commit with a finished Jenkins build${hit.date ? ` (${day(hit.date)})` : ''}` }, now))
+    } catch (e) {
+      items.push(...missing(`GitHub could not be read to pick the commit: ${reason(e)}`, true))
+    }
+  }
+  return { cfg: { ...cfg, candidates: [{ name: SERVICE_WIDE, shas }] }, items }
 }
 
 /** Gives each item the row(s) its rule answers in this layout; items no row asks for are dropped. */
@@ -66,10 +118,22 @@ export async function collect(cfg: ReleaseConfig, layout: Layout, rs: Record<str
   }
 }
 
-/** An evidence file read back, checked to be this release's, for exactly its candidate commits. */
+/**
+ * An evidence file read back, checked to be this release's, for exactly its candidate commits.
+ * A feature's commits were picked when the evidence was collected, so they are taken from it,
+ * as long as they are for the feature's repos and any commit the config pins.
+ */
 export function evidenceFor(doc: unknown, cfg: ReleaseConfig): Evidence {
   if (!isRec(doc) || !Array.isArray(doc.items) || !Array.isArray(doc.candidates)) {
     throw new QaError('evidence-invalid', 'expected { release, candidates, items }')
+  }
+  if (cfg.kind === 'feature') {
+    const [c] = doc.candidates as unknown[]
+    const shas = isRec(c) && c.name === SERVICE_WIDE && isRec(c.shas) ? c.shas : null
+    const fits = shas && doc.candidates.length === 1 && Object.entries(shas).every(([r, sha]) =>
+      r in cfg.repos && SHA_RE.test(str(sha)) && (!cfg.repos[r].commit || !SHA_RE.test(cfg.repos[r].commit!) || cfg.repos[r].commit === sha))
+    if (doc.release !== cfg.release || !fits) throw new QaError('evidence-mismatch', `the evidence is for ${str(doc.release)}, or other commits than the config's`)
+    return doc as unknown as Evidence
   }
   const same = (a: unknown, b: { name: string; shas: Record<string, string> }) => {
     if (!isRec(a) || a.name !== b.name || !isRec(a.shas)) return false

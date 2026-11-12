@@ -1,6 +1,6 @@
 ---
 name: qa-readiness-report
-description: Fill in a PCS release's QA readiness report on Confluence. Set up the release's config, collect the evidence (SonarCloud, Jenkins in Cosmos, GitHub, Jira, the Release Impact Assessment), dry-run the merge, research the rows a person has to answer and draft their judgements, then publish once the user confirms. Use when the user asks "do the QA readiness report for R1.4", "set up the QA report for the next release", "what's still To confirm on the R1.3A report", "fill in the rows the pipeline can't answer", "publish the QA report".
+description: Fill in a PCS release's or feature's QA readiness report on Confluence. Set up the release's or feature's config, collect the evidence (SonarCloud, Jenkins in Cosmos, GitHub, Jira, the Release Impact Assessment), dry-run the merge, research the rows a person has to answer and draft their judgements, then publish once the user confirms. Use when the user asks "do the QA readiness report for R1.4", "set up the QA report for the next release", "do a QA report for the private landlord feature", "scope a QA report to epic HDPI-…", "what's still To confirm on the R1.3A report", "fill in the rows the pipeline can't answer", "publish the QA report".
 ---
 
 # Fill in a QA readiness report
@@ -11,7 +11,8 @@ section explains the config fields, the sources and how a merge keeps what peopl
 **This repo, its site and its Actions logs are public.** Evidence, judgements and diffs stay in
 `.cache/qa/<release>/` (gitignored). Never commit them, paste them into a PR or an issue, or move
 them anywhere under `src/`, `data/`, `config/` or `_site/`. Release configs hold only page ids,
-repo names, SHAs, Sonar keys and Jira keys.
+repo names, SHAs, Sonar keys and Jira keys; feature configs also Jenkins job names, E2E tags and
+spec paths.
 
 **Never write to Confluence or Jira without the user's explicit go-ahead.** A dry run and
 `--validate` write nothing. `--publish` and `--create-under … --publish` edit Confluence as the
@@ -45,7 +46,34 @@ it to the release (the file name must match `release:`), and fill in:
 
 Run `npm run validate` after editing.
 
-## 2. Collect and dry-run
+### A feature instead of a release
+
+The Private Landlord workstream has no releases: its reports are per feature. Copy
+`private-landlord-make-a-claim.yaml`, rename it to the feature (the file name must match
+`feature:`), and fill in:
+
+- `epics`: the feature's HDPI epic keys. Its Jira rows read their child tickets. Epic keys and
+  summaries are in the latest `data/snapshots/*.json`; confirm the list with the user.
+- `repos`: as for a release, plus `commit` (leave it `master` for the latest finished master
+  build; pin a full SHA only if the user wants a fixed commit). These are the service-wide rows.
+- `repos.<repo>.e2e`, for each repo whose E2E tests cover the feature:
+  - `tags` / `paths`: the feature's Playwright tag (`git -C <clone> grep -n "@<tag>" origin/master -- src/e2eTest src/test/ui`)
+    and/or its spec files. Check they pick only the feature's specs.
+  - `jenkins`: the build that ran them, usually a PR's, e.g.
+    `{ job: HMCTS_j_to_z/pcs-frontend, branch: PR-2312, build: last-completed }`. Find the PR with
+    `gh pr list --repo hmcts/<repo> --label <e2e label>`; the labels that pick an E2E suite are
+    in the repo's `Jenkinsfile_CNP`. Check the build ran them: the Jenkins MCP's
+    `get_build_test_report` should list cases with the tag in their name.
+- `layout: pcs-feature`, and `ria_page` only if the feature has its own RIA.
+
+Use `--feature <name>` in place of `--release <name>` below.
+
+**E2E rows need Jenkins**, which is reachable only on the VPN, with `JENKINS_USERNAME` and
+`JENKINS_PASSWORD` set in the environment (never read or print them, and never read
+`.claude/*.env` files). Without them the E2E rows come out unknown and unreachable, and the
+run says "(source unreachable: keeps the published answer)". That's expected off the VPN, and in
+the scheduled Publish workflow: a publish leaves those rows as the page has them. To refresh them,
+run the report locally on the VPN, and publish once the user says so.
 
 ```sh
 npm run qa-report -- --release <release>              # collect, render, merge; writes nothing
@@ -53,7 +81,9 @@ npm run qa-report -- --release <release> --validate   # also has twg check the e
 ```
 
 Locally, Cosmos usually answers 403 (no data-plane role), so the Jenkins rows come out
-unknown with a note; that's expected, not a fault to fix. The output is counts only, and a
+unknown with a note; that's expected, not a fault to fix. A row unknown only because a source
+couldn't be read is marked "(source unreachable: keeps the published answer)": a publish leaves
+its cells as they are, and `diff.txt` says "kept as published". The output is counts only, and a
 failure prints only its kind: the reason is in `.cache/qa/errors.log`. The detail
 is in `.cache/qa/<release>/`: `evidence.json` (what each source said), `report.html`,
 `page.html` (the page as read), `merged.html`, `edits.json` and `diff.txt` (what a publish would

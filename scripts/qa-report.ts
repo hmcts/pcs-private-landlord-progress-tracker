@@ -1,19 +1,23 @@
-// Generates a release's QA readiness report and merges it into its Confluence page.
+// Generates a release's or a feature's QA readiness report and merges it into its Confluence page.
 //
 //   node scripts/qa-report.ts --release R1.3A [--evidence] [--judgement] [--publish]
 //                             [--validate] [--create-under <parentPageId>] [--config <file>]
+//   node scripts/qa-report.ts --feature <name> [the same options]
 //   node scripts/qa-report.ts --all-active [--publish] [--validate]
 //
 // Collects evidence for the release's candidate commits (SonarCloud, Jenkins results in Cosmos,
 // GitHub, Jira and the Release Impact Assessment), renders the report, and merges it into
-// report_page. It's a dry run unless --publish is given: the merged page and a diff are
+// report_page. A feature's service-wide rows are read at each repo's latest finished
+// default-branch build, its Jira rows from its epics' child tickets, and its E2E rows from the
+// Jenkins build its config names (see lib/qa/config.ts). A row whose source couldn't be read
+// keeps what the page already says. It's a dry run unless --publish is given: the merged page and a diff are
 // written to the cache directory (see scripts/lib/qa/cache.ts) and nothing is written to
 // Confluence. --validate also has twg check the edits, without writing them. --evidence
 // skips collecting and reuses the release's evidence.json from an earlier run. --judgement fills
 // rows a person answers from judgement.yaml (or .json) beside it (see scripts/lib/qa/judgement.ts).
 // --all-active runs every
-// release with `active: true` and a report_page, each on its own: one failing doesn't stop the
-// rest, but fails the run.
+// release and feature with `active: true` and a report_page, each on its own: one failing
+// doesn't stop the rest, but fails the run.
 //
 // This repo and its logs are public, so this prints only counts and each row's pass, fail or
 // unknown. Everything else, evidence included, stays in the cache directory. A failure prints
@@ -24,20 +28,23 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { parseArgs } from 'node:util'
 import { cacheDir, releaseDir, releaseName, within } from './lib/qa/cache.ts'
-import { collect, evidenceFor, readers } from './lib/qa/collect.ts'
-import { activeReleases, CONFIG_DIR, type Layout, loadRelease, type ReleaseConfig, releasePath } from './lib/qa/config.ts'
+import { collect, evidenceFor, readers, scopeFeature } from './lib/qa/collect.ts'
+import { activeReleases, CONFIG_DIR, type Layout, loadRelease, type ReleaseConfig, releasePath, type ScopeKind } from './lib/qa/config.ts'
 import { logError, publicMessage, QaError } from './lib/qa/errors.ts'
 import { judgementFile, type Judgements, loadJudgements } from './lib/qa/judgement.ts'
 import { createPage, publishToPage, type PublishResult, releaseTitle } from './lib/qa/publish.ts'
 import { evaluate, genRows, renderPage, type Results } from './lib/qa/render.ts'
 import { pageId, quietRunner } from './lib/qa/twg.ts'
+import type { Item } from './lib/qa/sources/common.ts'
 import type { Evidence } from './lib/qa/types.ts'
 
 const USAGE = 'usage: npm run qa-report -- --release <name> [--evidence] [--judgement] [--publish] [--validate] [--create-under <pageId>]\n' +
+  '       npm run qa-report -- --feature <name> [--evidence] [--judgement] [--publish] [--validate] [--create-under <pageId>]\n' +
   '       npm run qa-report -- --all-active [--publish] [--validate]'
 
 const OPTIONS = {
   release: { type: 'string' },
+  feature: { type: 'string' },
   config: { type: 'string' },
   evidence: { type: 'boolean', default: false },
   judgement: { type: 'boolean', default: false },
@@ -62,7 +69,9 @@ const say = (s: string) => console.log(s)
 const EVIDENCE_FILE = 'evidence.json'
 
 interface Options {
-  release?: string
+  /** The release or feature named on the command line, and which it was. */
+  name?: string
+  kind?: ScopeKind
   evidence?: boolean
   judgement?: boolean
   createUnder?: string
@@ -70,8 +79,13 @@ interface Options {
   validate: boolean
 }
 
-/** The evidence from the last collect, or a fresh collect written for next time. */
-async function gather(cfg: ReleaseConfig, layout: Layout, dir: string, reuse: boolean): Promise<Evidence> {
+const SOURCES = ['sonarcloud', 'cosmos', 'github', 'jira', 'ria', 'jenkins']
+
+/**
+ * The evidence from the last collect, or a fresh collect written for next time, and the config
+ * with the commits it was collected for (a feature's are picked at collection).
+ */
+async function gather(cfg: ReleaseConfig, layout: Layout, dir: string, reuse: boolean): Promise<{ cfg: ReleaseConfig; evidence: Evidence }> {
   if (reuse) {
     let doc: unknown
     try {
@@ -81,21 +95,24 @@ async function gather(cfg: ReleaseConfig, layout: Layout, dir: string, reuse: bo
     }
     const evidence = evidenceFor(doc, cfg)
     say(`evidence: ${evidence.items.length} items from a file`)
-    return evidence
+    return { cfg: { ...cfg, candidates: evidence.candidates }, evidence }
   }
-  const res = await collect(cfg, layout, readers(cfg))
+  const scoped = await scopeFeature(cfg)
+  const extra: Record<string, () => Promise<Item[]>> = scoped.items.length ? { 'service-revision': async () => scoped.items } : {}
+  const res = await collect(scoped.cfg, layout, { ...readers(scoped.cfg), ...extra })
   writeFileSync(join(dir, EVIDENCE_FILE), JSON.stringify(res.evidence, null, 2) + '\n')
-  for (const source of ['sonarcloud', 'cosmos', 'github', 'jira', 'ria']) {
+  for (const source of SOURCES.filter((x) => x !== 'jenkins' || cfg.kind === 'feature')) {
     const its = res.evidence.items.filter((i) => i.source === source)
     const n = (s: string) => its.filter((i) => i.status === s).length
-    say(`${source}: ${res.errors[source] ? 'failed' : `${its.length} items, ${n('pass')} pass, ${n('fail')} fail, ${n('unknown')} unknown`}`)
+    const away = its.filter((i) => i.unreachable).length
+    say(`${source}: ${res.errors[source] ? 'failed' : `${its.length} items, ${n('pass')} pass, ${n('fail')} fail, ${n('unknown')} unknown${away ? ` (${away} unreachable)` : ''}`}`)
   }
-  return res.evidence
+  return { cfg: scoped.cfg, evidence: res.evidence }
 }
 
 function sayRows(results: Results, judgements: Judgements, judged: boolean): void {
   for (const r of results.checklist) {
-    const note = judgements[r.key] ? ' (judgement given)' : r.needsJudgement ? ' (needs a person)' : ''
+    const note = judgements[r.key] ? ' (judgement given)' : r.keep ? ' (source unreachable: keeps the published answer)' : r.needsJudgement ? ' (needs a person)' : ''
     say(`row ${r.key.padEnd(3)} ${r.status}${note}`)
   }
   const tally = (s: string) => results.checklist.filter((r) => r.status === s).length
@@ -106,7 +123,8 @@ function sayRows(results: Results, judgements: Judgements, judged: boolean): voi
 function sayPublished(res: PublishResult): void {
   const c = res.counts
   const would = res.published ? '' : 'would be '
-  const tail = `${c.judged} judgement cells ${would}written, ${c.added} rows ${would}added, ${c.human} cells kept as people wrote them, ${c.skipped} skipped`
+  const tail = `${c.judged} judgement cells ${would}written, ${c.added} rows ${would}added, ${c.human} cells kept as people wrote them, ` +
+    `${c.kept} kept as published (source unreachable), ${c.skipped} skipped`
   say(res.published ? `${c.change} cells changed, ${tail}${res.retried ? ' (after re-reading the page)' : ''}`
     : `${c.change} cells would change, ${tail}`)
   if (res.validated !== undefined) say(`twg validation: ${res.validated ? 'passed' : 'failed'}`)
@@ -114,13 +132,17 @@ function sayPublished(res: PublishResult): void {
 
 /** 'skipped' when the page has unpublished edits, so it was left alone. */
 async function report(path: string, o: Options): Promise<'done' | 'skipped'> {
-  const { cfg, layout } = loadRelease(path)
-  if (o.release && o.release !== cfg.release) throw new QaError('config-mismatch', `the config is for ${cfg.release}, not ${o.release}`)
-  if (o.publish && !cfg.active) throw new QaError('not-active', `${cfg.release} is not active`)
+  const loaded = loadRelease(path)
+  const { layout } = loaded
+  if (o.name && (o.name !== loaded.cfg.release || o.kind !== loaded.cfg.kind)) {
+    throw new QaError('config-mismatch', `the config is for ${loaded.cfg.kind} ${loaded.cfg.release}, not ${o.kind} ${o.name}`)
+  }
+  if (o.publish && !loaded.cfg.active) throw new QaError('not-active', `${loaded.cfg.release} is not active`)
   const createUnder = o.createUnder === undefined ? undefined : pageId(o.createUnder)
-  const dir = releaseDir(cfg.release)
+  const dir = releaseDir(loaded.cfg.release)
 
-  const results = evaluate(cfg, layout, await gather(cfg, layout, dir, !!o.evidence))
+  const { cfg, evidence } = await gather(loaded.cfg, layout, dir, !!o.evidence)
+  const results = evaluate(cfg, layout, evidence)
   const judgements: Judgements = o.judgement ? loadJudgements(judgementFile(dir), results.checklist) : {}
   sayRows(results, judgements, !!o.judgement)
   const rows = genRows(layout, results, judgements)
@@ -145,21 +167,21 @@ async function report(path: string, o: Options): Promise<'done' | 'skipped'> {
 
 async function main(): Promise<number> {
   if (values['all-active']) {
-    const only = (['release', 'config', 'evidence', 'judgement', 'create-under'] as const).filter((k) => values[k] !== undefined && values[k] !== false)
+    const only = (['release', 'feature', 'config', 'evidence', 'judgement', 'create-under'] as const).filter((k) => values[k] !== undefined && values[k] !== false)
     if (only.length) {
       console.error(`--all-active can't be combined with --${only.join(', --')}`)
       return 2
     }
     const paths = activeReleases()
     if (!paths.length) {
-      say('no active releases with a report_page, so there is nothing to do')
+      say('no active releases or features with a report_page, so there is nothing to do')
       return 0
     }
     let failed = 0
     let skipped = 0
     for (const path of paths) {
       const name = basename(path, '.yaml')
-      say(`release ${name}`)
+      say(`report ${name}`)
       try {
         if (await report(path, { publish: values.publish, validate: values.validate }) === 'skipped') skipped++
       } catch (e) {
@@ -168,19 +190,21 @@ async function main(): Promise<number> {
         console.error(`qa-report failed for ${name}: ${publicMessage(e)}`)
       }
     }
-    say(`${paths.length} releases: ${paths.length - failed - skipped} done, ${skipped} skipped for unpublished edits, ${failed} failed`)
+    say(`${paths.length} reports: ${paths.length - failed - skipped} done, ${skipped} skipped for unpublished edits, ${failed} failed`)
     return failed ? 1 : 0
   }
 
-  if (!values.release && !values.config) {
+  if ((!values.release && !values.feature && !values.config) || (values.release && values.feature)) {
     console.error(USAGE)
     return 2
   }
   const cache = cacheDir()
-  const release = values.release === undefined ? undefined : releaseName(values.release)
-  const config = values.config === undefined ? releasePath(release!) : within(values.config, [CONFIG_DIR, cache])
+  const kind: ScopeKind = values.feature === undefined ? 'release' : 'feature'
+  const given = values.feature ?? values.release
+  const name = given === undefined ? undefined : releaseName(given)
+  const config = values.config === undefined ? releasePath(name!) : within(values.config, [CONFIG_DIR, cache])
   await report(config, {
-    release,
+    name, kind,
     evidence: values.evidence, judgement: values.judgement,
     createUnder: values['create-under'], publish: values.publish, validate: values.validate,
   })
@@ -189,7 +213,7 @@ async function main(): Promise<number> {
 
 main().then((code) => process.exit(code), (e) => {
   try {
-    logError(cacheDir(), values.release ?? 'qa-report', e)
+    logError(cacheDir(), values.release ?? values.feature ?? 'qa-report', e)
   } catch {
     // No cache directory to log to; the message below is all there is.
   }

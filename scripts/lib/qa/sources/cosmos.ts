@@ -237,14 +237,14 @@ export function cosmosReader(cfg: ReleaseConfig, query: CosmosQuery = defaultCos
       for (const [repo, sha] of Object.entries(c.shas)) {
         const rc = cfg.repos[repo]
         const cveRules = rc.builder === 'gradle' ? ['dependency-check'] : rc.builder === 'yarn' ? ['yarn-audit'] : ['dependency-check', 'yarn-audit']
-        const unknown = (note: string) => [...Object.keys(STAGE_RULES), ...cveRules].map((rule) =>
-          item({ source: SOURCE, sha, repo, candidate: c.name, rule, status: 'unknown', value: 'not checked', note }, now))
+        const unknown = (note: string, unreachable = false) => [...Object.keys(STAGE_RULES), ...cveRules].map((rule) =>
+          item({ source: SOURCE, sha, repo, candidate: c.name, rule, status: 'unknown', value: 'not checked', note, unreachable }, now))
         if (!rc.cosmos_product) {
           out.push(...unknown('no Jenkins product and component are configured for the repo'))
           continue
         }
         if (down) {
-          out.push(...unknown(down))
+          out.push(...unknown(down, true))
           continue
         }
         let builds: Build[]
@@ -253,7 +253,7 @@ export function cosmosReader(cfg: ReleaseConfig, query: CosmosQuery = defaultCos
             { name: '@p', value: rc.cosmos_product }, { name: '@c', value: rc.cosmos_component }]) as StageEvent[])
         } catch (e) {
           down = `Cosmos pipeline-metrics could not be read: ${reason(e)}`
-          out.push(...unknown(down))
+          out.push(...unknown(down, true))
           continue
         }
         out.push(...stageItems(repo, sha, c, builds, now))
@@ -277,7 +277,7 @@ export function cosmosReader(cfg: ReleaseConfig, query: CosmosQuery = defaultCos
           if (!cveError && !unread && rc.builder === undefined && found.length) continue
           const missing = `no ${rule === 'yarn-audit' ? 'yarn audit' : 'dependency-check'} report is recorded for the Jenkins builds of ${short(sha)}`
           out.push(item({ source: SOURCE, sha, repo, candidate: c.name, rule, status: 'unknown', value: 'not checked',
-            note: cveError ?? (unread ? `${missing}, and ${unread} report${unread === 1 ? '' : 's'} of a type nothing here reads` : missing) }, now))
+            unreachable: !!cveError, note: cveError ?? (unread ? `${missing}, and ${unread} report${unread === 1 ? '' : 's'} of a type nothing here reads` : missing) }, now))
         }
       }
     }

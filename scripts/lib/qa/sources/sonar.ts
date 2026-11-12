@@ -74,12 +74,12 @@ async function one(repo: string, project: string, sha: string, c: Candidate, thr
   find: (project: string, sha: string) => Promise<Analysis | null>, now?: () => Date): Promise<Item[]> {
   const base = { source: SOURCE, sha, repo, candidate: c.name }
   const links = [{ text: `SonarCloud ${repo}`, url: `${SONAR}/summary/overall?id=${encodeURIComponent(project)}` }]
-  const unknown = (note: string) => SONAR_RULES.map((rule) => item({ ...base, rule, status: 'unknown', value: 'not checked', links, note }, now))
+  const unknown = (note: string, unreachable = false) => SONAR_RULES.map((rule) => item({ ...base, rule, status: 'unknown', value: 'not checked', links, note, unreachable }, now))
   let analysis: Analysis | null
   try {
     analysis = await find(project, sha)
   } catch (e) {
-    return unknown(`SonarCloud could not be read: ${reason(e)}`)
+    return unknown(`SonarCloud could not be read: ${reason(e)}`, true)
   }
   if (!analysis) return unknown(`SonarCloud keeps no analysis of ${short(sha)}`)
 
@@ -106,7 +106,7 @@ async function one(repo: string, project: string, sha: string, c: Candidate, thr
     }
   } catch (e) {
     for (const rule of ['sonar-coverage', 'sonar-security']) {
-      out.push(item({ ...base, rule, status: 'unknown', value: 'not checked', links, note: `measures could not be read: ${reason(e)}` }, now))
+      out.push(item({ ...base, rule, status: 'unknown', value: 'not checked', links, note: `measures could not be read: ${reason(e)}`, unreachable: true }, now))
     }
   }
 
@@ -119,7 +119,7 @@ async function one(repo: string, project: string, sha: string, c: Candidate, thr
       value: s === 'OK' ? 'passed' : s === 'ERROR' ? 'failed' : s, links, note: at, data: failed.length ? { failed } : undefined }, now))
   } catch (e) {
     out.push(item({ ...base, rule: 'sonar-quality-gate', status: 'unknown', value: 'not checked', links,
-      note: `quality gate could not be read: ${reason(e)}` }, now))
+      note: `quality gate could not be read: ${reason(e)}`, unreachable: true }, now))
   }
   return out
 }

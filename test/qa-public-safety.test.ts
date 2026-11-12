@@ -88,6 +88,45 @@ describe('the CLI', () => {
   })
 })
 
+describe('the CLI, for a feature with Jenkins E2E evidence', () => {
+  const feature = 'TEST-CANARY-FEATURE'
+  const out = join('.cache/qa', feature)
+  const fixtures = join('.cache/qa', 'fixtures-canary-feature')
+  after(() => {
+    for (const d of [out, fixtures]) rmSync(d, { recursive: true, force: true })
+  })
+
+  test('prints no Jenkins URL, test name or failure message', () => {
+    mkdirSync(fixtures, { recursive: true })
+    const config = join(fixtures, 'config.yaml')
+    writeFileSync(config, [`feature: ${feature}`, 'active: false', 'layout: pcs-feature', 'epics: [HDPI-1]', 'repos:', '  pcs-frontend:',
+      '    github: hmcts/pcs-frontend', '    e2e:', '      jenkins: { job: HMCTS_j_to_z/pcs-frontend, branch: PR-1 }', "      tags: ['@x']", ''].join('\n'))
+    const layout = loadLayout('pcs-feature')
+    const sha = CFG.candidates[0].shas['pcs-frontend']
+    const items = [
+      fact({ rule: 'e2e-feature', source: 'jenkins', status: 'fail', value: "3 of the feature's tests: 2 passed, 1 failed", repo: 'pcs-frontend', sha,
+        note: 'PR-1 #2', links: [{ text: 'pcs-frontend PR-1 #2', url: CANARY[3] }],
+        data: { failures: [{ className: 'e2eTest/a.spec.ts', name: CANARY[1], error: CANARY[0] }], flaky: [CANARY[2]] } }),
+      fact({ rule: 'e2e-build', source: 'jenkins', status: 'pass', value: 'pcs-frontend: PR-1 #2', repo: 'pcs-frontend', links: [{ text: 'build', url: CANARY[3] }] }),
+      fact({ rule: 'ignored-tests-feature', source: 'jenkins', status: 'unknown', value: 'not checked', note: CANARY[1], unreachable: true }),
+    ]
+    const ev: Evidence = { release: feature, generatedAt: NOW().toISOString(), candidates: [{ name: 'service-wide', shas: { 'pcs-frontend': sha } }], items: fileUnderRows(layout, items) }
+    mkdirSync(out, { recursive: true })
+    writeFileSync(join(out, 'evidence.json'), JSON.stringify(ev))
+
+    const env = { ...process.env }
+    for (const k of ['QA_CACHE_DIR', 'RUNNER_TEMP', 'JENKINS_URL', 'JENKINS_USERNAME', 'JENKINS_PASSWORD']) delete env[k]
+    const r = spawnSync(process.execPath, ['--no-warnings', 'scripts/qa-report.ts', '--config', config, '--evidence'], { encoding: 'utf8', env })
+    assert.equal(r.status, 0, r.stderr)
+    const printed = r.stdout + r.stderr
+    for (const c of CANARY) assert.ok(!printed.includes(c), `printed ${c}`)
+    assert.doesNotMatch(printed, /https?:\/\/|build\.hmcts\.net|PR-1/)
+    assert.match(r.stdout, /^row 9   fail$/m)
+    assert.match(r.stdout, /^row 10  unknown \(source unreachable: keeps the published answer\)$/m)
+    assert.ok(readFileSync(join(out, 'report.html'), 'utf8').includes(CANARY[3]), 'the report itself does carry the build link')
+  })
+})
+
 describe('CLI failures', () => {
   const cache = mkdtempSync(join(tmpdir(), 'qa-cli-'))
   after(() => rmSync(cache, { recursive: true, force: true }))
@@ -120,7 +159,7 @@ describe('CLI failures', () => {
     writeFileSync(join(cache, 'TEST-OTHER', 'evidence.json'), JSON.stringify({ release: 'TEST-OTHER', candidates: [{ name: 'V1', shas: { 'pcs-api': CFG.candidates[1].shas['pcs-api'] } }], items: [] }))
     const r = cli('--config', otherConfig, '--evidence')
     assert.equal(r.status, 1)
-    assert.match(r.stderr, /the evidence file is for another release or other candidate commits/)
+    assert.match(r.stderr, /the evidence file is for another release or feature, or other commits/)
   })
 
   test('refuse release names and files outside the places they belong', () => {

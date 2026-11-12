@@ -181,16 +181,22 @@ export function* untar(tar: Buffer): Generator<{ path: string; body: Buffer }> {
   }
 }
 
-export function scanTarball(gz: Buffer, testPaths = DEFAULT_TEST_PATHS): { files: number; findings: Finding[] } {
+/** Picks the files a scan covers, from a repo-relative path and the file's text. */
+export type ScanScope = (path: string, text: string) => boolean
+
+/** The test files under `testPaths` (a regex over repo-relative paths), or those `scope` picks. */
+export function scanTarball(gz: Buffer, testPaths = DEFAULT_TEST_PATHS, scope?: ScanScope): { files: number; findings: Finding[] } {
   const isTest = new RegExp(testPaths)
   const findings: Finding[] = []
   let files = 0
   for (const e of untar(gunzipSync(gz))) {
     const path = e.path.replace(/^[^/]+\//, '') // codeload puts everything under <owner>-<repo>-<sha>/
-    if (!SCANNED.test(path) || !isTest.test(path) || path.includes('node_modules/')) continue
+    if (!SCANNED.test(path) || path.includes('node_modules/') || (!scope && !isTest.test(path))) continue
+    const body = e.body.toString('utf8')
+    if (scope && !scope(path, body)) continue
     files++
     const pats = PATTERNS.filter((p) => p.files.test(path))
-    e.body.toString('utf8').split('\n').forEach((text, n) => {
+    body.split('\n').forEach((text, n) => {
       if (/^\s*(\/\/|\*|\/\*|#)/.test(text) && !path.endsWith('.feature')) return
       for (const p of pats) {
         if (!p.re.test(text)) continue
@@ -203,8 +209,9 @@ export function scanTarball(gz: Buffer, testPaths = DEFAULT_TEST_PATHS): { files
   return { files, findings }
 }
 
-export function ignoredItem(repo: string, gh: string, sha: string, c: Candidate, scan: { files: number; findings: Finding[] },
-  now?: () => Date): Item {
+/** The ignored-tests finding for a scan; `c` is null for a scan that belongs to no candidate (a feature's E2E specs). */
+export function ignoredItem(repo: string, gh: string, sha: string, c: Candidate | null, scan: { files: number; findings: Finding[] },
+  now?: () => Date, rule = 'ignored-tests'): Item {
   const fixed = scan.findings.filter((f) => !f.conditional)
   const kinds = new Map<string, number>()
   for (const f of fixed) kinds.set(f.kind, (kinds.get(f.kind) ?? 0) + 1)
@@ -212,7 +219,7 @@ export function ignoredItem(repo: string, gh: string, sha: string, c: Candidate,
   const cond = scan.findings.length - n
   const value = (n ? `${n} ignored or pending (${[...kinds].map(([k, v]) => `${k} ×${v}`).join(', ')}) in ${new Set(fixed.map((f) => f.path)).size} files`
     : `none in ${scan.files} test files`) + (cond ? `, and ${cond} skipped at run time by a condition` : '')
-  return item({ source: SOURCE, sha, repo, candidate: c.name, rule: 'ignored-tests', status: n ? 'fail' : 'pass', answer: n || cond ? 'Yes' : 'No', value,
+  return item({ source: SOURCE, sha, repo, candidate: c?.name, rule, status: n ? 'fail' : 'pass', answer: n || cond ? 'Yes' : 'No', value,
     links: [...fixed, ...scan.findings.filter((f) => f.conditional)].slice(0, 10).map((f) => ({ text: `${f.path.split('/').pop()}:${f.line}`, url: `https://github.com/${gh}/blob/${sha}/${f.path}#L${f.line}` })),
     data: { files: scan.files, findings: scan.findings } }, now)
 }
@@ -233,7 +240,7 @@ export function githubReader(cfg: ReleaseConfig, api: GitHubApi = defaultGitHubA
     const one = async ([c, repo, sha]: [Candidate, string, string]): Promise<Item[]> => {
       const gh = cfg.repos[repo].github
       const k = `${gh}@${sha}`
-      const unknown = (rule: string, note: string) => item({ source: SOURCE, sha, repo, candidate: c.name, rule, status: 'unknown', value: 'not checked', note }, now)
+      const unknown = (rule: string, note: string) => item({ source: SOURCE, sha, repo, candidate: c.name, rule, status: 'unknown', value: 'not checked', note, unreachable: true }, now)
       const checks = once(runs, k, () => checkRuns(api, gh, sha)).then((r) => checkItems(repo, sha, c, r, now),
         (e) => Object.keys(CHECK_RULES).map((rule) => unknown(rule, `GitHub checks could not be read: ${reason(e)}`)))
       const ignored = once(scans, k, async () => scanTarball(await tarball(gh, sha), cfg.repos[repo].test_paths)).then(
@@ -243,4 +250,31 @@ export function githubReader(cfg: ReleaseConfig, api: GitHubApi = defaultGitHubA
     const pairs = cfg.candidates.flatMap((c) => Object.entries(c.shas).map(([repo, sha]) => [c, repo, sha] as [Candidate, string, string]))
     return (await mapLimit(pairs, GITHUB_CONCURRENCY, one)).flat()
   }
+}
+
+// ------------------------------------------------------------------ latest finished build
+
+export const SHA_RE = /^[0-9a-f]{40}$/
+
+/** How far back from the branch head to look for a commit whose Jenkins build has finished. */
+export const LOOKBACK = 30
+
+const JENKINS_STATUS = 'continuous-integration/jenkins/'
+
+/**
+ * The newest commit on `branch` whose Jenkins build has finished, passed or failed: the
+ * commit status Jenkins sets for the whole build (continuous-integration/jenkins/branch) is
+ * anything but pending. Null when none of the last LOOKBACK commits has one.
+ */
+export async function latestFinished(api: GitHubApi, gh: string, branch: string): Promise<{ sha: string; date?: string } | null> {
+  const commits = await api(`repos/${gh}/commits?sha=${encodeURIComponent(branch)}&per_page=${LOOKBACK}`) as
+    { sha?: unknown; commit?: { committer?: { date?: string } } }[]
+  for (const c of Array.isArray(commits) ? commits : []) {
+    const sha = typeof c.sha === 'string' && SHA_RE.test(c.sha) ? c.sha : null
+    if (!sha) continue
+    const st = await api(`repos/${gh}/commits/${sha}/status`) as { statuses?: { context?: string; state?: string }[] }
+    const jenkins = (st.statuses ?? []).filter((x) => typeof x.context === 'string' && x.context.startsWith(JENKINS_STATUS))
+    if (jenkins.some((x) => x.state && x.state !== 'pending')) return { sha, date: c.commit?.committer?.date }
+  }
+  return null
 }
