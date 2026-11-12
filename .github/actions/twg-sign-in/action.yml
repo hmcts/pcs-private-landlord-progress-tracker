@@ -8,9 +8,11 @@ description: >
 # twg has no runner-friendly credential (its OAuth login is interactive and per-user), so a
 # sign-in made once by hand is kept in Key Vault, restored here, refreshed, and written back.
 # Every refresh rotates the refresh token and spends the old one, so the new value is stored
-# straight after refreshing. Setup and re-seeding: README.md, "Jira sign-in".
+# straight after refreshing. The secret is either twg's legacy auth.conf or an archive of the
+# whole twg config directory; twg-auth.sh handles both. Setup and re-seeding: README.md,
+# "Jira sign-in".
 #
-# This repo is public: nothing here may print auth.conf or any value in it.
+# This repo is public: nothing here may print the sign-in or any value in it.
 
 inputs:
   version:
@@ -35,8 +37,13 @@ inputs:
 
 outputs:
   restored:
-    description: "'true' once auth.conf holds the vault's sign-in, so twg-store must run"
+    description: "'true' once the vault's sign-in is restored, so twg-store must run"
     value: ${{ steps.restore.outputs.restored }}
+  format:
+    description: >
+      The restored secret's format: 'legacy' (twg's auth.conf) or 'archive' (the whole twg config
+      directory, as twg-auth.sh describes). twg-store reads it from RUNNER_TEMP itself.
+    value: ${{ steps.restore.outputs.format }}
   signed_in:
     description: "'true' once twg is refreshed, stored and can reach Atlassian"
     value: ${{ steps.refresh.outputs.signed_in }}
@@ -90,32 +97,29 @@ runs:
         fi
 
         umask 077
+        # shellcheck source=twg-auth.sh
+        source "$GITHUB_ACTION_PATH/twg-auth.sh"
         raw="$RUNNER_TEMP/twg-auth.raw"
-        err="$RUNNER_TEMP/twg-kv.err"
-        trap 'rm -f "$raw" "$err"' EXIT
-        kv_code() { grep -oE '\([A-Za-z]+\)' "$err" 2>/dev/null | head -1 | tr -d '()' || true; }
+        trap 'rm -f "$raw" "$twg_err"' EXIT
 
         if ! az keyvault secret show --vault-name "$TWG_VAULT" --name "$TWG_SECRET" \
-            -o tsv --query value > "$raw" 2> "$err"; then
-          code=$(kv_code)
+            -o tsv --query value > "$raw" 2> "$twg_err"; then
+          code=$(twg_kv_code)
           echo "::error::could not read $TWG_SECRET from the $TWG_VAULT Key Vault (${code:-no error code}). Seeding it is in README.md"
           echo "restored=false" >> "$GITHUB_OUTPUT"
           exit 0
         fi
 
-        refresh=$(tr -d '\r' < "$raw" | sed -n 's/^oauth-refresh-token=//p' | head -1)
-        if [[ -z "$refresh" ]]; then
-          echo "::error::$TWG_SECRET holds no oauth-refresh-token. Re-seed it (README.md)"
+        format=$(twg_format_of "$raw")
+        if ! twg_restore "$format" "$raw"; then
           echo "restored=false" >> "$GITHUB_OUTPUT"
           exit 0
         fi
-        echo "::add-mask::$refresh"
-
-        # Stored without its access token (an hour's life, and most of the file).
-        mkdir -p "$HOME/.config/twg"
-        tr -d '\r' < "$raw" | grep -v '^oauth-access-token=' > "$HOME/.config/twg/auth.conf"
+        # So twg-store packs the sign-in back the way it came.
+        echo "$format" > "$RUNNER_TEMP/twg-auth.format"
         # The sha of what the vault holds, so twg-store can tell whether twg rotated again.
-        sha256sum < "$HOME/.config/twg/auth.conf" | cut -d' ' -f1 > "$RUNNER_TEMP/twg-auth.sha"
+        twg_hash > "$RUNNER_TEMP/twg-auth.sha"
+        echo "format=$format" >> "$GITHUB_OUTPUT"
         echo "restored=true" >> "$GITHUB_OUTPUT"
 
     - name: Refresh the twg sign-in
@@ -130,23 +134,9 @@ runs:
         set -uo pipefail
         # On a shared runner, keep the sign-in out of the runner's own home.
         if [[ -n "$TWG_HOME" ]]; then export HOME="$TWG_HOME" XDG_CONFIG_HOME="$TWG_HOME/.config"; fi
-        conf="$HOME/.config/twg/auth.conf"
-        err="$RUNNER_TEMP/twg-kv.err"
-        pack() { tr -d '\r' < "$conf" | grep -v '^oauth-access-token='; }
-        # From a file, because --value would put the token on a command line, and to
-        # /dev/null, because `secret set` echoes the value it stored.
-        store() {
-          local tmp rc=0
-          tmp=$(mktemp "$RUNNER_TEMP/twg-auth.XXXXXX") || return 1
-          if pack > "$tmp"; then
-            az keyvault secret set --vault-name "$TWG_VAULT" --name "$TWG_SECRET" \
-              --file "$tmp" --encoding utf-8 > /dev/null 2> "$err" || rc=$?
-          else
-            rc=1
-          fi
-          rm -f "$tmp"
-          return "$rc"
-        }
+        umask 077
+        # shellcheck source=twg-auth.sh
+        source "$GITHUB_ACTION_PATH/twg-auth.sh"
 
         # Output discarded: nothing twg prints about its credentials belongs in a public log.
         rc=0
@@ -164,23 +154,21 @@ runs:
           exit 0
         fi
 
-        refresh=$(pack | sed -n 's/^oauth-refresh-token=//p' | head -1)
-        if [[ -z "$refresh" ]]; then
-          echo "::error::auth.conf holds no oauth-refresh-token after a refresh"
+        if ! twg_check; then
+          echo "::error::$(twg_check_failure) after a refresh"
           echo "signed_in=false" >> "$GITHUB_OUTPUT"
           exit 0
         fi
-        echo "::add-mask::$refresh"
 
         # Store the rotated token now, before anything else can fail. If this fails, twg-store
         # retries, and fails the job if it can't.
-        if store; then
-          pack | sha256sum | cut -d' ' -f1 > "$RUNNER_TEMP/twg-auth.sha"
+        if twg_store; then
+          twg_hash > "$RUNNER_TEMP/twg-auth.sha"
           echo "stored the rotated twg sign-in"
         else
           echo "::error::could not store the rotated twg sign-in. The store step will retry"
         fi
-        rm -f "$err"
+        rm -f "$twg_err"
 
         # Only the one boolean is read, never the report, which names the account.
         ok=$(twg doctor -o json --output-summary none 2>/dev/null | jq -r '.data.connectivity.ok // false' 2>/dev/null || true)

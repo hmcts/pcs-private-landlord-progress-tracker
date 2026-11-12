@@ -18,7 +18,7 @@ name: Publish
 # spend each other's refresh token, and each job has its own concurrency group, so two runs of
 # one job never overlap. Setup and re-seeding: README.md, "Jira sign-in".
 #
-# This repo is public: nothing here may print auth.conf or any value in it.
+# This repo is public: nothing here may print the twg sign-in or any value in it.
 
 on:
   schedule:
@@ -94,7 +94,7 @@ jobs:
         if: always()
         run: |
           az logout > /dev/null 2>&1 || true
-          rm -rf "${HOME:?}/.azure" "${HOME:?}/.config/twg"
+          rm -rf "${HOME:?}/.azure" "${HOME:?}/.config/twg" "${XDG_CONFIG_HOME:-${HOME:?}/.config}/twg"
 
       - name: Commit the snapshot
         if: steps.fetch.outcome == 'success'
@@ -171,7 +171,7 @@ jobs:
         run: |
           set -euo pipefail
           missing=()
-          for tool in az jq curl sha256sum; do
+          for tool in az jq curl sha256sum tar gzip base64; do
             command -v "$tool" > /dev/null || missing+=("$tool")
           done
           if (( ${#missing[@]} )); then
