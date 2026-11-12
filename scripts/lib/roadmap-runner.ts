@@ -36,6 +36,7 @@ import { createWriteStream, existsSync, readFileSync, writeFileSync } from 'node
 import { fileURLToPath } from 'node:url'
 import PDFDocument from 'pdfkit'
 import { inside } from './paths.ts'
+import { commandPath } from './qa/util.ts'
 
 // ------------------------------------------------------------------ types
 
@@ -251,7 +252,7 @@ export function buildModel(cfg: Config, all: Issue[], today: string): Model {
 export type TwgRunner = (args: string[]) => string
 
 export const defaultRunner: TwgRunner = (args) =>
-  execFileSync('twg', args, { encoding: 'utf8', env: { ...process.env, TWG_AGENT_DEFAULTS: '1' }, maxBuffer: 256 * 1024 * 1024 })
+  execFileSync(commandPath('twg'), args, { encoding: 'utf8', env: { ...process.env, TWG_AGENT_DEFAULTS: '1' }, maxBuffer: 256 * 1024 * 1024 })
 
 const READ_ONLY = ['jira', 'workitem', 'query']
 
