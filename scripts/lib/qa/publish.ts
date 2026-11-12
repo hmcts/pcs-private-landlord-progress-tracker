@@ -13,8 +13,8 @@ import { createHash } from 'node:crypto'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Layout, LayoutTable, ReleaseConfig } from './config.ts'
-import { cellsOf, type El, esc, find, parse, rowsOf, shortHash, splice, tableAfterHeading, textOf } from './html.ts'
-import { cellText, type CellName, type GenCell, type GenRow, MARKER, markerRow, rowHtml, tableHtml } from './render.ts'
+import { cellsOf, type El, esc, parse, rowsOf, shortHash, splice, tableAfterHeading, textOf } from './html.ts'
+import { cellText, type CellName, type GenCell, type GenRow, MARKER, markerRow, markers, rowHtml, tableHtml } from './render.ts'
 import type { TwgRunner } from '../roadmap-runner.ts'
 
 export interface Edit {
@@ -43,15 +43,6 @@ export interface MergeResult {
 
 const escRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-function markers(td: El): string[] {
-  return find(td, (e) => e.attrs['data-extension-key'] === 'anchor').map((e) => {
-    try {
-      return String(JSON.parse(e.attrs['data-parameters'] ?? '{}').macroParams?.['']?.value ?? '')
-    } catch {
-      return ''
-    }
-  })
-}
 
 /** Attributes to keep when a cell is replaced: its local id, width, colour and the like. */
 function attrsOf(el: El): string {
@@ -235,18 +226,31 @@ export interface PublishResult {
   published: boolean
   retried: boolean
   validated?: boolean
+  /** The draft holds edits someone hasn't published yet, so nothing was merged or sent. */
+  unpublishedEdits?: boolean
+}
+
+/** Draft and published bodies of the same version differ only in their local ids. */
+export const sameBody = (a: string, b: string): boolean => {
+  const strip = (h: string) => h.replace(/\sdata-local-id="[^"]*"/g, '')
+  return strip(a) === strip(b)
 }
 
 /**
  * Dry run (the default) reads the published page, merges, and writes merged.html, edits.json
- * and diff.txt to `dir`. With `validate`, twg also checks the edits without writing. With
- * `publish`, it reads the draft (classic pages are edited through their draft), merges, and
- * updates with the draft's snapshot token.
+ * and diff.txt to `dir`. `publish` and `validate` read the draft as well, since classic pages
+ * are edited through it, and merge the draft, so validating checks exactly what a publish would
+ * send. If the draft differs from the published page, someone has edits in progress there, and
+ * publishing ours would publish theirs, so the page is left alone. `validate` has twg check the
+ * edits without writing; `publish` updates with the draft's snapshot token.
  */
 export function publishToPage(run: TwgRunner, pageId: string, layout: Layout, rows: GenRow[], dir: string,
   opts: { publish?: boolean; validate?: boolean } = {}): PublishResult {
+  const viaDraft = !!(opts.publish || opts.validate)
   const attempt = () => {
-    const page = getPage(run, pageId, !!opts.publish)
+    const live = getPage(run, pageId, false)
+    const page = viaDraft ? getPage(run, pageId, true) : live
+    if (viaDraft && !sameBody(live.html, page.html)) return { page, m: null }
     const m = merge(page.html, layout, rows)
     writeFileSync(join(dir, 'page.html'), page.html)
     writeFileSync(join(dir, 'merged.html'), m.html)
@@ -254,30 +258,32 @@ export function publishToPage(run: TwgRunner, pageId: string, layout: Layout, ro
     writeFileSync(join(dir, 'diff.txt'), diffSummary(`Page ${pageId}, snapshot ${page.token}`, m.changes))
     return { page, m }
   }
+  const held = (retried: boolean): PublishResult => ({ counts: count([]), published: false, retried, unpublishedEdits: true })
   let { page, m } = attempt()
-  const counts = () => count(m.changes)
+  if (!m) return held(false)
   const update = (dry: boolean) => twgJson(run, ['confluence', 'content', 'update', pageId, '--snapshot-token', page.token,
     '--edits-file', join(dir, 'edits.json'), '--ack-body-formats', '--version-message', VERSION_MESSAGE, '-y',
     ...(dry ? ['--dry-run'] : []), '-o', 'json', '--output-summary', 'none'])
 
   if (!opts.publish) {
-    if (!opts.validate || !m.edits.length) return { counts: counts(), published: false, retried: false }
+    if (!opts.validate || !m.edits.length) return { counts: count(m.changes), published: false, retried: false }
     const { ok, out } = update(true)
-    return { counts: counts(), published: false, retried: false, validated: ok && out.data?.ok !== false }
+    return { counts: count(m.changes), published: false, retried: false, validated: ok && out.data?.ok !== false }
   }
-  if (!m.edits.length) return { counts: counts(), published: false, retried: false }
+  if (!m.edits.length) return { counts: count(m.changes), published: false, retried: false }
   let res = update(false)
   let retried = false
   if (!res.ok && isStale(res.out)) {
     retried = true
     const again = attempt()
+    if (!again.m) return held(true)
     page = again.page
     m = again.m
-    if (!m.edits.length) return { counts: counts(), published: false, retried }
+    if (!m.edits.length) return { counts: count(m.changes), published: false, retried }
     res = update(false)
   }
   if (!res.ok || res.out.data?.ok === false) throw new Error(`twg could not update page ${pageId}${retried ? ' after re-reading it' : ''}`)
-  return { counts: counts(), published: true, retried }
+  return { counts: count(m.changes), published: true, retried }
 }
 
 export function createPage(run: TwgRunner, parentId: string, title: string, html: string, dir: string, publish: boolean): string | null {

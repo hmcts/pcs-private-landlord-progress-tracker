@@ -28,6 +28,17 @@ describe('Release Impact Assessment', () => {
     assert.deepEqual(parseRia(html(SIGNED_PERF, BLANK_SEC)).security, { who: null, date: null, required: false })
   })
 
+  test('without its heading, a section never borrows another team\'s wording', () => {
+    const noPerfHeading = html(SIGNED_PERF, BLANK_SEC).replace('<h2 data-local-id="b1">Performance Testing</h2>', '')
+      .replace('Performance Testing is required:', 'See the plan.')
+    assert.equal(parseRia(noPerfHeading).perf.required, null)
+    assert.equal(parseRia(noPerfHeading).perf.who, 'Pat Tester')
+    const otherHeading = html(SIGNED_PERF, BLANK_SEC).replace('>Performance Testing</h2>', '>Accessibility</h2>')
+    assert.equal(parseRia(otherHeading).perf.required, null)
+    const noSecHeading = html(SIGNED_PERF, BLANK_SEC).replace('<h2 data-local-id="a1">Security Review</h2>', '')
+    assert.equal(parseRia(noSecHeading).security.required, null)
+  })
+
   test('the reader turns sign-offs into rows', async () => {
     const run = fakeTwg(() => ({ data: { body: { value: html(SIGNED_PERF, BLANK_SEC) } } }))
     const items = await riaReader({ ...CFG, ria_page: '123' }, run, NOW)()

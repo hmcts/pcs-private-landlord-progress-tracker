@@ -108,6 +108,50 @@ export function textOf(n: Node): string {
   return parts.join('').replace(/[\s ]+/g, ' ').trim()
 }
 
+const PARAM_VOLATILE = new Set(['macroMetadata', 'legacyAnchorId', 'localId'])
+
+function extensionKey(e: El): string {
+  let params: unknown = {}
+  try {
+    params = JSON.parse(e.attrs['data-parameters'] ?? '{}')
+  } catch {
+    params = e.attrs['data-parameters'] ?? ''
+  }
+  const clean = (v: unknown): unknown => Array.isArray(v) ? v.map(clean)
+    : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).filter(([k]) => !PARAM_VOLATILE.has(k)).sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, x]) => [k, clean(x)]))
+      : v
+  return `${e.attrs['data-extension-key'] ?? e.attrs['data-type']}${JSON.stringify(clean(params))}`
+}
+
+/**
+ * What a cell says, for the ownership hash: its text, plus each link's target, mention and
+ * extension (macro), so a person changing only a link or adding a macro counts as an edit.
+ * Markup, local ids and macro metadata Confluence adds on its own don't count, and neither do
+ * extensions `skip` matches (the generator's own marker).
+ */
+export function fingerprint(n: Node, skip: (e: El) => boolean = () => false): string {
+  const parts: string[] = []
+  const go = (x: Node) => {
+    if (x.type === 'text') parts.push(x.text)
+    else if (x.type === 'el') {
+      const type = x.attrs['data-type'] ?? ''
+      if (type.endsWith('extension')) {
+        if (!skip(x)) parts.push(` {${extensionKey(x)}} `)
+        return
+      }
+      if (type === 'mention') parts.push(` {@${x.attrs['data-user-id'] ?? ''}} `)
+      if (x.tag === 'img') parts.push(` {img ${x.attrs.src ?? ''}} `)
+      if (x.tag === 'br') parts.push(' ')
+      for (const c of x.children) go(c)
+      if (x.tag === 'a' && x.attrs.href) parts.push(` {${x.attrs.href}} `)
+      if (['p', 'li', 'td', 'th', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'div'].includes(x.tag)) parts.push(' ')
+    }
+  }
+  go(n)
+  return parts.join('').replace(/[\s ]+/g, ' ').trim()
+}
+
 /** Rows of a table in document order, whether or not they sit in thead/tbody. */
 export function rowsOf(table: El): El[] {
   return find(table, (e) => e.tag === 'tr' && nearest(e, 'table') === table)
@@ -120,12 +164,18 @@ export function nearest(e: El, tag: string): El | null {
   return null
 }
 
-/** The first table after the heading whose text matches, or null. */
+const isHeading = (e: El) => /^h[1-6]$/.test(e.tag)
+
+/** The table under the heading whose text matches, before any other heading, or null. */
 export function tableAfterHeading(root: El, heading: RegExp): El | null {
   const all = [...walk(root)]
-  const h = all.findIndex((e) => /^h[1-6]$/.test(e.tag) && heading.test(textOf(e)))
+  const h = all.findIndex((e) => isHeading(e) && heading.test(textOf(e)))
   if (h < 0) return null
-  return all.slice(h + 1).find((e) => e.tag === 'table') ?? null
+  for (const e of all.slice(h + 1)) {
+    if (isHeading(e)) return null
+    if (e.tag === 'table') return e
+  }
+  return null
 }
 
 export const shortHash = (s: string): string => createHash('sha256').update(s).digest('hex').slice(0, 8)

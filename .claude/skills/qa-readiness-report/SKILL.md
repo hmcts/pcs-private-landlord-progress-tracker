@@ -103,5 +103,7 @@ npm run qa-report -- --release <release> --evidence .cache/qa/<release>/evidence
   --judgement .cache/qa/<release>/judgement.yaml --publish
 ```
 
-Report the counts it prints. If it fails on a page conflict twice, someone is editing the page:
-wait and re-run, don't retry in a loop.
+Report the counts it prints. "page has unpublished edits; skipped" means someone has the page
+open with changes they haven't published: nothing was written. Tell the user, and re-run once that
+person has published or discarded their draft. If it fails on a page conflict twice, someone is
+editing the page: wait and re-run, don't retry in a loop.

@@ -7,7 +7,7 @@ const adf = (text: string) => ({ type: 'doc', version: 1, content: [{ type: 'par
 const status = (name: string, key = 'done') => ({ name, statusCategory: { key } })
 const page = (issues: unknown[], next?: string) => ({ data: { issues }, pageInfo: { hasNextPage: !!next, nextCursor: next } })
 
-function jira(over: { bugs?: unknown[]; failWork?: boolean } = {}) {
+function jira(over: { bugs?: unknown[]; failWork?: boolean; human?: unknown[] } = {}) {
   return fakeTwg((args) => {
     if (args[2] === 'comment') return { data: [{ body: adf('chatter') }, { body: adf('Retested on AAT and it is working') }], pageInfo: { hasNextPage: false } }
     const jql = jqlOf(args)
@@ -24,7 +24,7 @@ function jira(over: { bugs?: unknown[]; failWork?: boolean } = {}) {
         { key: 'HDPI-13', status: status('Withdrawn'), comment: { total: 0, comments: [] } },
       ])
     }
-    if (jql.startsWith('key in')) return page([{ key: 'HDPI-8908', status: status('Closed') }, { key: 'HDPI-8670', status: status('In Progress', 'indeterminate') }])
+    if (jql.startsWith('key in')) return page(over.human ?? [{ key: 'HDPI-8908', status: status('Closed') }, { key: 'HDPI-8670', status: status('In Progress', 'indeterminate') }])
     throw new Error(`unexpected ${jql}`)
   })
 }
@@ -65,6 +65,17 @@ describe('Jira', () => {
       ['16', 'pass', 'HDPI-8908: Closed'],
       ['17', 'unknown', 'HDPI-8670: In Progress, HDPI-8671: not found'],
     ])
+  })
+
+  test('a human row passes once its tickets are done or withdrawn, and is N/A if all were withdrawn', async () => {
+    const cfg = { ...CFG, human_rows: { '16': ['HDPI-1', 'HDPI-2'], '17': ['HDPI-3', 'HDPI-4'], '18': ['HDPI-1', 'HDPI-5'] } }
+    const run = jira({ human: [
+      { key: 'HDPI-1', status: status('Closed') }, { key: 'HDPI-2', status: status('Withdrawn') },
+      { key: 'HDPI-3', status: status('Withdrawn') }, { key: 'HDPI-4', status: status("Won't Do") },
+      { key: 'HDPI-5', status: status('In Progress', 'indeterminate') },
+    ] })
+    const items = (await jiraReader(cfg, run, NOW)()).filter((i) => i.rule === 'human')
+    assert.deepEqual(items.map((i) => [i.data!.row, i.status, i.answer]), [['16', 'pass', undefined], ['17', 'pass', 'N/A'], ['18', 'unknown', undefined]])
   })
 
   test('only reads, and a failing query leaves just its rows unknown', async () => {

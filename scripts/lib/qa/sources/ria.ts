@@ -24,15 +24,20 @@ export interface RiaFacts {
 
 const BLOCKS = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'td', 'th'])
 // The RIA template's own instructions, which mention "required" and "not required" themselves.
+const SIGNED = /^signed by\b/i
 const GUIDANCE = /^(performance|security) team\s*:|please ensure|^note:\s*if the activity|required for 100% complete date/i
 
 function signOff(blocks: { el: El; text: string }[], heading: RegExp, line: RegExp): SignOff {
   const end = blocks.findIndex((b) => line.test(b.text))
   if (end < 0) return { who: null, date: null, required: null }
-  let start = end
-  while (start > 0 && !heading.test(blocks[start].text)) start--
-  const section = blocks.slice(start, end).map((b) => b.text).filter((t) => !GUIDANCE.test(t)).join('\n')
-  const required = /\bnot\s+required\b|\bno\s+(performance|security)\s+testing\b|\bnot\s+needed\b/i.test(section) ? false
+  // The section runs back from the sign-off line to its heading. Another heading or another
+  // sign-off line first means this one's heading can't be found, and the text above belongs
+  // to another team, so whether testing is required is left unknown.
+  let start = end - 1
+  while (start >= 0 && !heading.test(blocks[start].text) && !/^h[1-6]$/.test(blocks[start].el.tag) && !SIGNED.test(blocks[start].text)) start--
+  const found = start >= 0 && heading.test(blocks[start].text)
+  const section = found ? blocks.slice(start, end).map((b) => b.text).filter((t) => !GUIDANCE.test(t)).join('\n') : ''
+  const required = !found ? null : /\bnot\s+required\b|\bno\s+(performance|security)\s+testing\b|\bnot\s+needed\b/i.test(section) ? false
     : /\b(is|are|will be|be)\s+required\b|\brequired\s*:|\bmust\b|\bcritical\b/i.test(section) ? true : null
 
   const b = blocks[end]

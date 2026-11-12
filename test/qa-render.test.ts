@@ -117,6 +117,17 @@ describe('render', () => {
     assert.ok(r.lines.findIndex((l) => l.text.startsWith('V1')) < r.lines.findIndex((l) => l.text.startsWith('V2')))
   })
 
+  test('a repo the last candidate leaves out is judged on its own latest candidate', () => {
+    const partial = { ...cfg, candidates: [cfg.candidates[0], { name: 'V2', shas: { 'pcs-frontend': cfg.candidates[1].shas['pcs-frontend'] } }] }
+    const ev = goldenEvidence()
+    ev.items = ev.items.filter((i) => !(i.candidate === 'V2' && i.repo === 'pcs-api'))
+      .map((i) => (i.row === '4' && i.candidate === 'V1' && i.repo === 'pcs-api' ? { ...i, status: 'fail' as const, value: 'nightly: failure' } : i))
+    const res = evaluate(partial, layout, ev).checklist
+    assert.deepEqual([res.find((x) => x.key === '4')!.status, res.find((x) => x.key === '4')!.answer], ['fail', 'No'])
+    const sonar = evaluate(partial, layout, { ...ev, items: ev.items.map((i) => (i.row === '1' && i.candidate === 'V1' && i.repo === 'pcs-api' ? { ...i, status: 'unknown' as const } : i)) })
+    assert.equal(sonar.checklist.find((x) => x.key === '1')!.status, 'unknown')
+  })
+
   test('an unknown is To confirm, with its reason, and never a guess', () => {
     const ev = goldenEvidence()
     ev.items = ev.items.filter((i) => !(i.row === '3' && i.source === 'github' && i.candidate === 'V2' && i.repo === 'pcs-frontend'))

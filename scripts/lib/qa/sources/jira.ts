@@ -4,12 +4,11 @@
 // apply the public site's not-public filter, and nothing it reads may reach the site.
 
 import type { ReleaseConfig } from '../config.ts'
-import { defaultRunner, type TwgRunner } from '../../roadmap-runner.ts'
+import { defaultRunner, type TwgRunner, twgQuery } from '../../roadmap-runner.ts'
 import { item, type Item, reason } from './common.ts'
 
 const SOURCE = 'jira'
 const JIRA = 'https://hmcts.atlassian.net'
-const READ_ONLY = ['jira', 'workitem', 'query']
 
 export interface JiraIssue {
   key: string
@@ -20,19 +19,9 @@ export interface JiraIssue {
   comment?: { total?: number; comments?: { body?: unknown }[] }
 }
 
-/** All issues for a JQL query, following pagination. Only ever runs `twg jira workitem query`. */
-export function query(jql: string, fields: string, run: TwgRunner = defaultRunner): JiraIssue[] {
-  const out: JiraIssue[] = []
-  let cursor: string | undefined
-  for (;;) {
-    const args = [...READ_ONLY, '--jql', jql, '--fields', fields, '-n', '100', '-o', 'json', '--output-summary', 'none']
-    if (cursor) args.push('--after', cursor)
-    const page = JSON.parse(run(args)) as { data: { issues: JiraIssue[] }; pageInfo?: { hasNextPage?: boolean; nextCursor?: string } }
-    out.push(...page.data.issues)
-    if (!page.pageInfo?.hasNextPage || !page.pageInfo.nextCursor) return out
-    cursor = page.pageInfo.nextCursor
-  }
-}
+/** All issues for a JQL query, through the roadmap's read-only, paginating twgQuery. */
+export const query = (jql: string, fields: string, run: TwgRunner = defaultRunner): JiraIssue[] =>
+  twgQuery(jql, run, fields) as unknown as JiraIssue[]
 
 /** Every comment on one issue. Only ever runs `twg jira workitem comment query`. */
 export function commentThread(key: string, run: TwgRunner = defaultRunner): { body?: unknown }[] {
@@ -148,7 +137,8 @@ export function jiraReader(cfg: ReleaseConfig, run: TwgRunner = defaultRunner, n
         const issues = keys.map((k) => byKey.get(k))
         const withdrawn = (i?: JiraIssue) => CLOSED_UNDONE.test(i?.status?.name ?? '')
         const done = (i?: JiraIssue) => i?.status?.statusCategory?.key === 'done' && !withdrawn(i)
-        const status = error || issues.some((i) => !i) ? 'unknown' : issues.every(done) ? 'pass' : issues.every(withdrawn) ? 'pass' : 'unknown'
+        // Done once every ticket is done or withdrawn; withdrawn alone means the row doesn't apply.
+        const status = error || issues.some((i) => !i) ? 'unknown' : issues.every((i) => done(i) || withdrawn(i)) ? 'pass' : 'unknown'
         out.push(item({ source: SOURCE, rule: 'human', status, answer: !error && issues.every(withdrawn) ? 'N/A' : undefined,
           value: keys.map((k, n) => `${k}: ${issues[n]?.status?.name ?? 'not found'}`).join(', '), links: keys.map(browse),
           note: error ?? (status === 'unknown' ? 'the backing ticket is not done yet' : undefined), data: { row } }, now))

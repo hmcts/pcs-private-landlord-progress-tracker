@@ -14,6 +14,7 @@
 //     build through build_tag, which pipeline-metrics also records.
 //
 // Only builds of the candidate commit count: master builds, and nightly builds that ran on it.
+// Every repo of every candidate gets an item for each rule it answers, unknown if need be.
 
 import type { Candidate, ReleaseConfig } from '../config.ts'
 import { day, item, type Item, reason, short } from './common.ts'
@@ -202,10 +203,13 @@ export function cosmosReader(cfg: ReleaseConfig, query: CosmosQuery = defaultCos
     for (const c of cfg.candidates) {
       for (const [repo, sha] of Object.entries(c.shas)) {
         const rc = cfg.repos[repo]
-        if (!rc?.cosmos_product) continue
         const cveRules = rc.builder === 'gradle' ? ['dependency-check'] : rc.builder === 'yarn' ? ['yarn-audit'] : ['dependency-check', 'yarn-audit']
         const unknown = (note: string) => [...Object.keys(STAGE_RULES), ...cveRules].map((rule) =>
           item({ source: SOURCE, sha, repo, candidate: c.name, rule, status: 'unknown', value: 'not checked', note }, now))
+        if (!rc.cosmos_product) {
+          out.push(...unknown('no Jenkins product and component are configured for the repo'))
+          continue
+        }
         if (down) {
           out.push(...unknown(down))
           continue

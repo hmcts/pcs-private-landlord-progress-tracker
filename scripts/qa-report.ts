@@ -54,7 +54,8 @@ interface Options {
   validate: boolean
 }
 
-async function report(path: string, o: Options): Promise<void> {
+/** 'skipped' when the page has unpublished edits, so it was left alone. */
+async function report(path: string, o: Options): Promise<'done' | 'skipped'> {
   const { cfg, layout } = loadRelease(path)
   if (o.release && o.release !== cfg.release) throw new Error(`the config is for ${cfg.release}, not ${o.release}`)
   if (o.publish && !cfg.active) throw new Error(`${cfg.release} is not active: set active: true in its config to publish`)
@@ -93,6 +94,10 @@ async function report(path: string, o: Options): Promise<void> {
   const run = quietRunner
   if (cfg.report_page) {
     const res = publishToPage(run, String(cfg.report_page), layout, rows, dir, { publish: o.publish, validate: o.validate })
+    if (res.unpublishedEdits) {
+      say(`${process.env.GITHUB_ACTIONS ? '::warning::' : ''}${cfg.release}: page has unpublished edits; skipped`)
+      return 'skipped'
+    }
     const c = res.counts
     const would = res.published ? '' : 'would be '
     const tail = `${c.judged} judgement cells ${would}written, ${c.added} rows ${would}added, ${c.human} cells kept as people wrote them, ${c.skipped} skipped`
@@ -105,6 +110,7 @@ async function report(path: string, o: Options): Promise<void> {
   } else {
     say('no report_page in the config, so the report was only rendered (use --create-under <pageId> to create one)')
   }
+  return 'done'
 }
 
 async function main(): Promise<number> {
@@ -120,16 +126,17 @@ async function main(): Promise<number> {
       return 0
     }
     let failed = 0
+    let skipped = 0
     for (const path of paths) {
       say(`release ${basename(path, '.yaml')}`)
       try {
-        await report(path, { publish: values.publish, validate: values.validate })
+        if (await report(path, { publish: values.publish, validate: values.validate }) === 'skipped') skipped++
       } catch (e) {
         failed++
         console.error(`qa-report failed for ${basename(path, '.yaml')}: ${firstLine(e)}`)
       }
     }
-    say(`${paths.length} releases: ${paths.length - failed} done, ${failed} failed`)
+    say(`${paths.length} releases: ${paths.length - failed - skipped} done, ${skipped} skipped for unpublished edits, ${failed} failed`)
     return failed ? 1 : 0
   }
 

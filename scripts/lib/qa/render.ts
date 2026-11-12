@@ -9,7 +9,7 @@
 // the cell as theirs, and publish leaves it alone from then on.
 
 import type { Layout, LayoutRow, ReleaseConfig } from './config.ts'
-import { esc, parse, shortHash, textOf } from './html.ts'
+import { type El, esc, find, fingerprint, type Node, parse, shortHash } from './html.ts'
 import type { Judgement, Judgements } from './judgement.ts'
 import { short } from './sources/common.ts'
 import type { Answer, Evidence, EvidenceItem, Link, Status } from './types.ts'
@@ -36,7 +36,8 @@ const worst = (s: Status[]): Status => s.reduce<Status>((a, b) => (RANK[b] > RAN
 /**
  * Items for the same repo and candidate are alternatives (Cosmos, then GitHub): the ones that
  * could tell count, and an unknown counts only when nothing could. The row's status comes from
- * the last candidate, which is the one being released; earlier candidates are listed.
+ * each repo's latest candidate, the one being released (a candidate may list only the repos
+ * that changed); earlier candidates are listed.
  */
 function groups(items: EvidenceItem[]): EvidenceItem[][] {
   const by = new Map<string, EvidenceItem[]>()
@@ -56,10 +57,10 @@ function lineFor(i: EvidenceItem, many: boolean): Line {
 export function evaluateRow(row: LayoutRow, table: 'info' | 'checklist', cfg: ReleaseConfig, ev: Evidence): RowResult {
   const id = table === 'info' ? `info:${row.key}` : row.key
   const items = ev.items.filter((i) => i.row === id)
-  const last = cfg.candidates.at(-1)?.name
+  const latest = (repo?: string) => cfg.candidates.findLast((c) => !repo || repo in c.shas)?.name
   const many = cfg.candidates.length > 1
   const gs = groups(items)
-  const current = gs.filter((g) => !g[0].candidate || g[0].candidate === last).flat()
+  const current = gs.filter((g) => !g[0].candidate || g[0].candidate === latest(g[0].repo)).flat()
   const status: Status = current.length ? worst(current.map((i) => i.status)) : 'unknown'
 
   let answer: RowResult['answer'] = null
@@ -154,8 +155,20 @@ const para = (l: Line) => {
   return `<p>${esc(l.text)}${l.text && links ? ' ' : ''}${links}</p>`
 }
 
-/** Text the ownership hash covers: what a reader sees, so Confluence's markup changes don't count. */
-export const cellText = (tdHtml: string): string => textOf(parse(tdHtml))
+/** The name of an anchor macro, or null for any other element. */
+export function anchorName(e: El): string | null {
+  if (e.attrs['data-extension-key'] !== 'anchor') return null
+  try {
+    return String(JSON.parse(e.attrs['data-parameters'] ?? '{}').macroParams?.['']?.value ?? '')
+  } catch {
+    return ''
+  }
+}
+
+export const markers = (n: Node): string[] => find(n, (e) => anchorName(e) !== null).map((e) => anchorName(e)!)
+
+/** What the ownership hash covers (see fingerprint in html.ts), leaving out the marker itself. */
+export const cellText = (tdHtml: string): string => fingerprint(parse(tdHtml), (e) => MARKER.test(anchorName(e) ?? ''))
 
 export function ownedCell(table: 'info' | 'checklist', key: string, name: CellName, lines: Line[], w?: number): GenCell {
   const body = (lines.length ? lines : [{ text: '', links: [] }]).map(para).join('')

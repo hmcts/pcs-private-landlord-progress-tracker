@@ -122,9 +122,13 @@ Evidence, the rendered report and the merge go to `.cache/qa/<release>/` (gitign
 `$RUNNER_TEMP/qa` in CI, or `QA_CACHE_DIR`. `diff.txt` there says what a publish would change.
 
 The cells the pipeline writes begin with a hidden anchor macro, `qa-auto-<row>-<cell>-<hash>`, the
-hash being of the cell's text. A publish replaces only those cells, and only while their text still
-matches the hash. Edit a cell and the pipeline leaves it alone from then on; delete a row and it is
-added back.
+hash being of the cell's text, links and macros. A publish replaces only those cells, and only while
+they still match the hash. Edit a cell, even just a link in it, and the pipeline leaves it alone from
+then on; delete a row and it is added back.
+
+Classic pages are edited through their draft. If the draft holds changes nobody has published yet,
+publishing ours would publish theirs too, so `--publish` and `--validate` leave that page alone and
+say "page has unpublished edits; skipped". The run doesn't fail; the next one tries again.
 
 Some rows have nothing to answer them mechanically, and come out "To confirm". `--judgement`
 takes their answers from a file, keyed by row number, with a `status` (Yes, No or N/A), a

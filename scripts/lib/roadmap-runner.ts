@@ -1,7 +1,8 @@
 // Copied from hmcts/cft-workspace apps/pcs/.claude/scripts/lib/roadmap/roadmap-runner.ts (ccba10d),
 // the generator behind the /pcs:roadmap poster. Copy changes across by hand. Changed here since:
-// the optional config "end", the earliest date the timeline runs to; and the start date falling
-// back to customfield_10269 (see twgQuery).
+// the optional config "end", the earliest date the timeline runs to; the start date falling
+// back to customfield_10269 (see twgQuery); and twgQuery's optional fields, which the QA
+// readiness report's Jira reader (scripts/lib/qa/sources/jira.ts) passes.
 //
 // Release roadmap poster for HDPI epics: one row per epic, in rule-based swimlanes.
 //
@@ -250,11 +251,11 @@ export const defaultRunner: TwgRunner = (args) =>
 const READ_ONLY = ['jira', 'workitem', 'query']
 
 /** All issues for a JQL query, following pagination. Only ever runs `twg jira workitem query`. */
-export function twgQuery(jql: string, run: TwgRunner = defaultRunner): Issue[] {
+export function twgQuery(jql: string, run: TwgRunner = defaultRunner, fields = FIELDS): Issue[] {
   const out: Issue[] = []
   let cursor: string | undefined
   for (;;) {
-    const args = [...READ_ONLY, '--jql', jql, '--fields', FIELDS, '-n', '100', '-o', 'json', '--output-summary', 'none']
+    const args = [...READ_ONLY, '--jql', jql, '--fields', fields, '-n', '100', '-o', 'json', '--output-summary', 'none']
     if (cursor) args.push('--after', cursor)
     if (args.slice(0, 3).join(' ') !== READ_ONLY.join(' ')) throw new Error('roadmap only reads from Jira')
     let page: { data: { issues: Issue[] }; pageInfo?: { hasNextPage?: boolean; nextCursor?: string } }

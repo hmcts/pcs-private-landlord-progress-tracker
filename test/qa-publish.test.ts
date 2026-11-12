@@ -90,6 +90,47 @@ describe('merge', () => {
     assert.deepEqual(r.edits.map((e) => e.name), ['appendNodeToEnd', 'appendNodeToEnd'])
     assert.match(r.html, /^<h1 data-local-id="000000000001">Notes<\/h1><p data-local-id="000000000002">Hello<\/p>/)
   })
+
+  test('a heading whose table was deleted gets a new table, never the next heading\'s', () => {
+    const page = withIds(renderPage(cfg, layout, evaluate(cfg, layout, evidence('95.0%', 'x'))))
+    const info = tableAfterHeading(parse(page), /^Release Information$/)!
+    const r = merge(page.slice(0, info.start) + page.slice(info.end), layout, rowsFor(evidence('95.0%', 'x')))
+    assert.ok(r.changes.filter((c) => c.table === 'info').every((c) => c.action === 'add-table'))
+    assert.ok(r.changes.filter((c) => c.table === 'checklist').every((c) => c.action !== 'add-table'))
+    assert.equal(tableAfterHeading(parse('<h2>A</h2><p>x</p><h2>B</h2><table></table>'), /^A$/), null)
+  })
+})
+
+describe('ownership', () => {
+  const ev = evidence('95.0%', 'x')
+  const page = withIds(renderPage(cfg, layout, evaluate(cfg, layout, ev)))
+  const cellOf = (html: string, table: RegExp, key: string, n: number) =>
+    cellsOf(rowsOf(tableAfterHeading(parse(html), table)!).find((tr) => textOf(cellsOf(tr)[0]) === key)!)[n]
+  const actionOf = (html: string, table: 'info' | 'checklist', key: string, cell: string) =>
+    merge(html, layout, rowsFor(ev)).changes.find((c) => c.table === table && c.key === key && c.cell === cell)!.action
+  const swap = (html: string, td: { start: number; end: number }, f: (s: string) => string) =>
+    html.slice(0, td.start) + f(html.slice(td.start, td.end)) + html.slice(td.end)
+
+  test('a link changed, with its text left alone, is a person\'s edit', () => {
+    const td = cellOf(page, /^Release Information$/, 'GIT', 1)
+    const edited = swap(page, td, (s) => s.replace('https://github.com/hmcts/pcs-api"', 'https://github.com/hmcts/pcs-api/tree/release"'))
+    assert.equal(actionOf(page, 'info', 'GIT', 'details'), 'unchanged')
+    assert.equal(actionOf(edited, 'info', 'GIT', 'details'), 'keep-edited')
+  })
+
+  test('a macro added is a person\'s edit', () => {
+    const td = cellOf(page, /^QA Readiness Checklist$/, '2', 3)
+    const lozenge = '<span data-type="inline-extension" data-extension-key="status" data-parameters="{&quot;macroParams&quot;:{&quot;title&quot;:{&quot;value&quot;:&quot;OK&quot;}}}"></span>'
+    assert.equal(actionOf(swap(page, td, (s) => s.replace(/<\/p><\/td>$/, `${lozenge}</p></td>`)), 'checklist', '2', 'comments'), 'keep-edited')
+  })
+
+  test('local ids and macro metadata Confluence adds are not edits', () => {
+    const td = cellOf(page, /^QA Readiness Checklist$/, '2', 3)
+    const touched = swap(page, td, (s) => s.replace(/(<p[^>]*) data-local-id="[^"]*"/g, '$1 data-local-id="fffffffffff1"')
+      .replace('{&quot;macroParams&quot;', '{&quot;macroMetadata&quot;:{&quot;macroId&quot;:{&quot;value&quot;:&quot;x1&quot;}},&quot;macroParams&quot;'))
+    assert.ok(touched.includes('macroMetadata') && touched.includes('fffffffffff1'))
+    assert.equal(actionOf(touched, 'checklist', '2', 'comments'), 'unchanged')
+  })
 })
 
 describe('publishToPage', () => {
@@ -109,28 +150,49 @@ describe('publishToPage', () => {
     assert.equal(JSON.parse(readFileSync(join(dir, 'edits.json'), 'utf8')).length, 3)
   })
 
-  test('--validate asks twg to check the edits without writing', () => {
-    const run = fakeTwg((a) => (a[2] === 'update' ? { data: { ok: true, reason: 'dry_run_validated' } } : get('v:1')))
+  // The draft of an unchanged page carries the same content under different local ids.
+  const draft = page.replace(/data-local-id="0/g, 'data-local-id="d')
+  const pages = (body: (draft: boolean) => string, token: (draft: boolean) => string, update: () => unknown = () => ({ data: { ok: true } })) =>
+    fakeTwg((a) => {
+      if (a[2] === 'update') return update()
+      const d = a.includes('--draft')
+      return { data: { id: '42', snapshotToken: token(d), spaceId: '7', body: { format: 'html', value: body(d) } } }
+    })
+
+  test('--validate merges the draft and checks the edits with its token, without writing', () => {
+    const run = pages((d) => (d ? draft : page), (d) => (d ? 'draft:3' : 'v:1'), () => ({ data: { ok: true, reason: 'dry_run_validated' } }))
     const res = publishToPage(run, '42', layout, rows, dir, { validate: true })
     assert.equal(res.validated, true)
-    assert.ok(run.calls[1].includes('--dry-run'))
+    assert.deepEqual(run.calls.map((a) => [a[2], a.includes('--draft'), a.includes('--dry-run')]), [['get', false, false], ['get', true, false], ['update', false, true]])
+    const up = run.calls[2]
+    assert.equal(up[up.indexOf('--snapshot-token') + 1], 'draft:3')
+    const edits = JSON.parse(readFileSync(join(dir, 'edits.json'), 'utf8')) as { localId?: string }[]
+    assert.ok(edits.every((e) => !e.localId || e.localId.startsWith('d') || e.localId.startsWith('a')))
   })
 
   test('publishing edits the draft with its snapshot token and an edit message', () => {
-    const run = fakeTwg((a) => (a[2] === 'update' ? { data: { ok: true } } : get('draft:5')))
+    const run = pages((d) => (d ? draft : page), (d) => (d ? 'draft:5' : 'v:1'))
     const res = publishToPage(run, '42', layout, rows, dir, { publish: true })
-    assert.deepEqual([res.published, res.retried], [true, false])
-    assert.ok(run.calls[0].includes('--draft'))
-    const up = run.calls[1]
+    assert.deepEqual([res.published, res.retried, res.unpublishedEdits], [true, false, undefined])
+    const up = run.calls[2]
     assert.equal(up[up.indexOf('--snapshot-token') + 1], 'draft:5')
     assert.equal(up[up.indexOf('--version-message') + 1], VERSION_MESSAGE)
     assert.ok(up.includes('--edits-file') && !up.includes('--dry-run'))
   })
 
+  test('a draft with unpublished edits is left alone, by publish and validate alike', () => {
+    for (const opts of [{ publish: true }, { validate: true }]) {
+      const run = pages((d) => (d ? draft.replace('Yes, see screenshot', 'Yes, see the new screenshot') : page), (d) => (d ? 'draft:6' : 'v:1'))
+      const res = publishToPage(run, '42', layout, rows, dir, opts)
+      assert.deepEqual([res.published, res.unpublishedEdits, res.validated], [false, true, undefined])
+      assert.equal(run.calls.filter((a) => a[2] === 'update').length, 0)
+    }
+  })
+
   test('a version conflict re-reads the page, re-merges and retries once', () => {
     let reads = 0
     let updates = 0
-    const run = fakeTwg((a) => (a[2] === 'update' ? (++updates === 1 ? stale() : { data: { ok: true } }) : get(`draft:${++reads}`)))
+    const run = pages((d) => (d ? draft : page), (d) => (d ? `draft:${++reads}` : 'v:1'), () => (++updates === 1 ? stale() : { data: { ok: true } }))
     const res = publishToPage(run, '42', layout, rows, dir, { publish: true })
     assert.deepEqual([res.published, res.retried], [true, true])
     const ups = run.calls.filter((a) => a[2] === 'update')
