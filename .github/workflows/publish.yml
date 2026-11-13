@@ -215,6 +215,13 @@ jobs:
           azure-login: ${{ steps.azure-login.outcome }}
           home: ${{ runner.temp }}/twg-home
 
+      # build.hmcts.net resolves publicly to the App Proxy sign-in page. Its private address is in
+      # the hmcts.net private zone, which isn't linked to this runner network: linking it broke
+      # every other *.hmcts.net name there (azure-private-dns#1134, reverted in #1135). So the
+      # name is pinned for this job alone; the hub firewall decides whether it's reachable.
+      - name: Point build.hmcts.net at Jenkins' private address
+        run: echo "10.10.73.250 build.hmcts.net" | sudo -n tee -a /etc/hosts > /dev/null
+
       # Judged as the report's own Jenkins reader judges it, with the same credentials, so the
       # first run on this runner group shows whether the E2E rows can be read: reachable, a sign-in
       # redirect, unauthorised or unreachable. Only that is printed. The report runs either way;
