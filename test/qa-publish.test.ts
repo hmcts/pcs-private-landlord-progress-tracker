@@ -200,6 +200,11 @@ describe('publishToPage', () => {
     const drafted = macro(',&quot;_parentId&quot;:{&quot;value&quot;:&quot;382468914&quot;}')
     assert.equal(sameBody(live, drafted), true)
     assert.equal(sameBody(live, drafted.replace('text', 'edited')), false)
+    const p = '&quot;_parentId&quot;:{&quot;value&quot;:&quot;1&quot;}'
+    const params = (inner: string) => `<span data-parameters="{&quot;macroParams&quot;:{${inner}}}"></span>`
+    assert.equal(sameBody(params('&quot;a&quot;:1'), params(`${p},&quot;a&quot;:1`)), true)
+    assert.equal(sameBody(params(''), params(p)), true)
+    assert.equal(sameBody(params('&quot;a&quot;:1,&quot;b&quot;:2'), params(`&quot;a&quot;:1,${p},&quot;b&quot;:2`)), true)
   })
 
   test('a version conflict re-reads the page, re-merges and retries once', () => {

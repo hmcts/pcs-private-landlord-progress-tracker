@@ -262,6 +262,7 @@ export interface PublishResult {
 export const sameBody = (a: string, b: string): boolean => {
   const strip = (h: string) => h.replace(/\sdata-local-id="[^"]*"/g, '')
     .replace(/,&quot;_parentId&quot;:\{&quot;value&quot;:&quot;\d+&quot;\}/g, '')
+    .replace(/&quot;_parentId&quot;:\{&quot;value&quot;:&quot;\d+&quot;\},?/g, '')
   return strip(a) === strip(b)
 }
 
