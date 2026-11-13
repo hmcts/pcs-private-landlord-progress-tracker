@@ -255,9 +255,13 @@ export interface PublishResult {
   unpublishedEdits?: boolean
 }
 
-/** Draft and published bodies of the same version differ only in their local ids. */
+/**
+ * Draft and published bodies of the same version differ only in their local ids, and in the
+ * `_parentId` the editor adds to each macro's parameters in the draft.
+ */
 export const sameBody = (a: string, b: string): boolean => {
   const strip = (h: string) => h.replace(/\sdata-local-id="[^"]*"/g, '')
+    .replace(/,&quot;_parentId&quot;:\{&quot;value&quot;:&quot;\d+&quot;\}/g, '')
   return strip(a) === strip(b)
 }
 
