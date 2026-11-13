@@ -219,8 +219,19 @@ the site is still deployed. Evidence goes to `$RUNNER_TEMP/qa` and is deleted wi
 at the end, and the log gets only counts. To stop a report being updated, set `active: false`
 in its config.
 
-The job runs on HMCTS's self-hosted runner group `azure-nonprod`, as hmcts/cath-service's E2E
-job does, so that it can reach Jenkins (`build.hmcts.net`), which GitHub's own runners can't.
+The job runs on the `azure-nonprod` runner group, as hmcts/cath-service's E2E job does: GitHub's
+own runners, each a fresh VM, placed in an HMCTS network (hmcts/github-infra) whose traffic goes
+through the hub firewall. That is what lets it reach Jenkins (`build.hmcts.net`), which a
+GitHub runner on the internet can't.
+
+- **Jenkins' name is pinned in the job.** `build.hmcts.net` resolves publicly to the App Proxy
+  sign-in page, and its private address (`10.10.73.250`) is in the `hmcts.net` private zone,
+  which isn't linked to the runner network. Linking it made every other `*.hmcts.net` name there
+  stop resolving (hmcts/azure-private-dns#1134, reverted in #1135), so the job adds the address to
+  its own `/etc/hosts` instead. If Jenkins' ingress address changes, update that step.
+- **The hub firewall must allow it.** Its `GitHub-Hosted-Compute-Network-NonProd` rule decides
+  what the runner network can reach (hmcts/hub-panorama-terraform#1189 adds Jenkins). Until it
+  does, the Jenkins check says unreachable and the E2E rows keep their published answers.
 
 - **The job runs only on the schedule and on a manual dispatch from `master`.** It never runs on
   a push or from another branch.
