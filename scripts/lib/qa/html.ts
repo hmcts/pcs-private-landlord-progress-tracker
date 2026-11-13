@@ -112,7 +112,7 @@ export function textOf(n: Node): string {
   return parts.join('').replace(/\s+/g, ' ').trim()
 }
 
-const PARAM_VOLATILE = new Set(['macroMetadata', 'legacyAnchorId', 'localId'])
+const PARAM_VOLATILE = new Set(['macroMetadata', 'legacyAnchorId', 'localId', '_parentId'])
 
 function extensionKey(e: El): string {
   let params: unknown = {}

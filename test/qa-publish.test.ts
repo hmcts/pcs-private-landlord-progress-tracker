@@ -5,7 +5,7 @@ import { after, describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { loadLayout } from '../scripts/lib/qa/config.ts'
 import { cellsOf, parse, rowsOf, tableAfterHeading, textOf } from '../scripts/lib/qa/html.ts'
-import { createPage, merge, publishToPage, VERSION_MESSAGE } from '../scripts/lib/qa/publish.ts'
+import { createPage, merge, publishToPage, sameBody, VERSION_MESSAGE } from '../scripts/lib/qa/publish.ts'
 import { evaluate, genRows, renderPage } from '../scripts/lib/qa/render.ts'
 import type { Evidence } from '../scripts/lib/qa/types.ts'
 import { CFG, fact, fakeTwg, NOW, withIds } from './qa-helpers.ts'
@@ -192,6 +192,19 @@ describe('publishToPage', () => {
       assert.deepEqual([res.published, res.unpublishedEdits, res.validated], [false, true, undefined])
       assert.equal(run.calls.filter((a) => a[2] === 'update').length, 0)
     }
+  })
+
+  test("the _parentId the editor adds to a draft's macros isn't an unpublished edit", () => {
+    const macro = (extra: string) => `<p><span data-type="inline-extension" data-extension-key="anchor" data-parameters="{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-x&quot;}${extra}}}"></span>text</p>`
+    const live = macro('')
+    const drafted = macro(',&quot;_parentId&quot;:{&quot;value&quot;:&quot;382468914&quot;}')
+    assert.equal(sameBody(live, drafted), true)
+    assert.equal(sameBody(live, drafted.replace('text', 'edited')), false)
+    const p = '&quot;_parentId&quot;:{&quot;value&quot;:&quot;1&quot;}'
+    const params = (inner: string) => `<span data-parameters="{&quot;macroParams&quot;:{${inner}}}"></span>`
+    assert.equal(sameBody(params('&quot;a&quot;:1'), params(`${p},&quot;a&quot;:1`)), true)
+    assert.equal(sameBody(params(''), params(p)), true)
+    assert.equal(sameBody(params('&quot;a&quot;:1,&quot;b&quot;:2'), params(`&quot;a&quot;:1,${p},&quot;b&quot;:2`)), true)
   })
 
   test('a version conflict re-reads the page, re-merges and retries once', () => {
