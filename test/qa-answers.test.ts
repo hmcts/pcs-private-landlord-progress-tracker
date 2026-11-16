@@ -9,6 +9,7 @@ import assert from 'node:assert/strict'
 import { agentInput, answerItems, LIMITS, loadAnswers, validateAnswer, validateAnswers } from '../scripts/lib/qa/answers.ts'
 import { fileUnderRows, SERVICE_WIDE } from '../scripts/lib/qa/collect.ts'
 import { loadLayout, loadRelease, type ReleaseConfig, validateLayout, validateRelease } from '../scripts/lib/qa/config.ts'
+import { cellsOf, parse, rowsOf, tableAfterHeading, textOf } from '../scripts/lib/qa/html.ts'
 import { merge, publishedRows } from '../scripts/lib/qa/publish.ts'
 import { evaluate, genRows, renderPage } from '../scripts/lib/qa/render.ts'
 import type { Item } from '../scripts/lib/qa/sources/common.ts'
@@ -96,10 +97,16 @@ describe('answers.json', () => {
     writeFileSync(join(dir, 'answers.json'), '{}')
     loadAnswers(dir, layout)
     assert.ok(!existsSync(join(dir, 'answers-rejected.txt')), 'a clean read removes the old rejections')
-    writeFileSync(join(dir, 'answers.json'), '{ "1": ')
-    assert.throws(() => loadAnswers(dir, layout), /not valid JSON/)
-    writeFileSync(join(dir, 'answers.json'), `"${'x'.repeat(LIMITS.file)}"`)
-    assert.throws(() => loadAnswers(dir, layout), /is over/)
+  })
+
+  test('that can\'t be read at all counts as no answers, saying why beside it', () => {
+    for (const [text, why] of [['{ "1": ', /not valid JSON/], [`"${'x'.repeat(LIMITS.file)}"`, /is over/], ['[]', /expected a mapping/]] as const) {
+      writeFileSync(join(dir, 'answers.json'), text)
+      const res = loadAnswers(dir, layout)
+      assert.deepEqual([res.found, res.answers, res.rejected], [true, {}, 0], String(why))
+      assert.match(res.unreadable!.message, why)
+      assert.match(readFileSync(join(dir, 'answers-rejected.txt'), 'utf8'), why)
+    }
   })
 })
 
@@ -137,17 +144,37 @@ describe('publishing agent rows', () => {
     assert.match(m.html, /Coverage is 91%/)
   })
 
-  test('a row whose question on the page is another one is rewritten whole, even with no answer', () => {
-    const old = published.replace('Is unit test coverage greater than 80% for all services?', 'Service-wide: is unit test coverage greater than 80%?')
-    const m = merge(old, layout, genRows(layout, evaluate(cfg, layout, answered({}))))
-    const row1 = m.changes.filter((c) => c.key === '1' && c.table === 'checklist')
-    assert.deepEqual(row1.map((c) => [c.cell, c.action]), [['status', 'update'], ['comments', 'update'], [null, 'update']])
+  const old = published.replace('Is unit test coverage greater than 80% for all services?', 'Service-wide: is unit test coverage greater than 80%?')
+  const row1 = (m: ReturnType<typeof merge>) => m.changes.filter((c) => c.key === '1' && c.table === 'checklist').map((c) => [c.cell, c.action])
+
+  test('a row whose question on the page is another one is rewritten whole with its new answer', () => {
+    const m = merge(old, layout, genRows(layout, evaluate(cfg, layout, answered({ '1': { answer: 'No', comment: 'Coverage is 61%.', links: [link] } }))))
+    assert.deepEqual(row1(m), [['status', 'update'], ['comments', 'update'], [null, 'update']])
     assert.match(m.html, /Is unit test coverage greater than 80% for all services\?/)
+    assert.match(m.html, /Coverage is 61%/)
     assert.doesNotMatch(m.html, /Service-wide: is unit test coverage/)
-    // A person's row is theirs, question and all.
-    const edited = old.replace('Coverage is 91%.', 'Checked by hand.')
-    const kept = merge(edited, layout, genRows(layout, evaluate(cfg, layout, answered({}))))
-    assert.deepEqual(kept.changes.filter((c) => c.key === '1' && c.table === 'checklist').map((c) => c.action), ['skipped', 'keep-edited', 'skipped'])
+
+    // The same answer in other words: the status already says it, so the row is still written.
+    const same = merge(old, layout, genRows(layout, evaluate(cfg, layout, answered({ '1': { answer: 'Yes', comment: 'Coverage is 93%.', links: [link] } }))))
+    assert.deepEqual(row1(same), [['status', 'unchanged'], ['comments', 'update'], [null, 'update']])
+  })
+
+  test('with no answer, or an answer it can\'t write whole, the row keeps its old question and old answer together', () => {
+    const unanswered = merge(old, layout, genRows(layout, evaluate(cfg, layout, answered({}))))
+    assert.deepEqual(row1(unanswered), [['status', 'keep-unreachable'], ['comments', 'keep-unreachable']])
+    assert.match(unanswered.html, /Service-wide: is unit test coverage greater than 80%\?/)
+    assert.match(unanswered.html, /Coverage is 91%/)
+    assert.equal(unanswered.edits.filter((e) => e.value.includes('unit test coverage')).length, 0)
+
+    const answer = genRows(layout, evaluate(cfg, layout, answered({ '1': { answer: 'No', comment: 'Coverage is 61%.', links: [link] } })))
+    const edited = merge(old.replace('Coverage is 91%.', 'Checked by hand.'), layout, answer)
+    assert.deepEqual(row1(edited), [['status', 'skipped'], ['comments', 'keep-edited'], [null, 'skipped']])
+    // The status cell has lost its local id: the comment alone can't be written, so nothing is.
+    const tr = rowsOf(tableAfterHeading(parse(old), /^QA Readiness Checklist$/)!).find((x) => textOf(cellsOf(x)[0]) === '1')!
+    const statusId = cellsOf(tr)[2].attrs['data-local-id']
+    const noId = merge(old.replace(`<td data-local-id="${statusId}"`, '<td'), layout, answer)
+    assert.deepEqual(row1(noId), [['status', 'skipped'], ['comments', 'skipped'], [null, 'skipped']])
+    assert.equal(noId.edits.length, merge(old, layout, answer).edits.length - 3)
   })
 
   test('release rows never rewrite their question', () => {
@@ -163,6 +190,10 @@ describe('publishing agent rows', () => {
     assert.equal(rows['2'].status, 'To confirm')
     assert.equal(publishedRows(published.replace('Coverage is 91%.', 'Checked by hand.'), layout)['1'].byPerson, true)
     assert.equal(publishedRows(published.replace('Is unit test coverage greater than 80% for all services?', 'Other?'), layout)['1'], undefined)
+    // Whitespace and entities a page may have don't make it another question, as they don't to a merge.
+    const spaced = published.replace('Is unit test coverage greater than 80% for all services?', ' Is unit test  coverage greater than 80&#37; for\n all services? ')
+    assert.equal(publishedRows(spaced, layout)['1'].status, 'Yes')
+    assert.ok(!row1(merge(spaced, layout, genRows(layout, evaluate(cfg, layout, answered(answers))))).some(([cell]) => cell === null))
     assert.deepEqual(publishedRows('<p>no table</p>', layout), {})
   })
 })

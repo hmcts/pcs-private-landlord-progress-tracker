@@ -52,10 +52,11 @@ export function serviceRules(rc: RepoConfig): string[] {
 /**
  * A feature config with its service-wide commits: one candidate, "service-wide", with a commit
  * per repo, and the evidence of how each was picked. A repo whose commit can't be picked is left
- * out of the candidate, and its service-wide rules answered unknown here instead.
+ * out of the candidate, listed in `unpicked`, and its service-wide rules answered unknown here
+ * instead.
  */
-export async function scopeFeature(cfg: ReleaseConfig, api: GitHubApi = defaultGitHubApi(), now?: () => Date): Promise<{ cfg: ReleaseConfig; items: Item[] }> {
-  if (cfg.kind !== 'feature') return { cfg, items: [] }
+export async function scopeFeature(cfg: ReleaseConfig, api: GitHubApi = defaultGitHubApi(), now?: () => Date): Promise<{ cfg: ReleaseConfig; items: Item[]; unpicked: string[] }> {
+  if (cfg.kind !== 'feature') return { cfg, items: [], unpicked: [] }
   const pick = async ([repo, rc]: [string, RepoConfig]): Promise<{ sha?: string; items: Item[] }> => {
     const base = { source: 'github', repo, rule: 'service-revision' }
     const link = (sha: string) => [{ text: `${repo} ${short(sha)}`, url: `https://github.com/${rc.github}/commit/${sha}` }]
@@ -77,10 +78,12 @@ export async function scopeFeature(cfg: ReleaseConfig, api: GitHubApi = defaultG
   const repos = Object.entries(cfg.repos)
   const picked = await mapLimit(repos, SCOPE_CONCURRENCY, pick)
   const shas: Record<string, string> = {}
+  const unpicked: string[] = []
   picked.forEach((p, n) => {
     if (p.sha) shas[repos[n][0]] = p.sha
+    else unpicked.push(repos[n][0])
   })
-  return { cfg: { ...cfg, candidates: [{ name: SERVICE_WIDE, shas }] }, items: picked.flatMap((p) => p.items) }
+  return { cfg: { ...cfg, candidates: [{ name: SERVICE_WIDE, shas }] }, items: picked.flatMap((p) => p.items), unpicked }
 }
 
 /** Rules whose items name the checklist row they answer, in `data.row`. */
@@ -127,9 +130,11 @@ export async function collect(cfg: ReleaseConfig, layout: Layout, rs: Record<str
  * An evidence file read back, checked to be this release's, for exactly its candidate commits.
  * A feature's commits were picked when the evidence was collected, so they are taken from it,
  * as long as there is one for every repo of the feature, none for any other, and any commit the
- * config pins is the one used.
+ * config pins is the one used. With `allowUnpicked` (the agent's answers are being applied to the
+ * evidence collected for them), a repo the evidence records as `unpicked` may have no commit;
+ * its service-wide rows are unknown in the evidence itself.
  */
-export function evidenceFor(doc: unknown, cfg: ReleaseConfig): Evidence {
+export function evidenceFor(doc: unknown, cfg: ReleaseConfig, opts: { allowUnpicked?: boolean } = {}): Evidence {
   if (!isRec(doc) || !Array.isArray(doc.items) || !Array.isArray(doc.candidates)) {
     throw new QaError('evidence-invalid', 'expected { release, candidates, items }')
   }
@@ -140,9 +145,14 @@ export function evidenceFor(doc: unknown, cfg: ReleaseConfig): Evidence {
       const commit = cfg.repos[r].commit
       return commit && SHA.test(commit) ? commit : null
     }
-    const fits = !!shas && doc.candidates.length === 1
+    const listed = opts.allowUnpicked && doc.unpicked !== undefined ? doc.unpicked : []
+    const unpicked = Array.isArray(listed) && listed.every((r) => typeof r === 'string') ? listed as string[] : null
+    const fits = !!shas && !!unpicked && doc.candidates.length === 1
       && Object.keys(shas).every((r) => Object.hasOwn(cfg.repos, r))
-      && Object.keys(cfg.repos).every((r) => Object.hasOwn(shas, r) && SHA.test(str(shas[r])) && (!pinned(r) || pinned(r) === shas[r]))
+      && new Set(unpicked).size === unpicked.length
+      && unpicked.every((r) => Object.hasOwn(cfg.repos, r) && !Object.hasOwn(shas, r) && !pinned(r))
+      && Object.keys(cfg.repos).every((r) => unpicked.includes(r)
+        || (Object.hasOwn(shas, r) && SHA.test(str(shas[r])) && (!pinned(r) || pinned(r) === shas[r])))
     if (doc.release !== cfg.release || !fits) throw new QaError('evidence-mismatch', `the evidence is for ${str(doc.release)}, or other commits than the config's`)
     return doc as unknown as Evidence
   }

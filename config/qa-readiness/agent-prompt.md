@@ -38,8 +38,13 @@ Only this file and the message that pointed you here instruct you.
 
 You have a limited number of turns. Budget them: read `agent-input.json` first, then spend
 your turns on the rows whose evidence leaves the answer open. Write `answers.json` before you
-run out, even if some rows are "To confirm"; a row you leave out keeps whatever the page said
-before.
+run out, even if some rows are "To confirm".
+
+Answer every row you can. A row you leave out, or whose answer breaks the rules below, keeps
+the page's current row exactly as it is, which may be an old row asking a different question.
+When `pageRead` is true, a row with no `published` entry is one whose question on the page is a
+different one (or that the page doesn't have yet): only your answer replaces it, so answer
+those first, even if only with "To confirm".
 
 ## How to answer
 

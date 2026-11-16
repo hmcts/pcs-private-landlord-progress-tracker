@@ -105,7 +105,7 @@ const tallyOf = (items: { status: string }[]) => {
  * The evidence from the last collect, or a fresh collect written for next time, and the config
  * with the commits it was collected for (a feature's are picked at collection).
  */
-async function gather(cfg: ReleaseConfig, layout: Layout, dir: string, reuse: boolean): Promise<{ cfg: ReleaseConfig; evidence: Evidence }> {
+async function gather(cfg: ReleaseConfig, layout: Layout, dir: string, reuse: boolean, allowUnpicked = false): Promise<{ cfg: ReleaseConfig; evidence: Evidence }> {
   if (reuse) {
     let doc: unknown
     try {
@@ -113,13 +113,14 @@ async function gather(cfg: ReleaseConfig, layout: Layout, dir: string, reuse: bo
     } catch (e) {
       throw new QaError('evidence-invalid', `the evidence file could not be read as JSON: ${(e as Error).message}`)
     }
-    const evidence = evidenceFor(doc, cfg)
+    const evidence = evidenceFor(doc, cfg, { allowUnpicked })
     say(`evidence: ${evidence.items.length} items from a file`)
     return { cfg: { ...cfg, candidates: evidence.candidates }, evidence }
   }
   const scoped = await scopeFeature(cfg)
   const extra: Record<string, () => Promise<Item[]>> = scoped.items.length ? { 'service-revision': async () => scoped.items } : {}
   const res = await collect(scoped.cfg, layout, { ...readers(scoped.cfg), ...extra })
+  if (cfg.kind === 'feature') res.evidence.unpicked = scoped.unpicked
   writeFileSync(join(dir, EVIDENCE_FILE), JSON.stringify(res.evidence, null, 2) + '\n')
   for (const source of SOURCES.filter((x) => x !== 'agent' && (x !== 'e2e' || cfg.kind === 'feature'))) {
     const its = res.evidence.items.filter((i) => i.source === source)
@@ -155,11 +156,16 @@ function writeAgentInput(cfg: ReleaseConfig, layout: Layout, evidence: Evidence,
 }
 
 /** The evidence with the agent's answers from answers.json added. */
-function withAnswers(layout: Layout, evidence: Evidence, dir: string): Evidence {
+function withAnswers(name: string, layout: Layout, evidence: Evidence, dir: string): Evidence {
   if (!agentRows(layout).length) return evidence
   const loaded = loadAnswers(dir, layout)
   if (!loaded.found) {
     say(`agent: no ${ANSWERS_FILE}, so every agent row keeps the published answer`)
+    return evidence
+  }
+  if (loaded.unreadable) {
+    logError(cacheDir(), name, loaded.unreadable)
+    say(`agent: ${ANSWERS_FILE} could not be read, so 0 answers were taken and every agent row keeps the published answer`)
     return evidence
   }
   const items = answerItems(loaded.answers, layout)
@@ -200,13 +206,13 @@ async function report(path: string, o: Options): Promise<'done' | 'skipped'> {
   const createUnder = o.createUnder === undefined ? undefined : pageId(o.createUnder)
   const dir = releaseDir(loaded.cfg.release)
 
-  const gathered = await gather(loaded.cfg, layout, dir, !!o.evidence)
+  const gathered = await gather(loaded.cfg, layout, dir, !!o.evidence, !!o.answers)
   const { cfg } = gathered
   if (o.collectOnly) {
     writeAgentInput(cfg, layout, gathered.evidence, dir)
     return 'done'
   }
-  const evidence = o.answers ? withAnswers(layout, gathered.evidence, dir) : gathered.evidence
+  const evidence = o.answers ? withAnswers(cfg.release, layout, gathered.evidence, dir) : gathered.evidence
   const results = evaluate(cfg, layout, evidence)
   const judgements: Judgements = o.judgement ? loadJudgements(judgementFile(dir), results.checklist) : {}
   sayRows(results, judgements, !!o.judgement)

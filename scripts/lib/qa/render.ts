@@ -198,9 +198,9 @@ export interface GenCell {
   /** The row's source couldn't be read: the page's cell, if the generator still owns it, stays as it is. */
   keep?: boolean
   /**
-   * A cell with no marker (an agent row's question) that is rewritten when the page's text
-   * differs, as long as the generator writes the rest of the row. A row whose question changed
-   * also drops `keep`: what the page says answers another question.
+   * A cell with no marker (an answered agent row's question) that is rewritten when the page's
+   * text differs, only in a merge that also writes the row's status and comment. An unanswered
+   * row has none, so its old question stays beside its old answer.
    */
   sync?: boolean
 }
@@ -248,7 +248,7 @@ export function ownedCell(table: 'info' | 'checklist', key: string, name: CellNa
   return { name, html: `<td${width(w)}>${marked}</td>`, hash }
 }
 
-const plainCell = (text: string, w?: number): GenCell => ({ name: null, html: `<td${width(w)}><p>${esc(text)}</p></td>`, hash: null })
+export const plainCell = (text: string, w?: number): GenCell => ({ name: null, html: `<td${width(w)}><p>${esc(text)}</p></td>`, hash: null })
 
 const judgedCell = (name: CellName, lines: Line[], w?: number): GenCell =>
   ({ name, html: `<td${width(w)}>${lines.map(para).join('')}</td>`, hash: null, judged: true })
@@ -272,7 +272,7 @@ export function genRows(layout: Layout, res: Results, judgements: Judgements = {
   for (const r of res.checklist) {
     const j = judgements[r.key]
     const question = plainCell(r.label, cw[1])
-    out.push({ table: 'checklist', key: r.key, cells: [plainCell(r.key, cw[0]), r.rule === 'agent' ? { ...question, sync: true } : question,
+    out.push({ table: 'checklist', key: r.key, cells: [plainCell(r.key, cw[0]), r.rule === 'agent' && !r.keep ? { ...question, sync: true } : question,
       ...(j ? judgedCells(j, cw) : [kept(ownedCell('checklist', r.key, 'status', [{ text: r.answer ?? 'To confirm', links: [] }], cw[2]), r),
         kept(ownedCell('checklist', r.key, 'comments', r.lines, cw[3]), r)])] })
   }

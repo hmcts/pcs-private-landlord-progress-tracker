@@ -40,6 +40,8 @@ export interface Evidence {
   release: string
   generatedAt: string
   candidates: { name: string; shas: Record<string, string> }[]
+  /** A feature's repos whose service-wide commit couldn't be picked, so the candidate has none for them. */
+  unpicked?: string[]
   items: EvidenceItem[]
 }
 

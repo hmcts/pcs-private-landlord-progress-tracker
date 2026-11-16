@@ -7,10 +7,11 @@
 // Unlike a judgement, an answer is the generator's: its cells carry the ownership marker, the
 // next run's answer replaces them, and a person editing one takes it over. Each answer is checked
 // on its own, and one that fails is left out, so its row keeps what the page says; why goes to
-// answers-rejected.txt beside it. The file holds internal detail, so it lives in the cache
-// directory, like the evidence.
+// answers-rejected.txt beside it. A file that can't be read at all (not JSON, too big, not a
+// mapping) counts as no answers: every agent row keeps what the page says. The file holds
+// internal detail, so it lives in the cache directory, like the evidence.
 
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Layout, LayoutRow, ReleaseConfig } from './config.ts'
 import { QaError } from './errors.ts'
@@ -95,28 +96,39 @@ export interface LoadedAnswers {
   answers: AgentAnswers
   /** How many rows' answers were left out. */
   rejected: number
+  /** Why the file couldn't be read at all, in which case no answer was taken. */
+  unreadable?: QaError
+}
+
+function readAnswers(path: string, layout: Layout): ReturnType<typeof validateAnswers> {
+  if (statSync(path).size > LIMITS.file) throw new QaError('answers-invalid', `answers.json is over ${LIMITS.file} bytes`)
+  let doc: unknown
+  try {
+    doc = JSON.parse(readFileSync(path, 'utf8'))
+  } catch (e) {
+    throw new QaError('answers-invalid', `answers.json is not valid JSON: ${(e as Error).message}`)
+  }
+  return validateAnswers(doc, layout)
 }
 
 /**
- * Reads answers.json from the scope's cache directory, and writes why any answer was left out
- * to answers-rejected.txt there (removing an earlier one when none was).
+ * Reads answers.json from the scope's cache directory, and writes why any answer was left out,
+ * or why none could be read, to answers-rejected.txt there (removing an earlier one when none was).
  */
 export function loadAnswers(dir: string, layout: Layout): LoadedAnswers {
   const path = join(dir, ANSWERS_FILE)
   const rejectedPath = join(dir, REJECTED_FILE)
   rmSync(rejectedPath, { force: true })
   if (!existsSync(path)) return { found: false, answers: {}, rejected: 0 }
-  const raw = readFileSync(path, 'utf8')
-  if (raw.length > LIMITS.file) throw new QaError('answers-invalid', `answers.json is over ${LIMITS.file} characters`)
-  let doc: unknown
   try {
-    doc = JSON.parse(raw)
+    const { answers, errors, rejected } = readAnswers(path, layout)
+    if (errors.length) writeFileSync(rejectedPath, errors.join('\n') + '\n')
+    return { found: true, answers, rejected }
   } catch (e) {
-    throw new QaError('answers-invalid', `answers.json is not valid JSON: ${(e as Error).message}`)
+    const unreadable = e instanceof QaError ? e : new QaError('answers-invalid', (e as Error).message)
+    writeFileSync(rejectedPath, `${unreadable.message}\n`)
+    return { found: true, answers: {}, rejected: 0, unreadable }
   }
-  const { answers, errors, rejected } = validateAnswers(doc, layout)
-  if (errors.length) writeFileSync(rejectedPath, errors.join('\n') + '\n')
-  return { found: true, answers, rejected }
 }
 
 function statusOf(a: AgentAnswerValue, row: LayoutRow): Status {

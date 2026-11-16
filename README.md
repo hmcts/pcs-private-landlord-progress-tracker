@@ -261,7 +261,9 @@ It runs in three steps:
 The answer alone decides the row's status. Its cells carry the pipeline's marker, like any other
 generated cell, so the next run's answer replaces them, and a person who edits one takes the row
 over. If a row's question on the page differs from the layout's, as when the layout's rows are
-renumbered, the question is rewritten too, with the row's answer, unless a person has written it.
+renumbered, the question is rewritten together with the row's new answer, and only when the
+status and comment are written in the same merge. Until the agent answers it, the row stays as
+the page has it, old question and old answer together.
 
 To preview what CI would write, run the same steps locally (the skill below does this):
 `--collect-only`, the prompt through `claude -p`, then `--evidence --answers` as a dry run.

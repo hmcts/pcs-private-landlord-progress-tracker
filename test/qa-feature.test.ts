@@ -109,6 +109,7 @@ describe('the service-wide commit', () => {
   test('when GitHub can\'t be read, every service-wide rule of the repo is unknown and unreachable', async () => {
     const res = await scopeFeature(loaded, api({}, true), NOW)
     assert.deepEqual(res.cfg.candidates[0].shas, {})
+    assert.deepEqual(res.unpicked, ['pcs-api', 'pcs-frontend'])
     for (const [repo, rc] of Object.entries(loaded.repos)) {
       for (const rule of [...serviceRules(rc), 'service-revision']) {
         assert.ok(res.items.some((i) => i.repo === repo && i.rule === rule && i.status === 'unknown' && i.unreachable && !i.candidate), `${repo} ${rule}`)
@@ -127,6 +128,24 @@ describe('the service-wide commit', () => {
     const pinned = { ...loaded, repos: { ...loaded.repos, 'pcs-api': { ...loaded.repos['pcs-api'], commit: SHA.api1 } } }
     assert.throws(() => evidenceFor(doc, pinned), /other commits than the config's/)
     assert.throws(() => evidenceFor({ ...doc, release: 'other' }, loaded), /evidence is for other/)
+  })
+
+  test('applying answers, evidence may lack a repo it records as unpicked; nothing else changes', () => {
+    const api = { name: SERVICE_WIDE, shas: { 'pcs-api': SHA.api2 } }
+    const doc = (over: Record<string, unknown>) => ({ release: loaded.release, generatedAt: NOW().toISOString(), candidates: [api], items: [], ...over })
+    const allow = { allowUnpicked: true }
+    assert.deepEqual(evidenceFor(doc({ unpicked: ['pcs-frontend'] }), loaded, allow).candidates, [api])
+    assert.throws(() => evidenceFor(doc({ unpicked: ['pcs-frontend'] }), loaded), /other commits/, 'only when applying answers')
+    assert.throws(() => evidenceFor(doc({}), loaded, allow), /other commits/, 'recorded, not inferred')
+    assert.throws(() => evidenceFor(doc({ unpicked: 'pcs-frontend' }), loaded, allow), /other commits/)
+    assert.throws(() => evidenceFor(doc({ unpicked: ['pcs-frontend', 'pcs-frontend'] }), loaded, allow), /other commits/)
+    assert.throws(() => evidenceFor(doc({ unpicked: ['pcs-frontend', 'other'] }), loaded, allow), /other commits/)
+    assert.throws(() => evidenceFor(doc({ unpicked: ['pcs-api', 'pcs-frontend'] }), loaded, allow), /other commits/, 'a repo with a commit is not unpicked')
+    assert.throws(() => evidenceFor(doc({ unpicked: ['pcs-frontend'], release: 'other' }), loaded, allow), /evidence is for other/)
+    assert.throws(() => evidenceFor(doc({ unpicked: ['pcs-frontend'], candidates: [{ ...api, shas: { 'pcs-api': 'abc' } }] }), loaded, allow), /other commits/)
+    const pinned = (repo: string, sha: string) => ({ ...loaded, repos: { ...loaded.repos, [repo]: { ...loaded.repos[repo], commit: sha } } })
+    assert.throws(() => evidenceFor(doc({ unpicked: ['pcs-frontend'] }), pinned('pcs-frontend', SHA.fe2), allow), /other commits/, 'a pinned commit is always picked')
+    assert.throws(() => evidenceFor(doc({ unpicked: ['pcs-frontend'] }), pinned('pcs-api', SHA.api1), allow), /other commits/)
   })
 })
 

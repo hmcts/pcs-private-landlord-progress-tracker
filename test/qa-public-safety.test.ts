@@ -210,14 +210,20 @@ describe('the CLI, with the agent\'s input and answers', () => {
     }
   })
 
-  test('a malformed answers file fails the scope with only the kind of failure', () => {
+  test('a malformed answers file counts as no answers: the report still renders, saying only that', () => {
     writeFileSync(join(out, 'answers.json'), `{ "1": ${JSON.stringify(AGENT_CANARY[0])} `)
+    rmSync(join(out, 'report.html'), { force: true })
     const env = { ...process.env }
     for (const k of ['QA_CACHE_DIR', 'RUNNER_TEMP']) delete env[k]
     const r = spawnSync(process.execPath, ['--no-warnings', 'scripts/qa-report.ts', '--config', join(fixtures, 'config.yaml'), '--evidence', '--answers'], { encoding: 'utf8', env })
-    assert.equal(r.status, 1)
+    assert.equal(r.status, 0, r.stderr)
     assert.ok(!(r.stdout + r.stderr).includes(AGENT_CANARY[0]))
-    assert.match(r.stderr, /^qa-report failed: the agent's answers file is not valid: see errors\.log in the cache directory$/m)
+    assert.match(r.stdout, /^agent: answers\.json could not be read, so 0 answers were taken and every agent row keeps the published answer$/m)
+    assert.match(r.stdout, /^row 1   unknown \(no agent answer: keeps the published answer\)$/m)
+    assert.match(r.stdout, /^23 rows: 0 pass, 0 fail, 23 unknown$/m)
+    assert.ok(existsSync(join(out, 'report.html')))
+    assert.match(readFileSync(join(out, 'answers-rejected.txt'), 'utf8'), /not valid JSON/)
+    assert.match(readFileSync(join('.cache/qa', 'errors.log'), 'utf8'), new RegExp(`${feature} answers-invalid`))
   })
 
   test('--collect-only takes no publishing or answers', () => {

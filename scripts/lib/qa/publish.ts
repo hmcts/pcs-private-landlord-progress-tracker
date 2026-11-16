@@ -4,9 +4,9 @@
 // replaced (see render.ts). Every other cell is a person's and is kept as it is. A judgement
 // (judgement.ts) replaces cells on the same terms, but unmarked, so it becomes a person's once
 // written. A cell of a row whose source couldn't be read, or that the agent didn't answer
-// (render.ts, `keep`), is left as the page has it. An agent row whose question on the page
-// differs from the layout's has its question rewritten with the rest of the row (render.ts,
-// `sync`), unless a person has written the row. Rows the page lacks are added after the row
+// (render.ts, `keep`), is left as the page has it. An answered agent row whose question on the
+// page differs from the layout's has its question rewritten with its status and comment
+// (render.ts, `sync`), and only when both of those are written too. Rows the page lacks are added after the row
 // before them in the layout. The change
 // goes to Confluence as targeted edits (replaceNode / insertNodeAfter on the cells' local ids),
 // so the rest of the page, mentions, images and macros included, is never re-sent. Updates
@@ -18,7 +18,7 @@ import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Layout, LayoutTable, ReleaseConfig } from './config.ts'
 import { cellsOf, type El, esc, find, parse, rowsOf, shortHash, splice, tableAfterHeading, textOf } from './html.ts'
-import { cellText, type CellName, type GenCell, type GenRow, MARKER, markerRow, markers, rowHtml, tableHtml, titleOf } from './render.ts'
+import { cellText, type CellName, type GenCell, type GenRow, MARKER, markerRow, markers, plainCell, rowHtml, tableHtml, titleOf } from './render.ts'
 import type { TwgRunner } from '../roadmap-runner.ts'
 import { QaError } from './errors.ts'
 import { pageId } from './twg.ts'
@@ -108,28 +108,33 @@ function replaceCell(m: Merging, c: Cell): void {
   m.changes.push({ ...c.base, action: c.gen.judged ? 'judgement' : 'update', before: c.before, after })
 }
 
+/** Whether a page cell reads as a generated cell would: the comparison a `sync` cell is rewritten on. */
+export const sameText = (td: El, gen: GenCell): boolean => textOf(td) === textOf(parse(gen.html))
+
 function mergeRow(m: Merging, table: TableName, r: GenRow, tr: El): void {
   const tds = cellsOf(tr)
-  // An agent row whose question on the page is another one: what the page says answers that
-  // question, so the row is written even where it would otherwise be kept.
-  const stale = r.cells.flatMap((gen, n) => (gen.sync && tds[n] && textOf(tds[n]) !== textOf(parse(gen.html)) ? [{ gen, td: tds[n] }] : []))
-  const cells = r.cells.flatMap((gen, n) => (gen.name ? [cellOf(m.page, table, r.key, stale.length ? { ...gen, keep: false } : gen, tds[n], n)] : []))
+  const stale = r.cells.flatMap((gen, n) => (gen.sync && tds[n] && !sameText(tds[n], gen) ? [{ gen, td: tds[n] }] : []))
+  const cells = r.cells.flatMap((gen, n) => (gen.name ? [cellOf(m.page, table, r.key, gen, tds[n], n)] : []))
   // A row's status and comment are replaced together or not at all, so a person's answer is
   // never left beside a comment that disagrees with it. A judgement also waits for a row it
   // can write whole.
   const personal = (c: Cell) => c.held?.action === 'keep-human' || c.held?.action === 'keep-edited'
   const blocked = cells.some(personal) || cells.some((c) => c.gen.judged && c.held)
+  // A changed question is written only with the answer to it: unless the status and comment
+  // are both written now, or already say exactly that answer, the row stays as it is, old
+  // question beside old answer.
+  if (stale.length && (blocked || cells.some((c) => c.held && c.held.action !== 'unchanged') || stale.some((s) => !s.td.attrs['data-local-id']))) {
+    const why = 'the question differs, and the row can\'t be written whole'
+    for (const c of cells) m.changes.push(c.held ?? { ...c.base, action: 'skipped', why })
+    m.changes.push(...stale.map((): CellChange => ({ table, key: r.key, cell: null, action: 'skipped', why })))
+    return
+  }
   for (const c of cells) {
     if (c.held) m.changes.push(c.gen.judged && !c.held.why ? { ...c.held, why: 'the judgement was not written' } : c.held)
     else if (blocked) m.changes.push({ ...c.base, action: 'skipped', why: 'a person has written the rest of this row' })
     else replaceCell(m, c)
   }
-  for (const s of stale) {
-    const base = { table, key: r.key, cell: null }
-    if (blocked) m.changes.push({ ...base, action: 'skipped', why: 'the question differs, but a person has written this row' })
-    else if (!s.td.attrs['data-local-id']) m.changes.push({ ...base, action: 'skipped', why: 'the question cell has no local id' })
-    else m.changes.push({ ...base, action: 'update', why: 'the question', before: textOf(s.td), after: replaceTd(m, s.td, s.gen) })
-  }
+  for (const s of stale) m.changes.push({ table, key: r.key, cell: null, action: 'update', why: 'the question', before: textOf(s.td), after: replaceTd(m, s.td, s.gen) })
 }
 
 /** Finds a layout row's row in a page's table: by the text of its first cell, else by its `match`. */
@@ -208,7 +213,7 @@ export function publishedRows(page: string, layout: Layout): Record<string, Publ
   for (const r of spec.rows.filter((x) => x.rule === 'agent')) {
     const tr = rowFor(r.key)
     const [, question, status, comment] = tr ? cellsOf(tr) : []
-    if (!comment || textOf(question) !== (r.question ?? r.key)) continue
+    if (!comment || !sameText(question, plainCell(r.question ?? r.key))) continue
     const owned = (name: CellName, td: El) => {
       const re = new RegExp(`^qa-auto-${escRe(markerRow('checklist', r.key))}-${name}-`)
       const marker = markers(td).find((x) => re.test(x))
