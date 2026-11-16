@@ -4,12 +4,12 @@
 // A feature has no candidate commits of its own. scopeFeature picks, per repo, the commit its
 // service-wide rows are read at (the latest default-branch commit with a finished Jenkins build,
 // or the config's pinned SHA) and makes that the one candidate, "service-wide", so the
-// per-commit readers work as they do for a release. The E2E rows come from the Jenkins reader.
+// per-commit readers work as they do for a release. The E2E rows come from the E2E reader (e2e.ts).
 
 import type { Layout, ReleaseConfig, RepoConfig } from './config.ts'
 import { type CosmosQuery, cosmosReader, cveRulesFor, STAGE_RULES } from './sources/cosmos.ts'
 import { CHECK_RULES, defaultGitHubApi, type GitHubApi, type GitHubTarball, githubReader, latestFinished, LOOKBACK } from './sources/github.ts'
-import { type JenkinsGet, jenkinsReader } from './sources/jenkins.ts'
+import { e2eReader } from './sources/e2e.ts'
 import { jiraReader } from './sources/jira.ts'
 import { riaReader } from './sources/ria.ts'
 import { day, type HttpJson, item, type Item, reason, short } from './sources/common.ts'
@@ -25,7 +25,6 @@ export interface Sources {
   githubApi?: GitHubApi
   tarball?: GitHubTarball
   twg?: AsyncTwgRunner
-  jenkins?: JenkinsGet
   now?: () => Date
 }
 
@@ -36,7 +35,7 @@ export function readers(cfg: ReleaseConfig, s: Sources = {}): Record<string, () 
     github: githubReader(cfg, s.githubApi, s.tarball, s.now),
     jira: jiraReader(cfg, s.twg ?? quietRunnerAsync, s.now),
     ria: riaReader(cfg, s.twg ?? quietRunnerAsync, s.now),
-    ...(cfg.kind === 'feature' ? { jenkins: jenkinsReader(cfg, s.jenkins, s.tarball, s.now) } : {}),
+    ...(cfg.kind === 'feature' ? { e2e: e2eReader(cfg, s.cosmos, s.githubApi, s.tarball, s.now) } : {}),
   }
 }
 

@@ -125,7 +125,7 @@ repos:
     commit: master                 # service-wide rows: this branch's latest finished build, or a full SHA
     e2e:                           # optional: where the feature's E2E tests ran
       jenkins: { job: HMCTS_j_to_z/pcs-frontend, branch: PR-2312, build: last-completed }   # or a build number
-      tags: ['@privateLandlord']   # Playwright tags in the test titles
+      tags: ['@privateLandlord']   # Playwright tags: the specs that carry them are the feature's
       paths: [src/test/ui/e2eTest/privateLandlordMakeAClaim.spec.ts]   # spec files or folders
 ```
 
@@ -136,30 +136,31 @@ repos:
   failed, going by its `continuous-integration/jenkins/branch` status. A full SHA pins it. The
   header's "Service-wide revision" row names the commit, and each row's comment says
   "service-wide" and the commit.
-- **Feature rows** are about the feature only. The E2E row counts the passed, failed, flaky and
-  skipped tests among the configured Jenkins build's results that carry one of `tags` in their
-  title or come from one of `paths`; the header's "E2E build" row names the build and the commit
-  it ran. No matching test is a failure (the scope is wrong, or the suite didn't run), not a pass.
-  The results come from the build's JUnit report: pcs-frontend's PR builds publish their Playwright
-  results there, but pcs-api's "E2E Test - AKS preview" stage doesn't (only an HTML report), so a
-  pcs-api E2E build fails the row with a note saying its report holds no Playwright tests.
-  The feature's ignored-tests row scans only those specs, at that commit. Outstanding bugs,
-  Critical and High bugs, test complete comments and "are the stories done" read the epics' child
-  tickets (`parent in (…)`, as the roadmap does). Performance and security rows come from
-  `ria_page` if set, and are N/A ("no RIA for this feature") if not.
-
-Jenkins (`build.hmcts.net`) is reachable only on the VPN, with Basic auth: set
-`JENKINS_USERNAME` (your Entra object id) and `JENKINS_PASSWORD` (a Jenkins API token), the
-same variables cft-workspace's `scripts/mcp-jenkins` uses. `JENKINS_URL` overrides the host.
-Off the VPN Jenkins answers with a redirect to a sign-in page; that, a 401 or 403, or missing
-variables all count as unreachable.
+- **Feature rows** are about the feature only. The E2E row is the outcome of the E2E stages of
+  the configured Jenkins build, as Cosmos `pipeline-metrics` records them under the repo's
+  `cosmos_product` and `cosmos_component`: the branch's latest finished build, or the build
+  number given, judged as the master builds are (finished builds only, both databases, the same
+  rule for which stage failed). The stages are the CNP library's
+  `functionalTest:<env>` (a PR build's default, where pcs-frontend's Playwright suite runs),
+  `fullFunctionalTest:<env>` and `E2eTest:<env>` (the `enable_full_functional_tests` and
+  `enable_e2e_test` labels), all `:preview` on a PR. A build that finished without one fails the
+  row. When Cosmos can't be read, or has no finished build of the branch, the row falls back to
+  GitHub: the `continuous-integration/jenkins/pr-head` status on the PR's head commit, which is
+  the whole build's result, not the E2E stage's, and the comment says so. Neither source has
+  per-test results, so the row says which stages passed, not how many tests did. The header's
+  "E2E build" row names the build and the commit it ran (or, from GitHub, the PR head). The
+  feature's ignored-tests row scans only the specs `tags` and `paths` pick, at that commit.
+  Outstanding bugs, Critical and High bugs, test complete comments and "are the stories done"
+  read the epics' child tickets (`parent in (…)`, as the roadmap does). Performance and security
+  rows come from `ria_page` if set, and are N/A ("no RIA for this feature") if not.
 
 | Source | Rows |
 |---|---|
 | SonarCloud (public API), the analysis of each candidate commit | coverage, quality gate, static analysis |
 | Cosmos `pipeline-metrics` and `cve-reports` (databases `jenkins` and `sds-jenkins`), the Jenkins builds of each candidate commit | integration and contract, functional, deployed to AAT, yarn audit, dependency check |
 | GitHub check runs on each candidate commit | integration and contract, functional, deployed to AAT |
-| The source at each candidate commit | ignored or pending tests |
+| Cosmos `pipeline-metrics`, else GitHub's Jenkins status on the PR head, for a feature's configured build | a feature's E2E tests passed, the "E2E build" header row |
+| The source at each candidate commit, and at a feature's E2E build | ignored or pending tests |
 | Jira, through twg | outstanding bugs, Critical and High bugs, test complete comments, rows in `human_rows` |
 | The Release Impact Assessment, through twg | performance and security sign-off |
 
@@ -167,8 +168,8 @@ A source that can't be read leaves its rows "To confirm" with the reason, and th
 The evidence marks those items `unreachable`, apart from items that are unknown because what was
 asked about isn't there (no analysis of the commit, no matching check, a ticket not done). When a
 row is unknown only because of an unreachable source, a publish leaves its cells as the page has
-them, so a published "Yes" isn't turned back into "To confirm". That is what lets the scheduled
-run, which has no VPN and so no Jenkins, leave alone the E2E rows a local run filled in.
+them, so a published "Yes" isn't turned back into "To confirm". That is what lets a local run,
+where Cosmos usually refuses access, leave alone the rows the scheduled run filled in.
 A row passes only when every check it asks for passes: Cosmos and GitHub are alternatives for the
 same build check, but a closed `human_rows` ticket never makes up for a check that couldn't be made.
 Only Jenkins builds that finished count, the latest of each job.
@@ -219,66 +220,19 @@ the site is still deployed. Evidence goes to `$RUNNER_TEMP/qa` and is deleted wi
 at the end, and the log gets only counts. To stop a report being updated, set `active: false`
 in its config.
 
-The job runs on the `azure-nonprod` runner group, as hmcts/cath-service's E2E job does: GitHub's
-own runners, each a fresh VM, placed in an HMCTS network (hmcts/github-infra) whose traffic goes
-through the hub firewall. That is what lets it reach Jenkins (`build.hmcts.net`), which a
-GitHub runner on the internet can't.
-
-- **Jenkins' name is pinned in the job.** `build.hmcts.net` resolves publicly to the App Proxy
-  sign-in page, and its private address (`10.10.73.250`) is in the `hmcts.net` private zone,
-  which isn't linked to the runner network. Linking it made every other `*.hmcts.net` name there
-  stop resolving (hmcts/azure-private-dns#1134, reverted in #1135), so the job adds the address to
-  its own `/etc/hosts` instead. If Jenkins' ingress address changes, update that step.
-- **The hub firewall must allow it.** Its `GitHub-Hosted-Compute-Network-NonProd` rule decides
-  what the runner network can reach (hmcts/hub-panorama-terraform#1189 adds Jenkins). Until it
-  does, the Jenkins check says unreachable and the E2E rows keep their published answers.
-
-- **The job runs only on the schedule and on a manual dispatch from `master`.** It never runs on
-  a push or from another branch.
-- **Nothing in this repo can stop a pull request using the runners.** This repo is public, and a
-  self-hosted runner must never run code from a pull request. Publish has no `pull_request`
-  trigger, but that protects nothing: a pull request from a fork can edit `ci.yml` to say
-  `runs-on: { group: azure-nonprod }`, and its run would get a runner if the group allowed it. The
-  safeguards are two settings outside the code:
-  - The runner group's **"selected workflows"** restriction. An org admin limits
-    `azure-nonprod`, for this repo, to
-    `hmcts/pcs-private-landlord-progress-tracker/.github/workflows/publish.yml@refs/heads/master`,
-    so no other workflow, and no other ref of this one, can use it.
-  - The repo setting (Settings → Actions → General) that **requires approval for fork pull request
-    workflows from all outside contributors**, so a fork's run waits for a maintainer.
-- **The repo must be allowed to use the `azure-nonprod` runner group**, an organisation setting
-  only an org admin can change. Until it is, the job sits queued. Its 45-minute timeout counts only
-  once a runner picks it up, and GitHub cancels it after 24 hours in the queue. It has its own
-  concurrency group (`qa-report`) and nothing waits for it, so a queued `qa-report` delays only
-  the next `qa-report`, never the site.
-- **The runner's home is never used.** The Azure and twg sign-ins go in directories of the job's
-  own under `$RUNNER_TEMP` (`AZURE_CONFIG_DIR`, and `HOME` and `XDG_CONFIG_HOME` for the steps
-  that run twg), made readable only by the runner's user, and deleted at the end. On a runner that
-  isn't ephemeral, though, another job running as the same user at the same time could still read
-  them while this one runs. That is one more reason the group must be limited to this workflow.
-  Nothing is installed on the runner: if it lacks `az`, `jq`, `curl` or `sha256sum`, the job
-  fails and says which are missing.
-- **A step before the report checks Jenkins** with the report's own logic and credentials, and says
-  so in one notice: reachable, a sign-in redirect (Azure App Proxy, so the runner is outside the
-  network), unauthorised (401 or 403), credentials not set, or unreachable. Run it yourself with
-  `node --no-warnings scripts/qa-jenkins-check.ts`. The report runs either way. If Jenkins can't
-  be read, a feature's E2E rows, and its header's "E2E build" row, keep what the page already says.
-- Jenkins is read with the `JENKINS_USER` variable (an Entra object id) and the `JENKINS_TOKEN`
-  secret (that person's Jenkins API token), passed to the report as `JENKINS_USERNAME` and
-  `JENKINS_PASSWORD`. The runs call Jenkins as that person, so use a token made for this,
-  and replace it if they leave.
-
-Locally, run the report on the VPN with `JENKINS_USERNAME` and `JENKINS_PASSWORD` set to refresh
-the E2E rows yourself.
+The job runs on GitHub's own runners (`ubuntu-latest`), each a fresh VM, only on the schedule
+and on a manual dispatch from `master`, never on a push or from another branch. It has its own
+concurrency group (`qa-report`) and nothing waits for it, so it never delays the site.
 
 Cosmos is read with the account's read-only key in the `COSMOS_PIPELINE_METRICS_KEY` repository
 secret. It's a copy of `cve-cosmos-readonly-key` in the `dtsse-aat` Key Vault, which
 dtsse-github-metrics' CVE collector also reads; copy it again if that key is rotated. Only the
 report step gets it. The workflow's Azure sign-in has no Cosmos role, so without the key the Cosmos
 rows (yarn audit, dependency check, and the Jenkins stage rows GitHub doesn't answer) are unknown,
-and a publish keeps their published answers. Giving the app registration the *Cosmos DB Built-in
-Data Reader* data-plane role on the `pipeline-metrics` account (subscription DCD-CNP-Prod) would
-remove the stored key, but that's a platform request.
+and a publish keeps their published answers; a feature's E2E rows fall back to GitHub's status.
+Giving the app registration the *Cosmos DB Built-in Data Reader* data-plane role on the
+`pipeline-metrics` account (subscription DCD-CNP-Prod) would remove the stored key, but that's a
+platform request.
 
 ## Setup
 
@@ -293,14 +247,15 @@ remove the stored key, but that's a platform request.
 | `TWG_AZURE_CLIENT_ID` | Client ID of the app registration the workflow signs in to Azure as |
 | `AZURE_TENANT_ID` | The HMCTS Azure tenant ID |
 | `COSMOS_PIPELINE_METRICS_KEY` | Optional. The `pipeline-metrics` Cosmos read-only key, for the QA readiness report |
-| `JENKINS_TOKEN` | Optional. A Jenkins API token of the `JENKINS_USER` account, for a feature's E2E rows |
 
 | Variable | What it is |
 |---|---|
 | `TWG_KEY_VAULT` | The Key Vault holding the twg sign-in |
 | `TWG_SECRET_NAME` | Optional. The secret's name. Defaults to `twg-auth-conf-pcs-progress-tracker` |
 | `QA_TWG_SECRET_NAME` | Optional. The QA readiness report's twg sign-in, in the same vault. Defaults to `twg-auth-conf-pcs-progress-tracker-qa` |
-| `JENKINS_USER` | Optional. The Entra object id that `JENKINS_TOKEN` belongs to |
+
+Nothing reads Jenkins any more: the `JENKINS_TOKEN` secret and `JENKINS_USER` variable are no
+longer used and can be deleted.
 
 To pick up a newer version of the roadmap generator, copy
 `apps/pcs/.claude/scripts/lib/roadmap/roadmap-runner.ts` from `hmcts/cft-workspace` over

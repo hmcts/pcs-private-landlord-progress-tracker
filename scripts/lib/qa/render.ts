@@ -10,7 +10,7 @@
 //
 // A row that is unknown only because a source couldn't be read (items marked unreachable) is
 // marked `keep`: publishing leaves its cells as the page has them, so a run that can't reach a
-// source (the scheduled one has no VPN, so no Jenkins) never undoes one that could.
+// source (locally, Cosmos usually refuses access) never undoes one that could.
 
 import type { Layout, LayoutRow, ReleaseConfig } from './config.ts'
 import { type El, esc, find, fingerprint, type Node, parse, shortHash } from './html.ts'

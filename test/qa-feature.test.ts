@@ -1,5 +1,6 @@
-// Feature-scoped reports: the config, picking each repo's service-wide commit, the Jenkins E2E
-// reader, Jira by epics, and rows whose source couldn't be read keeping what the page says.
+// Feature-scoped reports: the config, picking each repo's service-wide commit, the E2E reader
+// (Cosmos, then GitHub), Jira by epics, and rows whose source couldn't be read keeping what the
+// page says.
 
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -8,9 +9,9 @@ import { loadLayout, loadRelease, type ReleaseConfig, validateAll, validateRelea
 import { merge } from '../scripts/lib/qa/publish.ts'
 import { evaluate, genRows, renderPage } from '../scripts/lib/qa/render.ts'
 import { HttpError, type Item } from '../scripts/lib/qa/sources/common.ts'
-import { latestFinished, scanTarball } from '../scripts/lib/qa/sources/github.ts'
-import { buildRef, defaultJenkins, networkFailure, reachability, reachabilityDetail, E2E_RULES, featureCases, hasTag, jenkinsReader, jobPath, outcome, readJenkins, revisionOf,
-  repoPathOf, specScope, underPath, Unreachable } from '../scripts/lib/qa/sources/jenkins.ts'
+import type { CosmosQuery, StageEvent } from '../scripts/lib/qa/sources/cosmos.ts'
+import { buildNumberOf, E2E_RULES, E2E_STAGE, e2eReader, hasTag, prNumber, specScope, wantedBuild } from '../scripts/lib/qa/sources/e2e.ts'
+import { type GitHubApi, type GitHubTarball, latestFinished, scanTarball } from '../scripts/lib/qa/sources/github.ts'
 import { jiraReader } from '../scripts/lib/qa/sources/jira.ts'
 import { riaReader } from '../scripts/lib/qa/sources/ria.ts'
 import type { Evidence } from '../scripts/lib/qa/types.ts'
@@ -19,7 +20,6 @@ import { fact, fakeTwg, jqlOf, NOW, SHA, tarball, withIds } from './qa-helpers.t
 const PATH = 'config/qa-readiness/private-landlord-make-a-claim.yaml'
 const { cfg: loaded, layout } = loadRelease(PATH)
 const E2E_SHA = '3d0d6bb55bafc801c36fdc697a82a9421a8f9b2a'
-const LIB_SHA = '0123456789abcdef0123456789abcdef01234567'
 const cfg: ReleaseConfig = { ...loaded, candidates: [{ name: SERVICE_WIDE, shas: { 'pcs-api': SHA.api2, 'pcs-frontend': SHA.fe2 } }] }
 
 const FEATURE_DOC = {
@@ -121,32 +121,47 @@ describe('the service-wide commit', () => {
   })
 })
 
-// A Jenkins test report shaped as pcs-frontend's PR builds publish it; the names are made up.
-const pl = (name: string, over: Record<string, unknown> = {}) =>
-  ({ className: 'e2eTest/privateLandlordMakeAClaim.spec.ts', name: `Feature journey @privateLandlord › ${name}`, status: 'PASSED', skipped: false, flakyFailures: [], ...over })
-const REPORT = { suites: [
-  { cases: [{ className: 'setup/auth.setup.ts', name: 'tokens', status: 'PASSED' }, { className: 'smokeTest/x.spec.ts', name: 'smoke @sanity', status: 'FAILED' }] },
-  { cases: [pl('a'), pl('b', { stdout: 'log\n[[ATTACHMENT|../test-results/pl-b-chrome-retry1/trace.zip]]\n' }), pl('c', { status: 'FAILED', errorDetails: 'secret-failure-detail' }),
-    pl('d', { status: 'SKIPPED', skipped: true }), { className: 'e2eTest/other.spec.ts', name: 'Other @privateLandlordWales › z', status: 'FAILED' }] },
-] }
-const BUILD = { number: 13, result: 'SUCCESS', building: false, url: 'https://build.example/job/x/13/', actions: [
-  { _class: 'hudson.plugins.git.util.BuildData', lastBuiltRevision: { SHA1: LIB_SHA }, remoteUrls: ['https://github.com/hmcts/cnp-jenkins-library.git'] },
-  { _class: 'hudson.plugins.git.util.BuildData', lastBuiltRevision: { SHA1: E2E_SHA }, remoteUrls: ['https://github.com/hmcts/pcs-frontend.git'] },
-  {}] }
+// Stage events shaped as MetricsPublisher writes them for a pcs-frontend PR build (cnp-jenkins-library).
+const PR_JOB = 'HMCTS_j_to_z/pcs-frontend/PR-2312'
+function prBuild(number: number, steps: [string, string?][], final?: string, sha = E2E_SHA): StageEvent[] {
+  const ev = steps.map(([name, result], n) => ({
+    job_name: PR_JOB, branch_name: 'PR-2312', build_number: String(number), build_tag: `jenkins-HMCTS_j_to_z-pcs-frontend-PR-2312-${number}`,
+    build_url: `https://build.example/job/x/${number}/`, current_step_name: name, current_build_current_result: result ?? 'SUCCESS',
+    current_build_duration: (n + 1) * 1000, current_build_scheduled_time: '2026-09-17T18:10:00Z', git_commit: sha,
+  }))
+  if (final) ev.push({ ...ev[0], current_step_name: final, current_build_duration: 99_000 })
+  return ev
+}
+const PR_STEPS: [string, string?][] = [['checkout'], ['build'], ['test'], ['securitychecks'], ['akschartsinstall'], ['smoketest:preview'], ['functionalTest:preview']]
 
-function jenkins(over: { build?: unknown; report?: unknown; fail?: Error } = {}) {
+/** Cosmos with these PR events in the jenkins database, recording each query. */
+function cosmos(events: StageEvent[] | Error) {
+  const calls: { db: string; query: string; params: Record<string, unknown> }[] = []
+  const query = async (db: string, _container: string, q: string, parameters: { name: string; value: unknown }[]) => {
+    calls.push({ db, query: q, params: Object.fromEntries(parameters.map((p) => [p.name, p.value])) })
+    if (events instanceof Error) throw events
+    return db === 'jenkins' ? events.filter((e) => e.branch_name === parameters.find((p) => p.name === '@b')?.value) : []
+  }
+  return Object.assign(query, { calls })
+}
+
+const HEAD = '9cc1a083edfe4fd1fb60a8b78e0355fdbf52a2d8'
+const TARGET = 'https://build.hmcts.net/job/HMCTS_j_to_z/job/pcs-frontend/job/PR-2312/14/display/redirect'
+
+/** GitHub with PR 2312's head and the Jenkins status on it, recording each path. */
+function github(over: { state?: string | null; fail?: Error; url?: string } = {}) {
   const calls: string[] = []
-  const get = async (path: string) => {
+  const api = async (path: string) => {
     calls.push(path)
     if (over.fail) throw over.fail
-    if (path.includes('/testReport/')) {
-      if (over.report instanceof Error) throw over.report
-      return over.report ?? REPORT
+    if (path === 'repos/hmcts/pcs-frontend/pulls/2312') return { head: { sha: HEAD } }
+    if (path === `repos/hmcts/pcs-frontend/commits/${HEAD}/status?per_page=100`) {
+      return { statuses: over.state === null ? [] : [{ context: 'continuous-integration/jenkins/branch', state: 'failure' },
+        { context: 'continuous-integration/jenkins/pr-head', state: over.state ?? 'success', target_url: over.url ?? TARGET }] }
     }
-    if (over.build instanceof Error) throw over.build
-    return over.build ?? BUILD
+    throw new HttpError(404, 'HTTP 404')
   }
-  return Object.assign(get, { calls })
+  return Object.assign(api, { calls })
 }
 
 const SPECS = tarball({
@@ -155,156 +170,145 @@ const SPECS = tarball({
   'src/test/ui/e2eTest/unrelated.spec.ts': "test.skip('not the feature', () => {})\n",
 }, 'hmcts-pcs-frontend-3d0d6bb')
 
-const read = (get: ReturnType<typeof jenkins>, tar: (repo: string, sha: string) => Promise<Buffer> = async () => SPECS) => jenkinsReader(cfg, get, tar, NOW)()
+const DENIED = Object.assign(new Error('forbidden'), { code: 403 })
+const read = (q: CosmosQuery, api: GitHubApi = github(), tar: GitHubTarball = async () => SPECS, c: ReleaseConfig = cfg) => e2eReader(c, q, api, tar, NOW)()
 const byRule = (items: Item[], rule: string) => items.find((i) => i.rule === rule)!
+const withBuild = (build: number | 'last-completed') => ({ ...cfg, repos: { ...cfg.repos,
+  'pcs-frontend': { ...cfg.repos['pcs-frontend'], e2e: { ...cfg.repos['pcs-frontend'].e2e!, jenkins: { ...cfg.repos['pcs-frontend'].e2e!.jenkins, build } } } } })
 
-describe('Jenkins E2E reader', () => {
-  test('counts the feature\'s cases by tag or path: passed, failed, flaky (passed on a retry) and skipped', async () => {
-    const get = jenkins()
-    const items = await read(get)
+describe('E2E reader, from Cosmos', () => {
+  test('the latest finished build of the branch answers with its E2E stage, from both databases', async () => {
+    const q = cosmos([...prBuild(12, PR_STEPS, 'Pipeline Succeeded'), ...prBuild(13, PR_STEPS, 'Pipeline Succeeded'), ...prBuild(14, PR_STEPS.slice(0, 3)),
+      ...prBuild(15, PR_STEPS, 'Pipeline Failed').map((e) => ({ ...e, current_build_current_result: 'ABORTED' }))])
+    const api = github()
+    const items = await read(q, api)
     const e2e = byRule(items, 'e2e-feature')
-    assert.equal(e2e.status, 'fail')
-    assert.equal(e2e.value, "4 of the feature's tests: 1 passed, 1 failed, 1 flaky, 1 skipped")
-    assert.equal(e2e.sha, E2E_SHA)
-    assert.equal(e2e.repo, 'pcs-frontend')
-    assert.equal(e2e.candidate, undefined)
-    assert.deepEqual(get.calls, ['/job/HMCTS_j_to_z/job/pcs-frontend/job/PR-2312/lastCompletedBuild/api/json?tree=' +
-      'number,result,building,url,actions[_class,revision[hash,pullHash],lastBuiltRevision[SHA1],remoteUrls]',
-    '/job/HMCTS_j_to_z/job/pcs-frontend/job/PR-2312/13/testReport/api/json?tree=' +
-      'suites[cases[className,name,status,skipped,errorDetails,flakyFailures[message],rerunFailures[message],properties,stdout]]'])
-    const data = e2e.data as { failures: { name: string; error?: string }[] }
-    assert.equal(data.failures[0].error, 'secret-failure-detail')
-    assert.ok(!JSON.stringify([e2e.value, e2e.note]).includes('secret-failure-detail'), 'failures stay in the evidence data')
+    assert.deepEqual([e2e.status, e2e.value, e2e.sha, e2e.source], ['pass', 'PR-2312 #13: functionalTest:preview passed', E2E_SHA, 'e2e'])
+    assert.match(e2e.note!, /stage outcome only: Cosmos keeps no per-test results/)
+    assert.deepEqual(e2e.links, [{ text: 'pcs-frontend PR-2312 #13', url: 'https://build.example/job/x/13/' }])
+    assert.deepEqual([...new Set(q.calls.map((c) => c.db))].sort(), ['jenkins', 'sds-jenkins'])
+    assert.deepEqual(q.calls[0].params, { '@b': 'PR-2312', '@p': 'pcs', '@c': 'frontend' })
+    assert.deepEqual(api.calls, [], 'GitHub is not asked when Cosmos answers')
     const header = byRule(items, 'e2e-build')
-    assert.equal(header.value, 'pcs-frontend: PR-2312 #13 at 3d0d6bb, success')
+    assert.deepEqual([header.status, header.value], ['pass', 'pcs-frontend: PR-2312 #13 at 3d0d6bb, success'])
   })
 
-  test('all passing is a pass; no matching case, or none that ran, is a failure with a reason', async () => {
-    const pass = { suites: [{ cases: [pl('a'), pl('b', { status: 'FIXED' })] }] }
-    assert.equal(byRule(await read(jenkins({ report: pass })), 'e2e-feature').status, 'pass')
-    const none = byRule(await read(jenkins({ report: { suites: [{ cases: [{ className: 'x.spec.ts', name: 'other @regression' }] }] } })), 'e2e-feature')
-    assert.equal(none.status, 'fail')
-    assert.match(none.note!, /no test in PR-2312 #13 matches the feature's tags or paths: the scope is misconfigured, or the suite did not run/)
-    const javaOnly = byRule(await read(jenkins({ report: { suites: [{ cases: [{ className: 'uk.gov.hmcts.reform.pcs.FooTest', name: 'works()', status: 'PASSED' }] }] } })), 'e2e-feature')
-    assert.equal(javaOnly.status, 'fail')
-    assert.match(javaOnly.note!, /hold no Playwright tests: its E2E stage did not run, or does not publish JUnit results/)
-    const skipped = byRule(await read(jenkins({ report: { suites: [{ cases: [pl('d', { status: 'SKIPPED', skipped: true })] }] } })), 'e2e-feature')
-    assert.deepEqual([skipped.status, skipped.note], ['fail', "every one of the feature's tests was skipped in PR-2312 #13"])
+  test('a failed E2E stage fails the row, saying when Jenkins can\'t tell it from the next stage', async () => {
+    const steps: [string, string?][] = [...PR_STEPS, ['pact-consumer-can-i-deploy', 'FAILURE']]
+    const e2e = byRule(await read(cosmos(prBuild(13, steps, 'Pipeline Failed'))), 'e2e-feature')
+    assert.deepEqual([e2e.status, e2e.value], ['fail', 'PR-2312 #13: functionalTest:preview failed'])
+    assert.match(e2e.note!, /Jenkins can't tell whether functionalTest:preview or pact-consumer-can-i-deploy failed/)
   })
 
-  test('a build with no test report, or no such build, fails: absent, not unreachable', async () => {
-    const noReport = byRule(await read(jenkins({ report: new HttpError(404, 'HTTP 404') })), 'e2e-feature')
-    assert.deepEqual([noReport.status, noReport.unreachable], ['fail', undefined])
-    const noBuild = await read(jenkins({ build: new HttpError(404, 'HTTP 404') }))
-    assert.deepEqual(noBuild.map((i) => [i.rule, i.status, !!i.unreachable]), [['e2e-feature', 'fail', false], ['e2e-build', 'unknown', false], ['ignored-tests-feature', 'unknown', false]])
+  test('full functional and E2E stages count too; a build that ran none fails the row, saying why', async () => {
+    const full = byRule(await read(cosmos(prBuild(13, [['checkout'], ['fullFunctionalTest:preview'], ['E2eTest:preview']], 'Pipeline Succeeded'))), 'e2e-feature')
+    assert.equal(full.value, 'PR-2312 #13: fullFunctionalTest:preview passed, E2eTest:preview passed')
+    const none = byRule(await read(cosmos(prBuild(13, [['checkout'], ['build'], ['smoketest:preview']], 'Pipeline Succeeded'))), 'e2e-feature')
+    assert.deepEqual([none.status, none.value, none.unreachable], ['fail', 'PR-2312 #13: no E2E stage ran', undefined])
+    assert.match(none.note!, /finished without running an E2E or functional stage: the E2E labels were not set/)
+    const early = byRule(await read(cosmos(prBuild(13, [['checkout'], ['build', 'FAILURE']], 'Pipeline Failed'))), 'e2e-feature')
+    assert.match(early.note!, /the build failed at checkout or build first/)
   })
 
-  test('unreachable Jenkins answers every rule unknown and unreachable', async () => {
-    for (const fail of [new Unreachable('Jenkins redirected to a sign-in page (off the VPN?)'), Object.assign(new Error('x'), { status: 500 })]) {
-      const items = await read(jenkins({ fail }))
-      assert.deepEqual(items.map((i) => i.rule), E2E_RULES)
-      assert.ok(items.every((i) => i.status === 'unknown' && i.unreachable), fail.message)
-    }
+  test('a configured build number is that build; one not finished is unknown, not unreachable', async () => {
+    const q = () => cosmos([...prBuild(12, PR_STEPS, 'Pipeline Succeeded'), ...prBuild(13, PR_STEPS.slice(0, 3))])
+    assert.equal(byRule(await read(q(), github(), undefined, withBuild(12)), 'e2e-feature').value, 'PR-2312 #12: functionalTest:preview passed')
+    const running = await read(q(), github(), undefined, withBuild(13))
+    assert.deepEqual(running.map((i) => [i.rule, i.status, !!i.unreachable]), [['e2e-feature', 'unknown', false], ['e2e-build', 'unknown', false], ['ignored-tests-feature', 'fail', false]])
+    assert.match(running[0].note!, /PR-2312 #13 has not finished, or was aborted/)
   })
 
-  test('scans only the feature\'s specs, at the commit the E2E build ran', async () => {
+  test('scans only the feature\'s specs, at the commit the build ran', async () => {
     const asked: string[] = []
-    const items = await read(jenkins(), async (repo, sha) => {
+    const items = await read(cosmos(prBuild(13, PR_STEPS, 'Pipeline Succeeded')), github(), async (repo, sha) => {
       asked.push(`${repo}@${sha}`)
       return SPECS
     })
     assert.deepEqual(asked, [`hmcts/pcs-frontend@${E2E_SHA}`])
     const scan = byRule(items, 'ignored-tests-feature')
-    assert.equal(scan.status, 'fail')
-    assert.equal(scan.value, '1 ignored or pending (skip ×1) in 1 files')
+    assert.deepEqual([scan.status, scan.value, scan.source], ['fail', '1 ignored or pending (skip ×1) in 1 files', 'github'])
     assert.equal((scan.data as { files: number }).files, 2)
   })
+})
 
-  test('the commit is a PR\'s head when Jenkins records one, else the repo\'s own checkout, never a library\'s', () => {
-    assert.equal(revisionOf(BUILD, 'hmcts/pcs-frontend'), E2E_SHA)
-    assert.equal(revisionOf({ actions: [...BUILD.actions, { revision: { hash: LIB_SHA, pullHash: SHA.fe1 } }] }, 'hmcts/pcs-frontend'), SHA.fe1)
-    assert.equal(revisionOf({ actions: [BUILD.actions[0]] }, 'hmcts/pcs-frontend'), null)
+describe('E2E reader, from GitHub when Cosmos has no answer', () => {
+  test('Cosmos refused: the PR head\'s Jenkins status answers, as the whole build\'s result', async () => {
+    const api = github()
+    const items = await read(cosmos(DENIED), api)
+    assert.deepEqual(api.calls, ['repos/hmcts/pcs-frontend/pulls/2312', `repos/hmcts/pcs-frontend/commits/${HEAD}/status?per_page=100`])
+    const e2e = byRule(items, 'e2e-feature')
+    assert.deepEqual([e2e.status, e2e.value, e2e.sha, e2e.unreachable], ['pass', 'PR-2312 #14: the build passed', HEAD, undefined])
+    assert.match(e2e.note!, /^GitHub's Jenkins status on the PR head: the whole build's result, not the E2E stage's \(Cosmos pipeline-metrics could not be read: access denied \(403\)\)$/)
+    assert.deepEqual(e2e.links, [{ text: 'pcs-frontend PR-2312 #14', url: TARGET }])
+    const header = byRule(items, 'e2e-build')
+    assert.deepEqual([header.status, header.value], ['pass', 'pcs-frontend: PR-2312 #14, PR head 9cc1a08, Jenkins status success'])
+    assert.equal(byRule(items, 'ignored-tests-feature').sha, HEAD)
+    for (const state of ['failure', 'error']) assert.equal(byRule(await read(cosmos(DENIED), github({ state })), 'e2e-feature').status, 'fail')
+    assert.deepEqual(['unknown', undefined], (({ status, unreachable }) => [status, unreachable])(byRule(await read(cosmos(DENIED), github({ state: 'pending' })), 'e2e-feature')))
   })
 
-  test('tags match whole, paths match from a folder boundary', () => {
+  test('no build in Cosmos for the branch: GitHub answers, and with no status there either, the row fails as absent', async () => {
+    const other = prBuild(9, PR_STEPS, 'Pipeline Succeeded').map((e) => ({ ...e, branch_name: 'PR-1' }))
+    assert.equal(byRule(await read(cosmos(other)), 'e2e-feature').status, 'pass')
+    const items = await read(cosmos([]), github({ state: null }))
+    const e2e = byRule(items, 'e2e-feature')
+    assert.deepEqual([e2e.status, e2e.value, e2e.unreachable], ['fail', 'no build', undefined])
+    assert.match(e2e.note!, /Cosmos records no finished build of PR-2312, and the PR head has no Jenkins status/)
+  })
+
+  test('Cosmos unreadable and no status on GitHub, or neither readable: unknown and unreachable', async () => {
+    const quiet = byRule(await read(cosmos(DENIED), github({ state: null })), 'e2e-feature')
+    assert.deepEqual([quiet.status, quiet.unreachable], ['unknown', true])
+    const both = await read(cosmos(DENIED), github({ fail: Object.assign(new Error('x'), { status: 500 }) }))
+    assert.deepEqual(both.map((i) => i.rule), E2E_RULES)
+    assert.ok(both.every((i) => i.status === 'unknown' && i.unreachable))
+    const gone = await read(cosmos([]), github({ fail: new Error('fetch failed') }))
+    assert.ok(gone.every((i) => i.status === 'unknown' && i.unreachable))
+  })
+
+  test('a configured build number must be the one the status is for', async () => {
+    const e2e = byRule(await read(cosmos(DENIED), github(), undefined, withBuild(13)), 'e2e-feature')
+    assert.deepEqual([e2e.status, e2e.unreachable], ['unknown', true])
+    assert.match(e2e.note!, /is not for build #13/)
+    assert.equal(byRule(await read(cosmos(DENIED), github(), undefined, withBuild(14)), 'e2e-feature').status, 'pass')
+  })
+
+  test('a branch that is not a PR falls back to its head commit\'s branch build status', async () => {
+    const c = { ...cfg, repos: { 'pcs-frontend': { ...cfg.repos['pcs-frontend'], e2e: { ...cfg.repos['pcs-frontend'].e2e!, jenkins: { job: 'HMCTS_j_to_z/pcs-frontend', branch: 'master' } } } } }
+    const api = async (path: string) => (path === 'repos/hmcts/pcs-frontend/commits/master' ? { sha: HEAD }
+      : { statuses: [{ context: 'continuous-integration/jenkins/branch', state: 'failure', target_url: 'https://build.example/job/x/job/master/7/' }] })
+    const items = await read(cosmos(DENIED), api, undefined, c)
+    assert.deepEqual([byRule(items, 'e2e-feature').status, byRule(items, 'e2e-feature').value], ['fail', 'master #7: the build failed'])
+    assert.equal(byRule(items, 'e2e-build').value, 'pcs-frontend: master #7, branch head 9cc1a08, Jenkins status failure')
+  })
+})
+
+describe('E2E helpers', () => {
+  test('ids are numbers and SHAs before they reach a path; build numbers come from the job\'s own segment', () => {
+    assert.deepEqual(['PR-2312', 'PR-0', 'PR-12x', 'PR-012', 'master'].map(prNumber), [2312, null, null, null, null])
+    assert.deepEqual([wantedBuild('last-completed'), wantedBuild(undefined), wantedBuild(7)], [null, null, 7])
+    assert.equal(buildNumberOf(TARGET, 'PR-2312'), 14)
+    assert.equal(buildNumberOf('https://build.example/job/a/job/feature%252Fx/3/', 'feature/x'), 3)
+    assert.equal(buildNumberOf(TARGET, 'PR-1'), null)
+    assert.equal(buildNumberOf('not a url', 'PR-2312'), null)
+  })
+
+  test('the E2E stages are the library\'s functional and E2E stages, in any environment', () => {
+    for (const s of ['functionalTest:preview', 'fullFunctionalTest:preview', 'E2eTest:preview', 'functionalTest:aat', 'E2eTest', 'fullFunctionalTest']) assert.ok(E2E_STAGE.test(s), s)
+    for (const s of ['smoketest:preview', 'functionalTestX:preview', 'crossBrowserTest:aat', 'pact-consumer-tests']) assert.ok(!E2E_STAGE.test(s), s)
+  })
+
+  test('tags match whole; a scope covers its paths and tagged specs', () => {
     assert.ok(hasTag('Journey @privateLandlord › a', '@privateLandlord'))
     assert.ok(hasTag('Journey @privateLandlord', '@privateLandlord'))
     assert.ok(!hasTag('Journey @privateLandlordWales › a', '@privateLandlord'))
-    assert.ok(underPath('e2eTest/privateLandlordMakeAClaim.spec.ts', 'src/test/ui/e2eTest/privateLandlordMakeAClaim.spec.ts'))
-    assert.ok(underPath('tests-enforcement/enforcement.spec.ts', 'src/e2eTest/tests/tests-enforcement/'))
-    assert.ok(!underPath('tests-enforcementWales/x.spec.ts', 'src/e2eTest/tests/tests-enforcement/'))
-    assert.ok(!underPath('e2eTest/other.spec.ts', 'src/test/ui/e2eTest/privateLandlordMakeAClaim.spec.ts'))
     const scope = specScope({ jenkins: { job: 'a', branch: 'b' }, paths: ['src/a/'], tags: ['@t'] })
     assert.deepEqual([scope('src/a/x.ts', ''), scope('src/ab/x.ts', ''), scope('src/b.ts', "test('x @t')")], [true, false, true])
   })
 
-  test('outcomes, and the cases picked from a report', () => {
-    assert.equal(outcome({ status: 'REGRESSION' }), 'failed')
-    assert.equal(outcome({ status: 'PASSED', flakyFailures: [{ message: 'x' }] }), 'flaky')
-    assert.equal(outcome({ status: 'PASSED', stdout: '[[ATTACHMENT|../test-results/a-chrome/trace.zip]]' }), 'passed')
-    assert.equal(featureCases(REPORT, { jenkins: { job: 'a', branch: 'b' }, paths: ['src/test/ui/e2eTest/other.spec.ts'] }).length, 1)
-  })
-
-  test('job paths and build numbers are checked before they reach a URL', () => {
-    assert.equal(jobPath('HMCTS_j_to_z/pcs-api', 'PR-12'), '/job/HMCTS_j_to_z/job/pcs-api/job/PR-12')
-    assert.throws(() => jobPath('a/../b', 'PR-1'), /folder names and a branch only/)
-    assert.throws(() => jobPath('a', 'PR-1?x=1'), /folder names and a branch only/)
-    assert.equal(buildRef(undefined), 'lastCompletedBuild')
-    assert.equal(buildRef(42), '42')
-    assert.throws(() => buildRef('42'), /last-completed or a build number/)
-    assert.throws(() => buildRef(-1), /last-completed or a build number/)
-  })
-})
-
-describe('reading Jenkins', () => {
-  const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json;charset=utf-8' } })
-
-  test('an App Proxy redirect, a sign-in page, 401 and 403 are unreachable; 404 is not', async () => {
-    const cases: [Response, RegExp][] = [
-      [new Response(null, { status: 302, headers: { location: 'https://login.microsoftonline.com/x' } }), /redirected to a sign-in page/],
-      [new Response('<html>Sign in</html>', { status: 200, headers: { 'content-type': 'text/html' } }), /web page, not JSON/],
-      [json({}, 401), /refused the sign-in \(401\)/],
-      [json({}, 403), /refused the sign-in \(403\)/],
-    ]
-    for (const [res, m] of cases) await assert.rejects(readJenkins(res), (e: Error) => e instanceof Unreachable && m.test(e.message))
-    await assert.rejects(readJenkins(json({}, 404)), (e: Error) => e instanceof HttpError && e.status === 404)
-    assert.deepEqual(await readJenkins(json({ number: 1 })), { number: 1 })
-  })
-
-  test('without credentials, or with a URL that isn\'t https, nothing is fetched', async () => {
-    await assert.rejects(defaultJenkins({})('/api/json'), /JENKINS_USERNAME and JENKINS_PASSWORD are not set/)
-    await assert.rejects(defaultJenkins({ JENKINS_URL: 'http://build.example', JENKINS_USERNAME: 'u', JENKINS_PASSWORD: 'p' })('/api/json'), /not an https URL/)
-  })
-
-  test('the workflow\'s check judges reachability as the reader does', async () => {
-    assert.equal(await reachability(async () => ({ mode: 'NORMAL' })), 'reachable')
-    assert.equal(await reachability(defaultJenkins({})), 'no-credentials')
-    const answer = (res: Response) => async () => readJenkins(res)
-    assert.equal(await reachability(answer(new Response(null, { status: 302, headers: { location: 'https://login.microsoftonline.com/x' } }))), 'sign-in-redirect')
-    assert.equal(await reachability(answer(new Response('{}', { status: 403, headers: { 'content-type': 'application/json' } }))), 'unauthorised')
-    assert.equal(await reachability(answer(new Response('{}', { status: 500, headers: { 'content-type': 'application/json' } }))), 'error')
-    assert.equal(await reachability(async () => { throw new Unreachable('Jenkins could not be reached') }), 'network')
-  })
-
-  test('a network failure says what kind it was, from the error code alone', async () => {
-    const failed = (cause: object) => Object.assign(new TypeError('fetch failed'), { cause })
-    assert.equal(networkFailure(failed({ code: 'UND_ERR_CONNECT_TIMEOUT' })), 'timeout')
-    assert.equal(networkFailure(Object.assign(new Error('x'), { name: 'TimeoutError' })), 'timeout')
-    assert.equal(networkFailure(failed({ code: 'ENETUNREACH' })), 'no-route')
-    assert.equal(networkFailure(failed({ errors: [{ code: 'EHOSTUNREACH' }, { code: 'EHOSTUNREACH' }] })), 'no-route')
-    assert.equal(networkFailure(failed({ code: 'ECONNREFUSED' })), 'refused')
-    assert.equal(networkFailure(failed({ code: 'ECONNRESET' })), 'reset')
-    assert.equal(networkFailure(failed({ code: 'ENOTFOUND' })), 'dns')
-    assert.equal(networkFailure(failed({ code: 'ERR_TLS_CERT_ALTNAME_INVALID' })), 'tls')
-    assert.equal(networkFailure(failed({ code: 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' })), 'tls')
-    assert.equal(networkFailure(new Error('x')), 'other')
-    const detail = await reachabilityDetail(async () => { throw new Unreachable('x', 'network', 'timeout') })
-    assert.deepEqual(detail, { kind: 'network', failure: 'timeout' })
-  })
-
-  test('readers include Jenkins only for a feature', () => {
-    assert.ok('jenkins' in readers(cfg))
-    assert.ok(!('jenkins' in readers({ ...cfg, kind: 'release' })))
+  test('readers include the E2E reader only for a feature', () => {
+    assert.ok('e2e' in readers(cfg))
+    assert.ok(!('e2e' in readers({ ...cfg, kind: 'release' })))
   })
 })
 
@@ -416,34 +420,7 @@ describe('review fixes', () => {
     assert.deepEqual(scan.findings.map((f) => f.path), ['src/test/ui/e2eTest/privateLandlord.spec.ts'])
   })
 
-  test('tags given as { tag } are not in the JUnit name, so cases are also picked by the tagged spec files the scan found', async () => {
-    const report = { suites: [{ cases: [
-      { className: 'e2eTest/privateLandlord.spec.ts', name: 'claim', status: 'PASSED' },
-      { className: 'e2eTest/other.spec.ts', name: 'other', status: 'FAILED' },
-      { className: 'e2eTest/other.spec.ts', name: 'by property', status: 'PASSED', properties: { tag: '@privateLandlord' } },
-    ] }] }
-    const scan = scanTarball(tagged, undefined, specScope(e2eCfg))
-    assert.deepEqual(featureCases(report, e2eCfg, scan).map((c) => c.name), ['claim', 'by property'])
-    assert.deepEqual(featureCases(report, e2eCfg).map((c) => c.name), ['by property'], 'without a scan, only names and properties')
-    const items = await jenkinsReader(cfg, jenkins({ report }), async () => tagged, NOW)()
-    assert.equal(items.find((i) => i.rule === 'e2e-feature')!.value, "2 of the feature's tests: 2 passed, 0 failed, 0 flaky, 0 skipped")
-    assert.equal(items.find((i) => i.rule === 'ignored-tests-feature')!.value, '1 ignored or pending (skip ×1) in 1 files')
-  })
-
-  test('a configured path may be a spec file, a folder in testDir, testDir itself or above it, but not a sibling', () => {
-    const specs = ['src/test/ui/e2eTest/a.spec.ts', 'src/test/ui/smokeTest/b.spec.ts']
-    const c = 'e2eTest/a.spec.ts'
-    assert.equal(repoPathOf(c, specs), 'src/test/ui/e2eTest/a.spec.ts')
-    for (const p of ['src/test/ui/e2eTest', 'src/test/ui/e2eTest/', 'src/test/ui', 'src', 'src/test/ui/e2eTest/a.spec.ts']) assert.ok(underPath(c, p, specs), p)
-    for (const p of ['src/test/ui/smokeTest', 'src/test/ui/e2eTest/b.spec.ts', 'src/test/uix']) assert.ok(!underPath(c, p, specs), p)
-    assert.ok(underPath(c, 'src/test/ui/e2eTest'))
-    assert.ok(underPath(c, 'src/test/ui/e2eTest/a.spec.ts'))
-    assert.ok(!underPath(c, 'src/test/ui/smokeTest'))
-  })
-
-  test('a branch with a slash is valid, and its job name is encoded as multibranch encodes it', () => {
-    assert.equal(jobPath('HMCTS_j_to_z/pcs-api', 'feature/x'), '/job/HMCTS_j_to_z/job/pcs-api/job/feature%252Fx')
-    assert.throws(() => jobPath('a', 'feature/../x'), /folder names and a branch only/)
+  test('a branch with a slash is valid', () => {
     const doc = { ...FEATURE_DOC, repos: { r: { github: 'hmcts/r', e2e: { jenkins: { job: 'a/b', branch: 'feature/HDPI-1-x' }, tags: ['@x'] } } } }
     assert.deepEqual(validateRelease(doc, 'f'), [])
   })

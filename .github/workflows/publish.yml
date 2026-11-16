@@ -5,8 +5,7 @@ name: Publish
 # (with an "out of date" warning), and the run is marked as failed so someone notices.
 # On the schedule and a manual dispatch from master, the qa-report job then updates the QA
 # readiness report of each active release and feature in Confluence (README.md, "QA readiness
-# report"), on a self-hosted runner that can reach Jenkins. A failure there fails the run too,
-# but never stops the site being deployed.
+# report"). A failure there fails the run too, but never stops the site being deployed.
 #
 # Jira is read through twg, the Atlassian CLI, the same way hmcts/cft-workspace's doc-drift
 # workflow reads Confluence. twg has no runner-friendly credential (its OAuth login is
@@ -140,22 +139,16 @@ jobs:
           echo "::error::Couldn't read the roadmap from Jira, so the site was built from the last snapshot. The build job's log says why."
           exit 1
 
-  # Updates the QA readiness report of each active release and feature, on HMCTS's self-hosted
-  # azure-nonprod runners, which can reach Jenkins (build.hmcts.net) where GitHub's can't. This
-  # repo is public, so a self-hosted runner must never run code from a pull request: the job
-  # runs only for the schedule and a manual dispatch from master, and this workflow has no
-  # pull_request trigger (ci.yml, which has, stays on GitHub's runners). It has its own twg
-  # sign-in and its own concurrency group, and nothing needs it, so it never waits for, delays or
-  # stops the site; a failure here fails the run instead. timeout-minutes counts only once a
-  # runner has picked the job up. Until then it waits in the queue (GitHub cancels a job queued
-  # for 24 hours), holding back only the next qa-report.
+  # Updates the QA readiness report of each active release and feature. It runs only for the
+  # schedule and a manual dispatch from master. It has its own twg sign-in and its own concurrency
+  # group, and nothing needs it, so it never waits for, delays or stops the site; a failure here
+  # fails the run instead.
   qa-report:
     concurrency:
       group: qa-report
       cancel-in-progress: false
     if: github.ref == 'refs/heads/master' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
-    runs-on:
-      group: azure-nonprod
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
       contents: read
@@ -164,30 +157,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-
-      # The sign-in steps need these. Nothing is installed on a shared runner: one that lacks
-      # them is the wrong runner, and the job says which are missing.
-      - name: Check the runner's tools
-        run: |
-          set -euo pipefail
-          missing=()
-          for tool in az jq curl sha256sum tar gzip base64; do
-            command -v "$tool" > /dev/null || missing+=("$tool")
-          done
-          if (( ${#missing[@]} )); then
-            echo "::error::the runner lacks ${missing[*]}, which the twg and Key Vault steps need"
-            exit 1
-          fi
-
-      # The runner is shared and may outlive the job, so the Azure and twg sign-ins live in
-      # directories of this job's own, never in the runner's home. AZURE_CONFIG_DIR is set for
-      # every later step, azure/login included; twg's HOME is given to each step that runs it.
-      - name: Keep this job's sign-ins to itself
-        run: |
-          set -euo pipefail
-          mkdir -p "${RUNNER_TEMP:?}/azure" "${RUNNER_TEMP:?}/twg-home"
-          chmod 700 "${RUNNER_TEMP:?}/azure" "${RUNNER_TEMP:?}/twg-home"
-          echo "AZURE_CONFIG_DIR=${RUNNER_TEMP:?}/azure" >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -213,30 +182,12 @@ jobs:
           vault: ${{ env.TWG_VAULT }}
           secret: ${{ env.QA_TWG_SECRET }}
           azure-login: ${{ steps.azure-login.outcome }}
-          home: ${{ runner.temp }}/twg-home
 
-      # build.hmcts.net resolves publicly to the App Proxy sign-in page. Its private address is in
-      # the hmcts.net private zone, which isn't linked to this runner network: linking it broke
-      # every other *.hmcts.net name there (azure-private-dns#1134, reverted in #1135). So the
-      # name is pinned for this job alone; the hub firewall decides whether it's reachable.
-      - name: Point build.hmcts.net at Jenkins' private address
-        run: echo "10.10.73.250 build.hmcts.net" | sudo -n tee -a /etc/hosts > /dev/null
-
-      # Judged as the report's own Jenkins reader judges it, with the same credentials, so the
-      # first run on this runner group shows whether the E2E rows can be read: reachable, a sign-in
-      # redirect, unauthorised or unreachable. Only that is printed. The report runs either way;
-      # rows it can't read keep their published answer.
-      - name: Check Jenkins can be reached
-        env:
-          JENKINS_USERNAME: ${{ vars.JENKINS_USER }}
-          JENKINS_PASSWORD: ${{ secrets.JENKINS_TOKEN }}
-        run: node --no-warnings scripts/qa-jenkins-check.ts
-
-      # Edits are made as whoever seeded the QA twg secret, and Jenkins is read as the owner of the
-      # JENKINS_TOKEN API token. Cosmos is read only with the read-only key in the
-      # COSMOS_PIPELINE_METRICS_KEY secret: the Azure sign-in has no Cosmos role, so without the
-      # key the Cosmos rows are unknown and keep their published answer. Evidence stays in
-      # $RUNNER_TEMP, and the log gets only counts.
+      # Edits are made as whoever seeded the QA twg secret. Cosmos is read only with the read-only
+      # key in the COSMOS_PIPELINE_METRICS_KEY secret: the Azure sign-in has no Cosmos role, so
+      # without the key the Cosmos rows are unknown and keep their published answer, and a
+      # feature's E2E rows fall back to GitHub's Jenkins status. Evidence stays in $RUNNER_TEMP,
+      # and the log gets only counts.
       - name: Update the QA readiness reports
         id: qa
         if: steps.twg.outputs.signed_in == 'true'
@@ -246,10 +197,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GITHUB_TOKEN: ${{ github.token }}
           COSMOS_PIPELINE_METRICS_KEY: ${{ secrets.COSMOS_PIPELINE_METRICS_KEY }}
-          JENKINS_USERNAME: ${{ vars.JENKINS_USER }}
-          JENKINS_PASSWORD: ${{ secrets.JENKINS_TOKEN }}
-          HOME: ${{ runner.temp }}/twg-home
-          XDG_CONFIG_HOME: ${{ runner.temp }}/twg-home/.config
         run: npm run qa-report -- --all-active --publish
 
       # Fails the job so it's seen; it never affects the site. An unseeded secret stands down in
@@ -271,10 +218,9 @@ jobs:
         with:
           vault: ${{ env.TWG_VAULT }}
           secret: ${{ env.QA_TWG_SECRET }}
-          home: ${{ runner.temp }}/twg-home
 
-      # A self-hosted runner can outlive the job, so neither sign-in, twg nor the evidence is left
-      # on it. Only this job's own directories are removed: the runner's home is never touched.
-      - name: Remove this job's sign-ins and evidence
+      - name: Sign out of Azure and twg, and remove the evidence
         if: always()
-        run: rm -rf "${RUNNER_TEMP:?}/azure" "${RUNNER_TEMP:?}/twg-home" "${RUNNER_TEMP:?}/qa" "${RUNNER_TEMP:?}/bin"
+        run: |
+          az logout > /dev/null 2>&1 || true
+          rm -rf "${HOME:?}/.azure" "${XDG_CONFIG_HOME:-${HOME:?}/.config}/twg" "${RUNNER_TEMP:?}/qa"

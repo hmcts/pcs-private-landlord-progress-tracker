@@ -10,7 +10,8 @@ import { after, describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { cacheDir } from '../scripts/lib/qa/cache.ts'
 import { fileUnderRows } from '../scripts/lib/qa/collect.ts'
-import { loadLayout } from '../scripts/lib/qa/config.ts'
+import { loadLayout, loadRelease } from '../scripts/lib/qa/config.ts'
+import { e2eReader } from '../scripts/lib/qa/sources/e2e.ts'
 import type { Evidence } from '../scripts/lib/qa/types.ts'
 import { CFG, fact, NOW } from './qa-helpers.ts'
 
@@ -88,7 +89,7 @@ describe('the CLI', () => {
   })
 })
 
-describe('the CLI, for a feature with Jenkins E2E evidence', () => {
+describe('the CLI, for a feature with E2E evidence from Cosmos and GitHub', () => {
   const feature = 'TEST-CANARY-FEATURE'
   const out = join('.cache/qa', feature)
   const fixtures = join('.cache/qa', 'fixtures-canary-feature')
@@ -96,31 +97,43 @@ describe('the CLI, for a feature with Jenkins E2E evidence', () => {
     for (const d of [out, fixtures]) rmSync(d, { recursive: true, force: true })
   })
 
-  test('prints no Jenkins URL, test name or failure message', () => {
+  test('prints no build URL, stage name, commit or reason', async () => {
     mkdirSync(fixtures, { recursive: true })
     const config = join(fixtures, 'config.yaml')
     writeFileSync(config, [`feature: ${feature}`, 'active: false', 'layout: pcs-feature', 'epics: [HDPI-1]', 'repos:', '  pcs-frontend:',
-      '    github: hmcts/pcs-frontend', '    e2e:', '      jenkins: { job: HMCTS_j_to_z/pcs-frontend, branch: PR-1 }', "      tags: ['@x']", ''].join('\n'))
-    const layout = loadLayout('pcs-feature')
+      '    github: hmcts/pcs-frontend', '    cosmos_product: pcs', '    cosmos_component: frontend', '    e2e:',
+      '      jenkins: { job: HMCTS_j_to_z/pcs-frontend, branch: PR-1 }', "      tags: ['@x']", '  pcs-api:', '    github: hmcts/pcs-api',
+      '    cosmos_product: pcs', '    cosmos_component: api', '    e2e:', '      jenkins: { job: HMCTS_j_to_z/pcs-api, branch: PR-2 }', "      tags: ['@x']", ''].join('\n'))
+    const { cfg, layout } = loadRelease(config)
     const sha = CFG.candidates[0].shas['pcs-frontend']
-    const items = [
-      fact({ rule: 'e2e-feature', source: 'jenkins', status: 'fail', value: "3 of the feature's tests: 2 passed, 1 failed", repo: 'pcs-frontend', sha,
-        note: 'PR-1 #2', links: [{ text: 'pcs-frontend PR-1 #2', url: CANARY[3] }],
-        data: { failures: [{ className: 'e2eTest/a.spec.ts', name: CANARY[1], error: CANARY[0] }], flaky: [CANARY[2]] } }),
-      fact({ rule: 'e2e-build', source: 'jenkins', status: 'pass', value: 'pcs-frontend: PR-1 #2', repo: 'pcs-frontend', links: [{ text: 'build', url: CANARY[3] }] }),
-      fact({ rule: 'ignored-tests-feature', source: 'jenkins', status: 'unknown', value: 'not checked', note: CANARY[1], unreachable: true }),
-    ]
-    const ev: Evidence = { release: feature, generatedAt: NOW().toISOString(), candidates: [{ name: 'service-wide', shas: { 'pcs-frontend': sha } }], items: fileUnderRows(layout, items) }
+    const head = CFG.candidates[0].shas['pcs-api']
+    // pcs-frontend's build is in Cosmos, with a canary for a stage name and its URL; pcs-api's
+    // isn't, so GitHub's status answers, with a canary for its target URL.
+    const events = ['checkout', `functionalTest:${CANARY[1]}`].map((name, n) => ({ job_name: 'j/PR-1', branch_name: 'PR-1', build_number: '2',
+      build_url: CANARY[3], current_step_name: name, current_build_current_result: 'SUCCESS', current_build_duration: n, git_commit: sha }))
+    events.push({ ...events[0], current_step_name: 'Pipeline Failed', current_build_duration: 9 })
+    const query = async (db: string, _c: string, _q: string, p: { name: string; value: unknown }[]) =>
+      (db === 'jenkins' && p.some((x) => x.value === 'frontend') ? events : [])
+    const api = async (path: string) => (path.endsWith('/pulls/2') ? { head: { sha: head } }
+      : { statuses: [{ context: 'continuous-integration/jenkins/pr-head', state: 'failure', target_url: `${CANARY[3]}/job/PR-2/5/` }] })
+    const tar = async () => {
+      throw new Error(CANARY[2])
+    }
+    const items = await e2eReader(cfg, query, api, tar, NOW)()
+    assert.ok(items.some((i) => i.value.includes(CANARY[1])) && items.some((i) => i.links.some((l) => l.url.startsWith(CANARY[3]))))
+    const ev: Evidence = { release: feature, generatedAt: NOW().toISOString(), items: fileUnderRows(layout, items),
+      candidates: [{ name: 'service-wide', shas: { 'pcs-frontend': sha, 'pcs-api': head } }] }
     mkdirSync(out, { recursive: true })
     writeFileSync(join(out, 'evidence.json'), JSON.stringify(ev))
 
     const env = { ...process.env }
-    for (const k of ['QA_CACHE_DIR', 'RUNNER_TEMP', 'JENKINS_URL', 'JENKINS_USERNAME', 'JENKINS_PASSWORD']) delete env[k]
+    for (const k of ['QA_CACHE_DIR', 'RUNNER_TEMP', 'COSMOS_PIPELINE_METRICS_KEY']) delete env[k]
     const r = spawnSync(process.execPath, ['--no-warnings', 'scripts/qa-report.ts', '--config', config, '--evidence'], { encoding: 'utf8', env })
     assert.equal(r.status, 0, r.stderr)
     const printed = r.stdout + r.stderr
     for (const c of CANARY) assert.ok(!printed.includes(c), `printed ${c}`)
-    assert.doesNotMatch(printed, /https?:\/\/|build\.hmcts\.net|PR-1/)
+    for (const s of [sha, head]) assert.ok(!printed.includes(s.slice(0, 7)), 'printed a commit')
+    assert.doesNotMatch(printed, /https?:\/\/|functionalTest|PR-[12]/)
     assert.match(r.stdout, /^row 9   fail$/m)
     assert.match(r.stdout, /^row 10  unknown \(source unreachable: keeps the published answer\)$/m)
     assert.ok(readFileSync(join(out, 'report.html'), 'utf8').includes(CANARY[3]), 'the report itself does carry the build link')

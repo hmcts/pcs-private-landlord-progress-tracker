@@ -18,6 +18,7 @@
 //     type, the newer (_ts) wins.
 //
 // Only builds of the candidate commit count: master builds, and nightly builds that ran on it.
+// A feature's E2E rows read the builds of the branch its config names the same way (e2e.ts).
 // Every repo of every candidate gets an item for each rule it answers, unknown if need be.
 
 import type { Candidate, ReleaseConfig } from '../config.ts'
@@ -70,7 +71,7 @@ export function defaultCosmosQuery(env: NodeJS.ProcessEnv = process.env): Cosmos
 }
 
 /** The same query against both databases, their rows together. */
-async function everywhere(query: CosmosQuery, container: 'pipeline-metrics' | 'cve-reports', q: string,
+export async function everywhere(query: CosmosQuery, container: 'pipeline-metrics' | 'cve-reports', q: string,
   parameters: { name: string; value: unknown }[]): Promise<unknown[]> {
   return (await Promise.all(DATABASES.map((db) => query(db, container, q, parameters)))).flat()
 }
@@ -82,12 +83,18 @@ const WARNING = /deprecat|unpinned|_moved|^old_|^missing_|renovate_config|intern
 export interface Build {
   job: string
   number: number
-  kind: 'master' | 'nightly'
+  /** A master build, a nightly build, or a build of any other branch, such as a PR's. */
+  kind: 'master' | 'nightly' | 'branch'
+  branch: string
+  /** The commit the build ran, or '' when it recorded none. */
+  sha: string
   url: string
   tag: string
   started: string
   outcome: 'SUCCESS' | 'FAILURE'
   stages: Map<string, 'pass' | 'fail'>
+  /** Every stage that ran, in order, whether or not its outcome is known. */
+  ran: string[]
   /** In a failed build, the stages that may have failed: one, or two Jenkins can't tell apart. */
   suspects: string[]
 }
@@ -108,30 +115,36 @@ function stageResults(stages: StageEvent[], suspect: number[]): Map<string, 'pas
   return map
 }
 
-/** One build's events as a Build, or null for a build that doesn't count. */
-function toBuild(ev: StageEvent[]): Build | null {
+/** One build's events as a Build, or null for a build that hasn't finished or was aborted. */
+export function completedBuild(ev: StageEvent[]): Build | null {
   const first = ev[0]
   const nightly = first.job_name.split('/')[0].endsWith('_Nightly')
-  if (!nightly && !BRANCHES.includes(first.branch_name ?? '')) return null
+  const branch = first.branch_name ?? ''
   const sorted = [...ev].sort((a, b) => (a.current_build_duration ?? 0) - (b.current_build_duration ?? 0))
   const final = sorted.filter((e) => FINAL.has(e.current_step_name)).at(-1)
   if (!final || final.current_build_current_result === 'ABORTED') return null
   const outcome = final.current_step_name === 'Pipeline Succeeded' ? 'SUCCESS' : 'FAILURE'
   const stages = sorted.filter((e) => !FINAL.has(e.current_step_name) && !WARNING.test(e.current_step_name))
   const suspect = suspectStages(stages, outcome)
-  const field = (k: 'build_url' | 'build_tag' | 'current_build_scheduled_time') => sorted.find((e) => e[k])?.[k] ?? ''
-  return { job: first.job_name, number: Number(first.build_number), kind: nightly ? 'nightly' : 'master', url: field('build_url'),
-    tag: field('build_tag'), started: field('current_build_scheduled_time'), outcome, stages: stageResults(stages, suspect),
-    suspects: suspect.map((n) => stages[n].current_step_name) }
+  const field = (k: 'build_url' | 'build_tag' | 'current_build_scheduled_time' | 'git_commit') => sorted.find((e) => e[k])?.[k] ?? ''
+  return { job: first.job_name, number: Number(first.build_number), kind: nightly ? 'nightly' : BRANCHES.includes(branch) ? 'master' : 'branch',
+    branch, sha: field('git_commit'), url: field('build_url'), tag: field('build_tag'), started: field('current_build_scheduled_time'), outcome,
+    stages: stageResults(stages, suspect), ran: stages.map((e) => e.current_step_name), suspects: suspect.map((n) => stages[n].current_step_name) }
 }
 
-export function toBuilds(events: StageEvent[]): Build[] {
+/** Events grouped by build: by job and build number. */
+export function byBuild(events: StageEvent[]): StageEvent[][] {
   const groups = new Map<string, StageEvent[]>()
   for (const e of events) {
     const k = `${e.job_name}#${e.build_number}`
     groups.set(k, [...(groups.get(k) ?? []), e])
   }
-  return [...groups.values()].map(toBuild).filter((b): b is Build => !!b).sort((a, b) => b.number - a.number)
+  return [...groups.values()]
+}
+
+/** The finished master and nightly builds among the events, newest first. */
+export function toBuilds(events: StageEvent[]): Build[] {
+  return byBuild(events).map(completedBuild).filter((b): b is Build => !!b && b.kind !== 'branch').sort((a, b) => b.number - a.number)
 }
 
 /** Which stages answer which rule. Stage names are cnp-jenkins-library callAround names. */
@@ -229,6 +242,9 @@ const STAGE_FIELDS = ['job_name', 'branch_name', 'build_number', 'build_tag', 'b
 
 const STAGE_QUERY = `SELECT ${STAGE_FIELDS.map((f) => `c.${f}`).join(', ')} FROM c ` +
   'WHERE c.git_commit = @sha AND c.product = @p AND c.component = @c'
+/** Every stage event of one branch's builds, such as a PR's (e2e.ts). */
+export const BRANCH_QUERY = `SELECT ${STAGE_FIELDS.map((f) => `c.${f}`).join(', ')} FROM c ` +
+  'WHERE c.branch_name = @b AND c.product = @p AND c.component = @c'
 // Joined to master and nightly builds of the commit through build_tag; a report that names no
 // branch is kept, since the build it joins to already says which.
 const CVE_QUERY = 'SELECT c._ts, c.build, c.report FROM c WHERE ARRAY_CONTAINS(@tags, c.build.build_tag) AND ' +

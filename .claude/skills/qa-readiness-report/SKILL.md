@@ -42,8 +42,8 @@ it to the release (the file name must match `release:`), and fill in:
 - `human_rows`: for rows a person signs off (performance report, manual regression, dependent
   services), the Jira ticket(s) whose status backs the answer.
 - `active: true` only when the user wants it published. Active releases with a `report_page`
-  are also updated by the Publish workflow every weekday (its `qa-report` job, on the
-  `azure-nonprod` self-hosted runners).
+  are also updated by the Publish workflow every weekday (its `qa-report` job, on GitHub's
+  own runners).
 
 Run `npm run validate` after editing.
 
@@ -63,20 +63,21 @@ The Private Landlord workstream has no releases: its reports are per feature. Co
   - `jenkins`: the build that ran them, usually a PR's, e.g.
     `{ job: HMCTS_j_to_z/pcs-frontend, branch: PR-2312, build: last-completed }`. Find the PR with
     `gh pr list --repo hmcts/<repo> --label <e2e label>`; the labels that pick an E2E suite are
-    in the repo's `Jenkinsfile_CNP`. Check the build ran them: the Jenkins MCP's
-    `get_build_test_report` should list cases with the tag in their name.
+    in the repo's `Jenkinsfile_CNP`. Check the build ran them: its console (the Jenkins MCP's
+    `get_build_console_output`, on the VPN) should show the tagged tests in its functional or E2E
+    stage. The report itself sees only that stage's outcome, not which tests ran.
+  - The repo needs `cosmos_product` and `cosmos_component`: they find the build in Cosmos.
 - `layout: pcs-feature`, and `ria_page` only if the feature has its own RIA.
 
 Use `--feature <name>` in place of `--release <name>` below.
 
-**E2E rows need Jenkins**, which is reachable only on the VPN, with `JENKINS_USERNAME` and
-`JENKINS_PASSWORD` set in the environment (never read or print them, and never read
-`.claude/*.env` files). Without them the E2E rows come out unknown and unreachable, and the
-run says "(source unreachable: keeps the published answer)". That's expected off the VPN: a
-publish leaves those rows as the page has them. The scheduled Publish workflow runs on the
-`azure-nonprod` self-hosted runners with its own Jenkins token; its "Check Jenkins can be
-reached" notice says whether it could read Jenkins. If it couldn't, refresh the rows by running
-the report locally on the VPN, and publish once the user says so.
+**E2E rows come from Cosmos**: the outcome of the configured build's functional or E2E stages
+(`functionalTest:preview`, `fullFunctionalTest:preview`, `E2eTest:preview` on a PR), with no
+per-test counts. When Cosmos can't be read, or has no finished build of the branch, they fall
+back to GitHub's `continuous-integration/jenkins/pr-head` status on the PR's head commit, which
+is the whole build's result, and the row's comment says so. Locally that fallback is what you'll
+see; the scheduled Publish workflow has the Cosmos key, so its run gives the stage outcome. Never
+read `.claude/*.env` files.
 
 ```sh
 npm run qa-report -- --release <release>              # collect, render, merge; writes nothing
@@ -84,13 +85,13 @@ npm run qa-report -- --release <release> --validate   # also has twg check the e
 ```
 
 Locally, Cosmos usually answers 403 (no data-plane role), so the Jenkins rows come out
-unknown with a note; that's expected, not a fault to fix. A row unknown only because a source
-couldn't be read is marked "(source unreachable: keeps the published answer)": a publish leaves
-its cells as they are, and `diff.txt` says "kept as published". The output is counts only, and a
-failure prints only its kind: the reason is in `.cache/qa/errors.log`. The detail
-is in `.cache/qa/<release>/`: `evidence.json` (what each source said), `report.html`,
-`page.html` (the page as read), `merged.html`, `edits.json` and `diff.txt` (what a publish would
-change, and which cells are kept because a person wrote them).
+unknown with a note, and a feature's E2E rows come from GitHub; that's expected, not a fault to
+fix. A row unknown only because a source couldn't be read is marked "(source unreachable: keeps
+the published answer)": a publish leaves its cells as they are, and `diff.txt` says "kept as
+published". The output is counts only, and a failure prints only its kind: the reason is in
+`.cache/qa/errors.log`. The detail is in `.cache/qa/<release>/`: `evidence.json` (what each
+source said), `report.html`, `page.html` (the page as read), `merged.html`, `edits.json` and
+`diff.txt` (what a publish would change, and which cells are kept because a person wrote them).
 
 ## 3. Rows that need a person
 

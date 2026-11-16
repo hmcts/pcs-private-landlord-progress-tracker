@@ -9,7 +9,7 @@
 // GitHub, Jira and the Release Impact Assessment), renders the report, and merges it into
 // report_page. A feature's service-wide rows are read at each repo's latest finished
 // default-branch build, its Jira rows from its epics' child tickets, and its E2E rows from the
-// Jenkins build its config names (see lib/qa/config.ts). A row whose source couldn't be read
+// Jenkins build its config names, as Cosmos or GitHub records it (lib/qa/sources/e2e.ts). A row whose source couldn't be read
 // keeps what the page already says. It's a dry run unless --publish is given: the merged page and a diff are
 // written to the cache directory (see scripts/lib/qa/cache.ts) and nothing is written to
 // Confluence. --validate also has twg check the edits, without writing them. --evidence
@@ -79,7 +79,7 @@ interface Options {
   validate: boolean
 }
 
-const SOURCES = ['sonarcloud', 'cosmos', 'github', 'jira', 'ria', 'jenkins']
+const SOURCES = ['sonarcloud', 'cosmos', 'github', 'jira', 'ria', 'e2e']
 
 /**
  * The evidence from the last collect, or a fresh collect written for next time, and the config
@@ -101,7 +101,7 @@ async function gather(cfg: ReleaseConfig, layout: Layout, dir: string, reuse: bo
   const extra: Record<string, () => Promise<Item[]>> = scoped.items.length ? { 'service-revision': async () => scoped.items } : {}
   const res = await collect(scoped.cfg, layout, { ...readers(scoped.cfg), ...extra })
   writeFileSync(join(dir, EVIDENCE_FILE), JSON.stringify(res.evidence, null, 2) + '\n')
-  for (const source of SOURCES.filter((x) => x !== 'jenkins' || cfg.kind === 'feature')) {
+  for (const source of SOURCES.filter((x) => x !== 'e2e' || cfg.kind === 'feature')) {
     const its = res.evidence.items.filter((i) => i.source === source)
     const n = (s: string) => its.filter((i) => i.status === s).length
     const away = its.filter((i) => i.unreachable).length
