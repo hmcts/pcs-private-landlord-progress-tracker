@@ -1,6 +1,9 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { loadYaml, validateDecisions, validateNfrs, validateOverview, validateRaid } from '../scripts/lib/data.ts'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { loadYaml, qaReports, validateDecisions, validateNfrs, validateOverview, validateRaid, validateReports } from '../scripts/lib/data.ts'
 
 const risk = { id: 'R-001', type: 'risk', title: 'A risk', owner: 'Delivery manager', rag: 'amber', status: 'open',
   raised: '2026-11-09', review: '2026-11-23' }
@@ -77,9 +80,60 @@ describe('validateOverview', () => {
   })
 })
 
+const report = { page: '317130017', title: 'A performance report', description: 'A run' }
+
+describe('validateReports', () => {
+  test('accepts valid entries, numeric ids and an empty list', () => {
+    const { description: _description, ...noDescription } = report
+    assert.deepEqual(validateReports({ performance: [report, { ...noDescription, page: 381847943 }] }), [])
+    assert.deepEqual(validateReports({ performance: [] }), [])
+  })
+  test('needs a title and a page id', () => {
+    const errors = validateReports({ performance: [{ ...report, title: ' ' }, { ...report, page: '3171-30017' }, { title: 'No page' }] }).join('\n')
+    assert.match(errors, /performance\[0\]: "title" is required/)
+    assert.match(errors, /performance\[1\]: "page" must be a Confluence page id/)
+    assert.match(errors, /performance\[2\]: "page" must be a Confluence page id/)
+  })
+  test('rejects bad values and duplicate pages', () => {
+    const errors = validateReports({ performance: [{ ...report, description: '' }, { ...report, page: 317130017 }] }).join('\n')
+    assert.match(errors, /"description" must be text/)
+    assert.match(errors, /duplicate page 317130017/)
+    assert.match(validateReports([report]).join(), /expected a mapping/)
+    assert.match(validateReports({ performance: report }).join(), /expected a list/)
+  })
+})
+
+describe('qaReports', () => {
+  test('lists the committed active configs that have a report page', () => {
+    assert.deepEqual(qaReports(), [{
+      title: 'QA Readiness Report – private-landlord-make-a-claim',
+      url: 'https://hmcts.atlassian.net/wiki/pages/viewpage.action?pageId=382468869',
+    }])
+  })
+  test('skips inactive configs and those with no page, and titles releases from their layout', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'qa-reports-'))
+    try {
+      mkdirSync(join(dir, 'layouts'))
+      writeFileSync(join(dir, 'layouts', 'pcs.yaml'), 'title: QA Readiness Report – {release}\n')
+      writeFileSync(join(dir, 'layouts', 'pcs-feature.yaml'), 'title: QA Readiness Report – {feature}\n')
+      writeFileSync(join(dir, 'R1.4.yaml'), "release: R1.4\nactive: true\nlayout: pcs\nreport_page: '0012345'\njql: x\n")
+      writeFileSync(join(dir, 'R1.3A.yaml'), "release: R1.3A\nactive: false\nlayout: pcs\nreport_page: '311427238'\n")
+      writeFileSync(join(dir, 'no-page.yaml'), 'feature: no-page\nactive: true\nlayout: pcs-feature\n')
+      writeFileSync(join(dir, 'feature-x.yaml'), "feature: feature-x\nactive: true\nlayout: pcs-feature\nreport_page: '99'\nepics: [HDPI-1]\n")
+      assert.deepEqual(qaReports(dir), [
+        { title: 'QA Readiness Report – R1.4', url: 'https://hmcts.atlassian.net/wiki/pages/viewpage.action?pageId=12345' },
+        { title: 'QA Readiness Report – feature-x', url: 'https://hmcts.atlassian.net/wiki/pages/viewpage.action?pageId=99' },
+      ])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
 test('the committed data files are valid', () => {
   assert.deepEqual(validateOverview(loadYaml('src/_data/overview.yaml')), [])
   assert.deepEqual(validateRaid(loadYaml('src/_data/raid.yaml')), [])
   assert.deepEqual(validateNfrs(loadYaml('src/_data/nfrs.yaml')), [])
   assert.deepEqual(validateDecisions(loadYaml('src/_data/decisions.yaml')), [])
+  assert.deepEqual(validateReports(loadYaml('src/_data/reports.yaml')), [])
 })
