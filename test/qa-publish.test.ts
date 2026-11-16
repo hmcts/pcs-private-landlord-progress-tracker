@@ -3,9 +3,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { loadLayout } from '../scripts/lib/qa/config.ts'
+import { type Layout, loadLayout } from '../scripts/lib/qa/config.ts'
 import { cellsOf, parse, rowsOf, tableAfterHeading, textOf } from '../scripts/lib/qa/html.ts'
-import { createPage, merge, publishToPage, sameBody, VERSION_MESSAGE } from '../scripts/lib/qa/publish.ts'
+import { count, createPage, diffSummary, merge, publishToPage, sameBody, VERSION_MESSAGE } from '../scripts/lib/qa/publish.ts'
 import { evaluate, genRows, renderPage } from '../scripts/lib/qa/render.ts'
 import type { Evidence } from '../scripts/lib/qa/types.ts'
 import { CFG, fact, fakeTwg, NOW, withIds } from './qa-helpers.ts'
@@ -56,7 +56,7 @@ describe('merge', () => {
   test('replaces generator cells whose evidence changed, keeping their local id and width', () => {
     assert.equal(action('info', 'Outstanding Bugs', 'details'), 'update')
     const e = m.edits.find((x) => x.name === 'replaceNode' && x.value.includes('Medium – 1'))!
-    assert.match(e.value, new RegExp(`^<td data-local-id="${e.localId}" data-colwidth="1133">`))
+    assert.match(String(e.value), new RegExp(`^<td data-local-id="${e.localId}" data-colwidth="1133">`))
     assert.doesNotMatch(m.html, /Medium – 2/)
   })
 
@@ -103,6 +103,111 @@ describe('merge', () => {
     assert.ok(r.changes.filter((c) => c.table === 'info').every((c) => c.action === 'add-table'))
     assert.ok(r.changes.filter((c) => c.table === 'checklist').every((c) => c.action !== 'add-table'))
     assert.equal(tableAfterHeading(parse('<h2>A</h2><p>x</p><h2>B</h2><table></table>'), /^A$/), null)
+  })
+})
+
+describe('rows no longer in the layout', () => {
+  const ev = evidence('95.0%', 'Critical – 0, High – 0, Medium – 2, Low – 0')
+  const info = layout.info!
+  // An earlier layout, with a generated "Generated" row after "Release" that the current one dropped.
+  const old: Layout = { ...layout, info: { ...info, rows: [info.rows[0], { key: 'Generated', rule: 'generated' }, ...info.rows.slice(1)] } }
+  const page = withIds(renderPage(cfg, old, evaluate(cfg, old, ev)))
+  const infoRows = (html: string) => rowsOf(tableAfterHeading(parse(html), /^Release Information$/)!)
+  const row = (html: string, key: string) => infoRows(html).find((tr) => textOf(cellsOf(tr)[0]) === key)!
+  const swap = (html: string, at: { start: number; end: number }, f: (s: string) => string) =>
+    html.slice(0, at.start) + f(html.slice(at.start, at.end)) + html.slice(at.end)
+  const retired = (r: ReturnType<typeof merge>) => r.changes.filter((c) => c.key.startsWith('Generated'))
+
+  test('a row the generator wrote and nobody edited is removed', () => {
+    const r = merge(page, layout, rowsFor(ev))
+    assert.deepEqual(retired(r).map((c) => c.action), ['remove-row'])
+    assert.deepEqual(r.edits.filter((e) => e.name === 'deleteNode'), [{ name: 'deleteNode', localId: row(page, 'Generated').attrs['data-local-id'] }])
+    assert.equal(row(r.html, 'Generated'), undefined)
+    assert.equal(count(r.changes).removed, 1)
+    assert.match(diffSummary('t', r.changes), /1 rows would be removed, .*\ninfo Generated: row would be removed: no longer in the layout\n {2}- Generated 19 Sep 2026\n/s)
+  })
+
+  test('a row a person has edited in any cell is kept', () => {
+    const [key, details] = cellsOf(row(page, 'Generated'))
+    const edited = [
+      swap(page, details, (s) => s.replace('19 Sep 2026', '19 Sep 2026, checked')),
+      swap(page, key, (s) => s.replace('>Generated<', '><strong>Generated</strong><')),
+      swap(page, key, (s) => s.replace('</p></td>', '</p><p>by QA</p></td>')),
+    ]
+    for (const html of edited) {
+      const r = merge(html, layout, rowsFor(ev))
+      assert.deepEqual(retired(r).map((c) => c.action), ['keep-retired-edited'])
+      assert.ok(r.edits.every((e) => e.name !== 'deleteNode'))
+    }
+  })
+
+  test('a row a person wrote, with no markers, is kept', () => {
+    const release = row(page, 'Release')
+    const notes = '<tr data-local-id="ffffffffff01"><td data-local-id="ffffffffff02"><p>Notes</p></td><td data-local-id="ffffffffff03"><p>See the wiki</p></td></tr>'
+    const r = merge(page.slice(0, release.end) + notes + page.slice(release.end), layout, rowsFor(ev))
+    assert.equal(r.changes.find((c) => c.key === 'Notes')?.action, 'keep-retired-human')
+    assert.ok(row(r.html, 'Notes'))
+    assert.equal(r.edits.filter((e) => e.name === 'deleteNode').length, 1)
+    assert.deepEqual([count(r.changes).retiredKept, count(r.changes).human], [1, 0])
+    assert.match(diffSummary('t', r.changes), /, 1 rows not in the layout kept as people wrote them, .*\ninfo Notes: kept: not in the layout, and a person wrote it\n/s)
+  })
+
+  test('a hand-written page, like the R1.3A release report, has nothing removed', () => {
+    const handWritten = page.replace(/<span data-type="inline-extension" data-extension-key="anchor"[^>]*><\/span>/g, '')
+    assert.doesNotMatch(handWritten, /qa-auto-/)
+    const r = merge(handWritten, layout, rowsFor(ev))
+    assert.ok(r.edits.every((e) => e.name !== 'deleteNode'))
+    assert.equal(count(r.changes).removed, 0)
+    assert.deepEqual(retired(r).map((c) => c.action), ['keep-retired-human'])
+  })
+
+  test('a hand-written page whose rows are all in the layout, with td headers, reports nothing about retired rows', () => {
+    const current = withIds(renderPage(cfg, layout, evaluate(cfg, layout, ev)))
+      .replace(/<span data-type="inline-extension" data-extension-key="anchor"[^>]*><\/span>/g, '')
+      .replaceAll('<th', '<td').replaceAll('</th>', '</td>')
+    const r = merge(current, layout, rowsFor(ev))
+    assert.deepEqual(r.changes.filter((c) => /retired|remove/.test(c.action)), [])
+    assert.doesNotMatch(diffSummary('t', r.changes), /not in the layout/)
+  })
+
+  test('a duplicate of a layout row the generator wrote is removed, and the first is merged', () => {
+    const bugs = row(page, 'Outstanding Bugs')
+    const html = page.slice(0, bugs.end) + page.slice(bugs.start, bugs.end).replace(/data-local-id="0/g, 'data-local-id="e') + page.slice(bugs.end)
+    const dup = infoRows(html).filter((tr) => textOf(cellsOf(tr)[0]) === 'Outstanding Bugs')[1]
+    const r = merge(html, layout, rowsFor(evidence('95.0%', 'Critical – 0, High – 0, Medium – 1, Low – 0')))
+    assert.deepEqual(r.changes.filter((c) => c.key === 'Outstanding Bugs').map((c) => c.action), ['update', 'remove-row'])
+    assert.deepEqual(r.edits.filter((e) => e.name === 'deleteNode').map((e) => e.localId), [row(html, 'Generated'), dup].map((tr) => tr.attrs['data-local-id']))
+    assert.equal(r.edits.find((e) => e.name === 'replaceNode')?.localId, cellsOf(bugs)[1].attrs['data-local-id'])
+    assert.deepEqual(infoRows(r.html).filter((tr) => textOf(cellsOf(tr)[0]) === 'Outstanding Bugs').map((tr) => textOf(cellsOf(tr)[1])), ['Critical – 0, High – 0, Medium – 1, Low – 0'])
+  })
+
+  test('a table with a header column: the header row stays, a retired row is removed', () => {
+    const t = tableAfterHeading(parse(page), /^Release Information$/)!
+    const headed = page.slice(0, t.start) + page.slice(t.start, t.end).replace(/<td( data-local-id="[^"]*" data-colwidth="178">)(<p[^>]*>[^<]*<\/p>)<\/td>/g, '<th$1$2</th>') + page.slice(t.end)
+    assert.ok(cellsOf(row(headed, 'Generated'))[0].tag === 'th')
+    const r = merge(headed, layout, rowsFor(ev))
+    assert.deepEqual(r.changes.filter((c) => c.cell === null).map((c) => [c.key, c.action]), [['Generated', 'remove-row']])
+    assert.equal(row(r.html, 'Generated'), undefined)
+    assert.ok(row(r.html, 'Item'))
+  })
+
+  test('is removed even when every row keeps what the page has', () => {
+    const kept = rowsFor(ev).map((r) => ({ ...r, cells: r.cells.map((c) => (c.name ? { ...c, keep: true } : c)) }))
+    const r = merge(page, layout, kept)
+    assert.deepEqual(retired(r).map((c) => c.action), ['remove-row'])
+  })
+
+  test('a removed row beside rows being added and replaced leaves the table in layout order', () => {
+    // "Release Type" deleted, so it is added after "Release", right where the removed row starts.
+    const gone = row(page, 'Release Type')
+    const html = page.slice(0, gone.start) + page.slice(gone.end)
+    assert.equal(row(html, 'Release').end, row(html, 'Generated').start)
+    const r = merge(html, layout, rowsFor(evidence('95.0%', 'Critical – 0, High – 0, Medium – 1, Low – 0')))
+    assert.deepEqual(r.edits.map((e) => [e.name, e.localId]).filter(([n]) => n !== 'replaceNode'),
+      [['insertNodeAfter', row(html, 'Release').attrs['data-local-id']], ['deleteNode', row(html, 'Generated').attrs['data-local-id']]])
+    assert.ok(r.changes.some((c) => c.key === 'Outstanding Bugs' && c.action === 'update'))
+    assert.deepEqual(infoRows(r.html).map((tr) => textOf(cellsOf(tr)[0])), [...info.columns.slice(0, 1), ...info.rows.map((x) => x.key)])
+    assert.match(r.html, /Medium – 1/)
   })
 })
 
