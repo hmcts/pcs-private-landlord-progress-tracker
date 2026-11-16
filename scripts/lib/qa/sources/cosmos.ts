@@ -242,9 +242,12 @@ const STAGE_FIELDS = ['job_name', 'branch_name', 'build_number', 'build_tag', 'b
 
 const STAGE_QUERY = `SELECT ${STAGE_FIELDS.map((f) => `c.${f}`).join(', ')} FROM c ` +
   'WHERE c.git_commit = @sha AND c.product = @p AND c.component = @c'
-/** Every stage event of one branch's builds, such as a PR's (e2e.ts). */
-export const BRANCH_QUERY = `SELECT ${STAGE_FIELDS.map((f) => `c.${f}`).join(', ')} FROM c ` +
-  'WHERE c.branch_name = @b AND c.product = @p AND c.component = @c'
+/** How far back a branch's latest build is looked for (e2e.ts); an older one counts as none. */
+export const BRANCH_DAYS = 60
+
+/** The stage events of one build of a branch (@n, as Jenkins's BUILD_NUMBER string), or of its builds since @since (_ts). */
+export const branchQuery = (pinned: boolean): string => `SELECT ${STAGE_FIELDS.map((f) => `c.${f}`).join(', ')} FROM c ` +
+  `WHERE c.branch_name = @b AND c.product = @p AND c.component = @c AND ${pinned ? 'c.build_number = @n' : 'c._ts > @since'}`
 // Joined to master and nightly builds of the commit through build_tag; a report that names no
 // branch is kept, since the build it joins to already says which.
 const CVE_QUERY = 'SELECT c._ts, c.build, c.report FROM c WHERE ARRAY_CONTAINS(@tags, c.build.build_tag) AND ' +

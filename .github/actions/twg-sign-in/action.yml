@@ -28,12 +28,6 @@ inputs:
   azure-login:
     description: The azure/login step's outcome
     required: true
-  home:
-    description: >
-      A directory to keep twg's sign-in in, instead of the runner's home: set it on a shared
-      self-hosted runner. Every later step that runs twg needs the same HOME and XDG_CONFIG_HOME.
-    required: false
-    default: ''
 
 outputs:
   restored:
@@ -52,8 +46,7 @@ runs:
         TWG_VERSION: ${{ inputs.version }}
       run: |
         set -euo pipefail
-        # Pinned and checksum-verified, into the job's temp directory, so it needs no sudo and
-        # leaves nothing behind on a self-hosted runner.
+        # Pinned and checksum-verified, into the job's temp directory, so it needs no sudo.
         case "$(uname -m)" in
           x86_64 | amd64) arch=x64 ;;
           aarch64 | arm64) arch=arm64 ;;
@@ -78,11 +71,8 @@ runs:
         AZURE_LOGIN: ${{ inputs.azure-login }}
         TWG_VAULT: ${{ inputs.vault }}
         TWG_SECRET: ${{ inputs.secret }}
-        TWG_HOME: ${{ inputs.home }}
       run: |
         set -euo pipefail
-        # On a shared runner, keep the sign-in out of the runner's own home.
-        if [[ -n "$TWG_HOME" ]]; then export HOME="$TWG_HOME" XDG_CONFIG_HOME="$TWG_HOME/.config"; fi
         # Without Azure there's nowhere to store a rotated token, and refreshing without
         # storing it breaks the next run for good. So stand down before twg has a file.
         if [[ "$AZURE_LOGIN" != "success" || -z "$TWG_VAULT" ]]; then
@@ -123,11 +113,8 @@ runs:
       env:
         TWG_VAULT: ${{ inputs.vault }}
         TWG_SECRET: ${{ inputs.secret }}
-        TWG_HOME: ${{ inputs.home }}
       run: |
         set -uo pipefail
-        # On a shared runner, keep the sign-in out of the runner's own home.
-        if [[ -n "$TWG_HOME" ]]; then export HOME="$TWG_HOME" XDG_CONFIG_HOME="$TWG_HOME/.config"; fi
         umask 077
         # shellcheck source=twg-auth.sh
         source "$GITHUB_ACTION_PATH/twg-auth.sh"

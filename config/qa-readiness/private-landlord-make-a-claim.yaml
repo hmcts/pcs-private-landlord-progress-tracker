@@ -29,5 +29,6 @@ repos:
     # hmcts/pcs-frontend#2312 runs these with the enable_private_landlord_test label.
     e2e:
       jenkins: { job: HMCTS_j_to_z/pcs-frontend, branch: PR-2312, build: last-completed }
+      label: enable_private_landlord_test
       tags: ['@privateLandlord']
       paths: [src/test/ui/e2eTest/privateLandlordMakeAClaim.spec.ts]

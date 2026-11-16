@@ -1,25 +1,28 @@
 // A feature's E2E rows, for the Jenkins build its config names in repos.<repo>.e2e: usually a PR
 // build run with the E2E labels, the latest finished one or a given build number.
 //
-// - Cosmos pipeline-metrics: the branch's builds, read as cosmos.ts reads master builds (finished
-//   builds only, from both databases, with the same rule for which stage failed). The E2E row is
-//   the outcome of the build's E2E stages: cnp-jenkins-library's functionalTest:<env> (a PR
-//   build's default, where pcs-frontend's Playwright suite runs), fullFunctionalTest:<env> (the
-//   enable_full_functional_tests label, and nightly) and E2eTest:<env> (the enable_e2e_test
-//   label, and nightly), all :preview on a PR. A build that finished without one fails the row.
-//   Cosmos keeps no per-test results, so the row says which stages passed, not which tests.
-// - When Cosmos can't be read, or has no finished build of the branch: the Jenkins status on the
+// - Cosmos pipeline-metrics: the configured job's builds of the branch, read as cosmos.ts reads
+//   master builds (finished builds only, from both databases, with the same rule for which stage
+//   failed). The E2E row is the outcome of the build's E2E stages: cnp-jenkins-library's
+//   functionalTest:<env> (a PR build's default, where pcs-frontend's Playwright suite runs),
+//   fullFunctionalTest:<env> (the enable_full_functional_tests label, and nightly) and
+//   E2eTest:<env> (the enable_e2e_test label, and nightly), all :preview on a PR. A build that
+//   finished without one fails the row. Cosmos keeps no per-test results, so the row says which
+//   stages passed, not which tests.
+// - When Cosmos has no finished build of the branch, or can't be read: the Jenkins status on the
 //   head commit of the PR (continuous-integration/jenkins/pr-head) or branch, which is the whole
 //   build's result only. Its target URL names the build, so a configured build number is checked
-//   against it.
+//   against it. While Cosmos can't be read, the fallback's items are unreachable, so a publish
+//   keeps what the page says.
 //
-// The scan for ignored or pending tests (github.ts) is run again over the feature's specs only,
-// at the commit the build ran (Cosmos's git_commit), or else the head commit.
+// What a stage ran depends on the PR's labels, so a pass stands only when the PR carries the
+// config's e2e.label. The scan for ignored or pending tests (github.ts) is run again over the
+// feature's specs only, at the commit the build ran.
 
 import type { E2eConfig, ReleaseConfig, RepoConfig } from '../config.ts'
 import { mapLimit, SHA, str } from '../util.ts'
 import { item, type Item, reason, short } from './common.ts'
-import { type Build, BRANCH_QUERY, byBuild, completedBuild, type CosmosQuery, defaultCosmosQuery, everywhere, type StageEvent } from './cosmos.ts'
+import { type Build, BRANCH_DAYS, branchQuery, byBuild, completedBuild, type CosmosQuery, defaultCosmosQuery, everywhere, type StageEvent } from './cosmos.ts'
 import { BRANCH_STATUS, defaultGitHubApi, defaultTarball, type GitHubApi, type GitHubTarball, ignoredItem, type Scan, scanTarball } from './github.ts'
 
 const SOURCE = 'e2e'
@@ -28,7 +31,7 @@ export const E2E_RULES = ['e2e-feature', 'e2e-build', 'ignored-tests-feature']
 export const E2E_CONCURRENCY = 4
 
 /** The stages that run a repo's E2E or functional tests against a deployment. */
-export const E2E_STAGE = /^(functionalTest|fullFunctionalTest|E2eTest)(:[\w-]+)?$/
+export const E2E_STAGE = /^(functionalTest|fullFunctionalTest|E2eTest)(:[\w-]+)?$/i
 
 /** The status Jenkins sets on a PR build's head commit. */
 export const PR_STATUS = 'continuous-integration/jenkins/pr-head'
@@ -86,30 +89,37 @@ export function buildNumberOf(url: string, branch: string): number | null {
   return Number.isSafeInteger(n) && n > 0 && String(n) === digits ? n : null
 }
 
+/** Whether a Cosmos job_name (<folder>/<repo>/<branch>) is the configured job's build of the branch. */
+export function isJob(jobName: string, job: string, branch: string): boolean {
+  return jobName === `${job}/${branch}` || jobName === `${job}/${encodeURIComponent(branch)}`
+}
+
 type CosmosFind =
   | { kind: 'found'; build: Build }
-  | { kind: 'pending'; number: number; sha: string }
+  | { kind: 'pending'; number: number }
   | { kind: 'missing' | 'unset' | 'down'; note: string }
 
 /** The configured build in Cosmos: found, not finished, or not there and why. */
-async function fromCosmos(query: CosmosQuery, rc: RepoConfig, branch: string, wanted: number | null): Promise<CosmosFind> {
+async function fromCosmos(query: CosmosQuery, rc: RepoConfig, e2e: E2eConfig, wanted: number | null, now: () => Date): Promise<CosmosFind> {
   if (!rc.cosmos_product) return { kind: 'unset', note: 'no Jenkins product and component are configured for the repo' }
+  const { job, branch } = e2e.jenkins
+  const bound = wanted === null ? { name: '@since', value: Math.floor(now().getTime() / 1000) - BRANCH_DAYS * 86_400 } : { name: '@n', value: String(wanted) }
   let events: StageEvent[]
   try {
-    events = await everywhere(query, 'pipeline-metrics', BRANCH_QUERY, [{ name: '@b', value: branch },
-      { name: '@p', value: rc.cosmos_product }, { name: '@c', value: rc.cosmos_component }]) as StageEvent[]
+    events = await everywhere(query, 'pipeline-metrics', branchQuery(wanted !== null), [{ name: '@b', value: branch },
+      { name: '@p', value: rc.cosmos_product }, { name: '@c', value: rc.cosmos_component }, bound]) as StageEvent[]
   } catch (e) {
     return { kind: 'down', note: `Cosmos pipeline-metrics could not be read: ${reason(e)}` }
   }
-  const groups = byBuild(events.filter((e) => e.branch_name === branch && !e.job_name.split('/')[0].endsWith('_Nightly')))
+  const groups = byBuild(events.filter((e) => e.branch_name === branch && isJob(str(e.job_name), job, branch)))
   if (wanted !== null) {
     const ev = groups.find((g) => Number(g[0].build_number) === wanted)
     if (!ev) return { kind: 'missing', note: `Cosmos records no build #${wanted} of ${branch}` }
     const build = completedBuild(ev)
-    return build ? { kind: 'found', build } : { kind: 'pending', number: wanted, sha: str(ev.find((e) => e.git_commit)?.git_commit) }
+    return build ? { kind: 'found', build } : { kind: 'pending', number: wanted }
   }
   const builds = groups.map(completedBuild).filter((b): b is Build => !!b).sort((a, b) => b.number - a.number)
-  return builds.length ? { kind: 'found', build: builds[0] } : { kind: 'missing', note: `Cosmos records no finished build of ${branch}` }
+  return builds.length ? { kind: 'found', build: builds[0] } : { kind: 'missing', note: `Cosmos records no finished build of ${branch} in the last ${BRANCH_DAYS} days` }
 }
 
 interface Head {
@@ -136,10 +146,50 @@ async function fromGitHub(api: GitHubApi, gh: string, branch: string): Promise<H
   return { sha, pr, state: str(hit.state), url: url.startsWith('https://') ? url : undefined, number: buildNumberOf(url, branch) }
 }
 
+/**
+ * Whether the PR asks its build to run the feature's tests. pcs-frontend's Jenkinsfile_CNP sets
+ * the suite's scope (E2E_TEST_SCOPE) from PR labels: @sanity by default, the feature's tag with
+ * a label such as enable_private_landlord_test, and any e2e-tag:<tag> label overrides both.
+ */
+type Labels = { state: 'labelled' | 'unlabelled' | 'unread' | 'none'; note: string }
+
+async function labelsOf(api: GitHubApi, gh: string, e2e: E2eConfig): Promise<Labels> {
+  const label = e2e.label
+  if (!label) return { state: 'none', note: 'no e2e.label is configured, so the stage result covers whatever scope the build ran' }
+  const pr = prNumber(e2e.jenkins.branch)
+  if (pr === null) return { state: 'unlabelled', note: `${e2e.jenkins.branch} is not a PR, so it can't carry the ${label} label` }
+  let names: string[]
+  try {
+    const res = await api(`repos/${gh}/issues/${String(pr)}/labels?per_page=100`)
+    names = (Array.isArray(res) ? res : []).map((l) => str((l as { name?: unknown })?.name))
+  } catch (e) {
+    return { state: 'unread', note: `the PR's labels could not be read: ${reason(e)}` }
+  }
+  if (!names.includes(label)) return { state: 'unlabelled', note: `the PR isn't labelled ${label} to run the feature's tests, so the stage result says nothing about them` }
+  if (names.some((n) => n.startsWith('e2e-tag:'))) {
+    return { state: 'unlabelled', note: `the PR's e2e-tag: label replaces the scope ${label} sets, so the stage result says nothing about the feature's tests` }
+  }
+  return { state: 'labelled', note: `the PR is labelled ${label}, so the build ran the feature's tests` }
+}
+
+type Verdict = { status: 'pass' | 'fail' | 'unknown'; unreachable?: boolean }
+
+/**
+ * A pass stands only when the PR is labelled to run the feature's tests. With no label
+ * configured, a stage's pass stands, but a whole build's success says nothing about E2E.
+ */
+function gate(status: Verdict['status'], labels: Labels, wholeBuild: boolean): Verdict {
+  if (status !== 'pass') return { status }
+  if (labels.state === 'labelled') return { status }
+  if (labels.state === 'unread') return { status: 'unknown', unreachable: true }
+  if (labels.state === 'none') return { status: wholeBuild ? 'unknown' : 'pass' }
+  return { status: 'fail' }
+}
+
 const outcomeOf = (s: 'pass' | 'fail' | undefined) => (s === 'pass' ? 'passed' : s === 'fail' ? 'failed' : 'outcome not recorded')
 
 /** The E2E row from a finished build's stages. */
-function stageItem(repo: string, branch: string, b: Build, links: Item['links'], now?: () => Date): Item {
+async function stageItem(repo: string, branch: string, b: Build, links: Item['links'], labels: () => Promise<Labels>, now?: () => Date): Promise<Item> {
   const label = `${branch} #${b.number}`
   const sha = SHA.test(b.sha) ? b.sha : null
   const base = { source: SOURCE, rule: 'e2e-feature', repo, sha, links }
@@ -152,40 +202,57 @@ function stageItem(repo: string, branch: string, b: Build, links: Item['links'],
   }
   const results = names.map((n) => [n, b.stages.get(n)] as const)
   const failed = results.filter(([, s]) => s === 'fail')
-  const status = failed.length ? 'fail' : results.some(([, s]) => !s) ? 'unknown' : 'pass'
+  const stages: Verdict['status'] = failed.length ? 'fail' : results.some(([, s]) => !s) ? 'unknown' : 'pass'
   const notes = ['the stage outcome only: Cosmos keeps no per-test results']
   if (failed.length && b.suspects.length > 1 && failed.some(([n]) => b.suspects.includes(n))) notes.unshift(`Jenkins can't tell whether ${b.suspects.join(' or ')} failed`)
-  if (status === 'unknown') notes.unshift('an E2E stage ran after the stage that failed, so its outcome is not recorded')
-  return item({ ...base, status, value: `${label}: ${results.map(([n, s]) => `${n} ${outcomeOf(s)}`).join(', ')}`, note: notes.join('; '), data }, now)
+  if (stages === 'unknown') notes.unshift('an E2E stage ran after the stage that failed, so its outcome is not recorded')
+  const l = stages === 'pass' ? await labels() : null
+  const v: Verdict = l ? gate(stages, l, false) : { status: stages }
+  if (l) notes.unshift(l.note)
+  return item({ ...base, ...v, value: `${label}: ${results.map(([n, s]) => `${n} ${outcomeOf(s)}`).join(', ')}`, note: notes.join('; '), data }, now)
 }
 
 /**
- * The E2E row from the head commit's Jenkins status: the whole build's result. With no status,
- * a build Cosmos doesn't have is absent, and one it couldn't be asked about is unknown.
+ * The E2E row from the head commit's Jenkins status: the whole build's result. With no status, a
+ * build Cosmos doesn't have is absent.
  */
-function statusItem(repo: string, branch: string, head: Head, wanted: number | null, cosmos: { kind: string; note: string }, now?: () => Date): Item {
+async function statusItem(repo: string, branch: string, head: Head, wanted: number | null, cosmos: { kind: string; note: string },
+  labels: () => Promise<Labels>, now?: () => Date): Promise<Item> {
   const at = head.pr === null ? `the ${branch} head` : 'the PR head'
   const why = cosmos.note
   const base = { source: SOURCE, rule: 'e2e-feature', repo, sha: head.sha }
-  const unknown = (note: string) => item({ ...base, status: 'unknown', value: 'not checked', note, unreachable: cosmos.kind === 'down' }, now)
+  const unknown = (note: string, unreachable = false) => item({ ...base, status: 'unknown', value: 'not checked', note, unreachable }, now)
   if (!head.state && cosmos.kind === 'missing') return item({ ...base, status: 'fail', value: 'no build', note: `${why}, and ${at} has no Jenkins status` }, now)
   if (!head.state) return unknown(`${why}, and ${at} has no Jenkins status`)
+  if (wanted !== null && !head.number) return unknown(`${why}, and the Jenkins status link on ${at} names no build to match to #${wanted}`, true)
   if (wanted !== null && head.number !== wanted) return unknown(`${why}, and the Jenkins status on ${at} is not for build #${wanted}`)
   const build = head.number ? `${branch} #${head.number}` : branch
   const links = head.url ? [{ text: `${repo} ${build}`, url: head.url }] : []
-  const note = `GitHub's Jenkins status on ${at}: the whole build's result, not the E2E stage's (${why})`
+  const notes = [`GitHub's Jenkins status on ${at}: the whole build's result, not the E2E stage's`, why]
   const data = { from: 'github', branch, number: head.number ?? null, state: head.state }
-  if (head.state === 'success') return item({ ...base, status: 'pass', value: `${build}: the build passed`, links, note, data }, now)
-  if (head.state === 'failure' || head.state === 'error') return item({ ...base, status: 'fail', value: `${build}: the build failed`, links, note, data }, now)
-  return item({ ...base, status: 'unknown', value: `${build}: still running`, links, note, data }, now)
+  const state: Verdict['status'] = head.state === 'success' ? 'pass' : head.state === 'failure' || head.state === 'error' ? 'fail' : 'unknown'
+  const value = `${build}: ${state === 'pass' ? 'the build passed' : state === 'fail' ? 'the build failed' : 'still running'}`
+  const l = state === 'pass' ? await labels() : null
+  if (l) notes.unshift(l.note)
+  return item({ ...base, ...(l ? gate(state, l, true) : { status: state }), value, links, note: notes.join('; '), data }, now)
+}
+
+/**
+ * A fallback answer while Cosmos can't be read: unknown and unreachable, so a publish keeps the
+ * page's answer, which may have come from Cosmos. What the fallback said stays in the note and data.
+ */
+function kept(it: Item, now?: () => Date): Item {
+  return item({ source: it.source, rule: it.rule, repo: it.repo, sha: it.sha, links: it.links, status: 'unknown', value: 'not checked', unreachable: true,
+    note: `GitHub's fallback, not used while Cosmos can't be read, says: ${it.value}${it.note ? ` (${it.note})` : ''}`,
+    data: { ...it.data, fallback: { status: it.status, value: it.value } } }, now)
 }
 
 /** The feature's spec files at the E2E build's commit, and the ignored-tests finding for them. */
-async function scopedScan(repo: string, rc: RepoConfig, e2e: E2eConfig, sha: string | null, tarball: GitHubTarball, unreachable: boolean,
-  now?: () => Date): Promise<Item> {
+async function scopedScan(repo: string, rc: RepoConfig, e2e: E2eConfig, sha: string | null, tarball: GitHubTarball,
+  noSha: { note: string; unreachable: boolean }, now?: () => Date): Promise<Item> {
   const rule = 'ignored-tests-feature'
   const base = { source: 'github', rule, repo, sha, status: 'unknown' as const, value: 'not checked' }
-  if (!sha) return item({ ...base, note: 'neither Cosmos nor GitHub said which commit the E2E build ran', unreachable }, now)
+  if (!sha) return item({ ...base, ...noSha }, now)
   let scan: Scan
   try {
     scan = scanTarball(await tarball(rc.github, sha), rc.test_paths, specScope(e2e))
@@ -196,41 +263,44 @@ async function scopedScan(repo: string, rc: RepoConfig, e2e: E2eConfig, sha: str
   return ignoredItem(repo, rc.github, sha, null, scan, now, rule)
 }
 
+/** The commit a finished build ran: Cosmos's, or for the latest build, the head commit if its status is for that build. */
+async function buildCommit(b: Build, wanted: number | null, api: GitHubApi, rc: RepoConfig, branch: string): Promise<{ sha: string | null; note: string; unreachable: boolean }> {
+  if (SHA.test(b.sha)) return { sha: b.sha, note: '', unreachable: false }
+  const none = `Cosmos recorded no commit for ${branch} #${b.number}`
+  if (wanted !== null) return { sha: null, note: none, unreachable: false }
+  try {
+    const head = await fromGitHub(api, rc.github, branch)
+    return head?.number === b.number ? { sha: head.sha, note: '', unreachable: false }
+      : { sha: null, note: `${none}, and the Jenkins status on its head commit is not for that build`, unreachable: false }
+  } catch (e) {
+    return { sha: null, note: `${none}, and GitHub could not be read: ${reason(e)}`, unreachable: true }
+  }
+}
+
 async function one(repo: string, rc: RepoConfig, e2e: E2eConfig, d: Deps): Promise<Item[]> {
   const { branch } = e2e.jenkins
+  const now = d.now ?? (() => new Date())
   const wanted = wantedBuild(e2e.jenkins.build)
   const header = (a: Omit<Parameters<typeof item>[0], 'source' | 'rule' | 'repo'>) => item({ source: SOURCE, rule: 'e2e-build', repo, ...a }, d.now)
-  const found = await fromCosmos(d.cosmos, rc, branch, wanted)
+  const unknown = (note: string, unreachable: boolean) => E2E_RULES.map((rule) =>
+    item({ source: rule === 'ignored-tests-feature' ? 'github' : SOURCE, rule, repo, status: 'unknown', value: 'not checked', note, unreachable }, d.now))
+  let read: Promise<Labels> | undefined
+  const labels = () => (read ??= labelsOf(d.api, rc.github, e2e))
+  const found = await fromCosmos(d.cosmos, rc, e2e, wanted, now)
 
   if (found.kind === 'found') {
     const b = found.build
     const label = `${branch} #${b.number}`
     const links = b.url.startsWith('https://') ? [{ text: `${repo} ${label}`, url: b.url }] : []
-    let sha = SHA.test(b.sha) ? b.sha : null
-    let away = false
-    if (!sha) {
-      try {
-        sha = (await fromGitHub(d.api, rc.github, branch))?.sha ?? null
-      } catch {
-        away = true
-      }
-    }
-    return [stageItem(repo, branch, b, links, d.now),
-      header({ sha, status: 'pass', links, value: `${repo}: ${label}${SHA.test(b.sha) ? ` at ${short(b.sha)}` : ''}, ${b.outcome.toLowerCase()}`,
-        data: { from: 'cosmos', branch, number: b.number, outcome: b.outcome, sha } }),
-      await scopedScan(repo, rc, e2e, sha, d.tarball, away, d.now)]
+    const commit = await buildCommit(b, wanted, d.api, rc, branch)
+    return [await stageItem(repo, branch, b, links, labels, d.now),
+      header({ sha: commit.sha, status: 'pass', links, value: `${repo}: ${label}${commit.sha ? ` at ${short(commit.sha)}` : ''}, ${b.outcome.toLowerCase()}`,
+        note: commit.note || undefined, data: { from: 'cosmos', branch, number: b.number, outcome: b.outcome, sha: commit.sha } }),
+      await scopedScan(repo, rc, e2e, commit.sha, d.tarball, commit, d.now)]
   }
-
-  if (found.kind === 'pending') {
-    const note = `${branch} #${found.number} has not finished, or was aborted`
-    const sha = SHA.test(found.sha) ? found.sha : null
-    return [item({ source: SOURCE, rule: 'e2e-feature', repo, sha, status: 'unknown', value: 'not checked', note }, d.now),
-      header({ sha, status: 'unknown', value: 'not checked', note }), await scopedScan(repo, rc, e2e, sha, d.tarball, false, d.now)]
-  }
+  if (found.kind === 'pending') return unknown(`${branch} #${found.number} has not finished, or was aborted`, false)
 
   // Cosmos has no answer: the configured build isn't there, or Cosmos can't be read.
-  const unknown = (note: string, unreachable: boolean) => E2E_RULES.map((rule) =>
-    item({ source: rule === 'ignored-tests-feature' ? 'github' : SOURCE, rule, repo, status: 'unknown', value: 'not checked', note, unreachable }, d.now))
   let head: Head | null
   try {
     head = await fromGitHub(d.api, rc.github, branch)
@@ -242,10 +312,11 @@ async function one(repo: string, rc: RepoConfig, e2e: E2eConfig, d: Deps): Promi
   const build = head.number ? `${branch} #${head.number}` : branch
   const links = [{ text: `${repo} ${short(head.sha)}`, url: `https://github.com/${rc.github}/commit/${head.sha}` },
     ...(head.url ? [{ text: `${repo} ${build}`, url: head.url }] : [])]
-  return [statusItem(repo, branch, head, wanted, found, d.now),
+  const items = [await statusItem(repo, branch, head, wanted, found, labels, d.now),
     header({ sha: head.sha, status: 'pass', links, value: `${repo}: ${build}, ${at} ${short(head.sha)}${head.state ? `, Jenkins status ${head.state}` : ''}`,
       data: { from: 'github', branch, sha: head.sha, number: head.number ?? null, state: head.state ?? null } }),
-    await scopedScan(repo, rc, e2e, head.sha, d.tarball, false, d.now)]
+    await scopedScan(repo, rc, e2e, head.sha, d.tarball, { note: '', unreachable: false }, d.now)]
+  return found.kind === 'down' ? items.map((i) => kept(i, d.now)) : items
 }
 
 export function e2eReader(cfg: ReleaseConfig, cosmos: CosmosQuery = defaultCosmosQuery(), api: GitHubApi = defaultGitHubApi(),

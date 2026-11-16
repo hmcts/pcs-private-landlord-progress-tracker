@@ -125,6 +125,7 @@ repos:
     commit: master                 # service-wide rows: this branch's latest finished build, or a full SHA
     e2e:                           # optional: where the feature's E2E tests ran
       jenkins: { job: HMCTS_j_to_z/pcs-frontend, branch: PR-2312, build: last-completed }   # or a build number
+      label: enable_private_landlord_test   # optional: the PR label that runs the feature's tests
       tags: ['@privateLandlord']   # Playwright tags: the specs that carry them are the feature's
       paths: [src/test/ui/e2eTest/privateLandlordMakeAClaim.spec.ts]   # spec files or folders
 ```
@@ -138,16 +139,23 @@ repos:
   "service-wide" and the commit.
 - **Feature rows** are about the feature only. The E2E row is the outcome of the E2E stages of
   the configured Jenkins build, as Cosmos `pipeline-metrics` records them under the repo's
-  `cosmos_product` and `cosmos_component`: the branch's latest finished build, or the build
-  number given, judged as the master builds are (finished builds only, both databases, the same
-  rule for which stage failed). The stages are the CNP library's
-  `functionalTest:<env>` (a PR build's default, where pcs-frontend's Playwright suite runs),
-  `fullFunctionalTest:<env>` and `E2eTest:<env>` (the `enable_full_functional_tests` and
-  `enable_e2e_test` labels), all `:preview` on a PR. A build that finished without one fails the
-  row. When Cosmos can't be read, or has no finished build of the branch, the row falls back to
-  GitHub: the `continuous-integration/jenkins/pr-head` status on the PR's head commit, which is
-  the whole build's result, not the E2E stage's, and the comment says so. Neither source has
-  per-test results, so the row says which stages passed, not how many tests did. The header's
+  `cosmos_product` and `cosmos_component` and the configured `job`: the branch's latest finished
+  build in the last 60 days, or the build number given, judged as the master builds are
+  (finished builds only, both databases, the same rule for which stage failed). The stages are
+  the CNP library's `functionalTest:<env>` (a PR build's default, where pcs-frontend's
+  Playwright suite runs), `fullFunctionalTest:<env>` and `E2eTest:<env>` (the
+  `enable_full_functional_tests` and `enable_e2e_test` labels), all `:preview` on a PR. A build
+  that finished without one fails the row. Which tests a stage runs depends on the PR's labels
+  (pcs-frontend's `Jenkinsfile_CNP` runs `@sanity` unless a label such as
+  `enable_private_landlord_test` or `e2e-tag:<tag>` says otherwise), so with `label` set, a pass
+  stands only while the PR carries that label and no `e2e-tag:` label; without it, the comment
+  says the result covers whatever scope the build ran. When Cosmos has no finished build of the
+  branch, the row falls back to GitHub: the `continuous-integration/jenkins/pr-head` status on
+  the PR's head commit, which is the whole build's result, not the E2E stage's, and the comment
+  says so. Its success is a pass only with `label` set (and on the PR); without one it is "To
+  confirm". When Cosmos can't be read, the fallback's answer goes in the comment only, and a
+  publish keeps the page's. Neither source has per-test results, so the row says which stages
+  passed, not how many tests did. The header's
   "E2E build" row names the build and the commit it ran (or, from GitHub, the PR head). The
   feature's ignored-tests row scans only the specs `tags` and `paths` pick, at that commit.
   Outstanding bugs, Critical and High bugs, test complete comments and "are the stories done"
@@ -229,7 +237,7 @@ secret. It's a copy of `cve-cosmos-readonly-key` in the `dtsse-aat` Key Vault, w
 dtsse-github-metrics' CVE collector also reads; copy it again if that key is rotated. Only the
 report step gets it. The workflow's Azure sign-in has no Cosmos role, so without the key the Cosmos
 rows (yarn audit, dependency check, and the Jenkins stage rows GitHub doesn't answer) are unknown,
-and a publish keeps their published answers; a feature's E2E rows fall back to GitHub's status.
+and a publish keeps their published answers, a feature's E2E rows included.
 Giving the app registration the *Cosmos DB Built-in Data Reader* data-plane role on the
 `pipeline-metrics` account (subscription DCD-CNP-Prod) would remove the stored key, but that's a
 platform request.

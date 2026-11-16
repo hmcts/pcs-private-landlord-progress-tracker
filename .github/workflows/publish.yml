@@ -185,9 +185,8 @@ jobs:
 
       # Edits are made as whoever seeded the QA twg secret. Cosmos is read only with the read-only
       # key in the COSMOS_PIPELINE_METRICS_KEY secret: the Azure sign-in has no Cosmos role, so
-      # without the key the Cosmos rows are unknown and keep their published answer, and a
-      # feature's E2E rows fall back to GitHub's Jenkins status. Evidence stays in $RUNNER_TEMP,
-      # and the log gets only counts.
+      # without the key the Cosmos rows, a feature's E2E rows included, are unknown and keep their
+      # published answer. Evidence stays in $RUNNER_TEMP, and the log gets only counts.
       - name: Update the QA readiness reports
         id: qa
         if: steps.twg.outputs.signed_in == 'true'

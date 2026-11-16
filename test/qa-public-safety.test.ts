@@ -102,19 +102,19 @@ describe('the CLI, for a feature with E2E evidence from Cosmos and GitHub', () =
     const config = join(fixtures, 'config.yaml')
     writeFileSync(config, [`feature: ${feature}`, 'active: false', 'layout: pcs-feature', 'epics: [HDPI-1]', 'repos:', '  pcs-frontend:',
       '    github: hmcts/pcs-frontend', '    cosmos_product: pcs', '    cosmos_component: frontend', '    e2e:',
-      '      jenkins: { job: HMCTS_j_to_z/pcs-frontend, branch: PR-1 }', "      tags: ['@x']", '  pcs-api:', '    github: hmcts/pcs-api',
+      '      jenkins: { job: HMCTS_j_to_z/pcs-frontend, branch: PR-1 }', '      label: enable_x', "      tags: ['@x']", '  pcs-api:', '    github: hmcts/pcs-api',
       '    cosmos_product: pcs', '    cosmos_component: api', '    e2e:', '      jenkins: { job: HMCTS_j_to_z/pcs-api, branch: PR-2 }', "      tags: ['@x']", ''].join('\n'))
     const { cfg, layout } = loadRelease(config)
     const sha = CFG.candidates[0].shas['pcs-frontend']
     const head = CFG.candidates[0].shas['pcs-api']
     // pcs-frontend's build is in Cosmos, with a canary for a stage name and its URL; pcs-api's
     // isn't, so GitHub's status answers, with a canary for its target URL.
-    const events = ['checkout', `functionalTest:${CANARY[1]}`].map((name, n) => ({ job_name: 'j/PR-1', branch_name: 'PR-1', build_number: '2',
+    const events = ['checkout', `functionalTest:${CANARY[1]}`].map((name, n) => ({ job_name: 'HMCTS_j_to_z/pcs-frontend/PR-1', branch_name: 'PR-1', build_number: '2',
       build_url: CANARY[3], current_step_name: name, current_build_current_result: 'SUCCESS', current_build_duration: n, git_commit: sha }))
     events.push({ ...events[0], current_step_name: 'Pipeline Failed', current_build_duration: 9 })
     const query = async (db: string, _c: string, _q: string, p: { name: string; value: unknown }[]) =>
       (db === 'jenkins' && p.some((x) => x.value === 'frontend') ? events : [])
-    const api = async (path: string) => (path.endsWith('/pulls/2') ? { head: { sha: head } }
+    const api = async (path: string) => (path.endsWith('/pulls/2') ? { head: { sha: head } } : path.includes('/labels') ? [{ name: 'enable_x' }]
       : { statuses: [{ context: 'continuous-integration/jenkins/pr-head', state: 'failure', target_url: `${CANARY[3]}/job/PR-2/5/` }] })
     const tar = async () => {
       throw new Error(CANARY[2])

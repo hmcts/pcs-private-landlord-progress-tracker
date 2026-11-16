@@ -66,18 +66,23 @@ The Private Landlord workstream has no releases: its reports are per feature. Co
     in the repo's `Jenkinsfile_CNP`. Check the build ran them: its console (the Jenkins MCP's
     `get_build_console_output`, on the VPN) should show the tagged tests in its functional or E2E
     stage. The report itself sees only that stage's outcome, not which tests ran.
-  - The repo needs `cosmos_product` and `cosmos_component`: they find the build in Cosmos.
+  - `label`: the PR label that makes the build run the feature's tests, e.g.
+    `enable_private_landlord_test` (read the PR branch's `Jenkinsfile_CNP` for the labels that set
+    `E2E_TEST_SCOPE`). Without it on the PR, the E2E row fails.
+  - The repo needs `cosmos_product` and `cosmos_component`: with `jenkins.job`, they find the
+    build in Cosmos.
 - `layout: pcs-feature`, and `ria_page` only if the feature has its own RIA.
 
 Use `--feature <name>` in place of `--release <name>` below.
 
 **E2E rows come from Cosmos**: the outcome of the configured build's functional or E2E stages
 (`functionalTest:preview`, `fullFunctionalTest:preview`, `E2eTest:preview` on a PR), with no
-per-test counts. When Cosmos can't be read, or has no finished build of the branch, they fall
-back to GitHub's `continuous-integration/jenkins/pr-head` status on the PR's head commit, which
-is the whole build's result, and the row's comment says so. Locally that fallback is what you'll
-see; the scheduled Publish workflow has the Cosmos key, so its run gives the stage outcome. Never
-read `.claude/*.env` files.
+per-test counts, and a pass only while the PR carries `label`. When Cosmos has no finished build
+of the branch, they fall back to GitHub's `continuous-integration/jenkins/pr-head` status on the
+PR's head commit, which is the whole build's result, and the row's comment says so. When Cosmos
+can't be read (locally it usually answers 403), the rows say "(source unreachable: keeps the
+published answer)" and the fallback's answer is only in the comment; the scheduled Publish
+workflow has the Cosmos key, so its run gives the stage outcome. Never read `.claude/*.env` files.
 
 ```sh
 npm run qa-report -- --release <release>              # collect, render, merge; writes nothing
@@ -85,9 +90,9 @@ npm run qa-report -- --release <release> --validate   # also has twg check the e
 ```
 
 Locally, Cosmos usually answers 403 (no data-plane role), so the Jenkins rows come out
-unknown with a note, and a feature's E2E rows come from GitHub; that's expected, not a fault to
-fix. A row unknown only because a source couldn't be read is marked "(source unreachable: keeps
-the published answer)": a publish leaves its cells as they are, and `diff.txt` says "kept as
+unknown with a note, and so do a feature's E2E rows; that's expected, not a fault to fix. A
+row unknown only because a source couldn't be read is marked "(source unreachable: keeps the
+published answer)": a publish leaves its cells as they are, and `diff.txt` says "kept as
 published". The output is counts only, and a failure prints only its kind: the reason is in
 `.cache/qa/errors.log`. The detail is in `.cache/qa/<release>/`: `evidence.json` (what each
 source said), `report.html`, `page.html` (the page as read), `merged.html`, `edits.json` and

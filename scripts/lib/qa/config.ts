@@ -40,6 +40,8 @@ export interface RepoConfig {
 
 export interface E2eConfig {
   jenkins: { job: string; branch: string; build?: 'last-completed' | number }
+  /** The PR label that makes the build run the feature's tests: without it on the PR, the E2E row fails. */
+  label?: string
   /** Playwright tags in the test titles, such as @privateLandlord. */
   tags?: string[]
   /** Repo-relative spec files or directories. */
@@ -199,6 +201,7 @@ function checkFields(doc: Rec, rules: FieldRule[], where: string): string[] {
 
 const BRANCH = /^[A-Za-z0-9][\w./-]*$/
 const TAG = /^@[\w-]+$/
+const LABEL = /^[\w][\w.:@/-]{0,49}$/
 const shaOrBranch = (v: unknown) => typeof v === 'string' && (SHA.test(v) || (BRANCH.test(v) && !v.includes('..')))
 const segments = (v: unknown) => typeof v === 'string' && v.split('/').every((s) => SEGMENT.test(s) && s !== '.' && s !== '..')
 const repoPath = (v: unknown) => typeof v === 'string' && !v.startsWith('/') && segments(v.endsWith('/') ? v.slice(0, -1) : v)
@@ -207,7 +210,7 @@ const isList = (v: unknown, ok: (x: unknown) => boolean) => Array.isArray(v) && 
 function validateE2e(e2e: unknown, w: string): string[] {
   if (!isRec(e2e)) return [`${w}: expected { jenkins, tags or paths }`]
   const errors: string[] = []
-  for (const k of Object.keys(e2e)) if (!['jenkins', 'tags', 'paths'].includes(k)) errors.push(`${w}: unknown field "${k}"`)
+  for (const k of Object.keys(e2e)) if (!['jenkins', 'label', 'tags', 'paths'].includes(k)) errors.push(`${w}: unknown field "${k}"`)
   const j = e2e.jenkins
   if (isRec(j)) {
     for (const k of Object.keys(j)) if (!['job', 'branch', 'build'].includes(k)) errors.push(`${w}.jenkins: unknown field "${k}"`)
@@ -218,6 +221,10 @@ function validateE2e(e2e: unknown, w: string): string[] {
     }
   } else {
     errors.push(`${w}.jenkins: expected { job, branch, build }`)
+  }
+  if (e2e.label !== undefined) {
+    if (!LABEL.test(str(e2e.label))) errors.push(`${w}: "label" must be a PR label such as enable_private_landlord_test`)
+    else if (isRec(j) && !/^PR-\d+$/.test(str(j.branch))) errors.push(`${w}: "label" needs a PR build: set jenkins.branch to PR-<n>`)
   }
   if (e2e.tags === undefined && e2e.paths === undefined) errors.push(`${w}: set "tags", "paths" or both, to pick the feature's tests`)
   if (e2e.tags !== undefined && !isList(e2e.tags, (t) => TAG.test(str(t)))) errors.push(`${w}: "tags" must be a list of tags such as '@enforcement'`)
