@@ -187,7 +187,8 @@ function sayRows(results: Results, judgements: Judgements, judged: boolean): voi
 function sayPublished(res: PublishResult): void {
   const c = res.counts
   const would = res.published ? '' : 'would be '
-  const tail = `${c.judged} judgement cells ${would}written, ${c.added} rows ${would}added, ${c.removed} rows ${would}removed, ${c.human} cells kept as people wrote them, ` +
+  const retired = c.retiredKept ? `${c.retiredKept} rows not in the layout kept as people wrote them, ` : ''
+  const tail = `${c.judged} judgement cells ${would}written, ${c.added} rows ${would}added, ${c.removed} rows ${would}removed, ${retired}${c.human} cells kept as people wrote them, ` +
     `${c.kept} kept as published (source unreachable or no agent answer), ${c.skipped} skipped`
   say(res.published ? `${c.change} cells changed, ${tail}${res.retried ? ' (after re-reading the page)' : ''}`
     : `${c.change} cells would change, ${tail}`)

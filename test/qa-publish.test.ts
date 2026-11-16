@@ -136,7 +136,7 @@ describe('rows no longer in the layout', () => {
     ]
     for (const html of edited) {
       const r = merge(html, layout, rowsFor(ev))
-      assert.deepEqual(retired(r).map((c) => c.action), ['keep-human'])
+      assert.deepEqual(retired(r).map((c) => c.action), ['keep-retired-edited'])
       assert.ok(r.edits.every((e) => e.name !== 'deleteNode'))
     }
   })
@@ -145,9 +145,11 @@ describe('rows no longer in the layout', () => {
     const release = row(page, 'Release')
     const notes = '<tr data-local-id="ffffffffff01"><td data-local-id="ffffffffff02"><p>Notes</p></td><td data-local-id="ffffffffff03"><p>See the wiki</p></td></tr>'
     const r = merge(page.slice(0, release.end) + notes + page.slice(release.end), layout, rowsFor(ev))
-    assert.equal(r.changes.find((c) => c.key === 'Notes')?.action, 'keep-human')
+    assert.equal(r.changes.find((c) => c.key === 'Notes')?.action, 'keep-retired-human')
     assert.ok(row(r.html, 'Notes'))
     assert.equal(r.edits.filter((e) => e.name === 'deleteNode').length, 1)
+    assert.deepEqual([count(r.changes).retiredKept, count(r.changes).human], [1, 0])
+    assert.match(diffSummary('t', r.changes), /, 1 rows not in the layout kept as people wrote them, .*\ninfo Notes: kept: not in the layout, and a person wrote it\n/s)
   })
 
   test('a hand-written page, like the R1.3A release report, has nothing removed', () => {
@@ -156,7 +158,37 @@ describe('rows no longer in the layout', () => {
     const r = merge(handWritten, layout, rowsFor(ev))
     assert.ok(r.edits.every((e) => e.name !== 'deleteNode'))
     assert.equal(count(r.changes).removed, 0)
-    assert.deepEqual(retired(r).map((c) => c.action), ['keep-human'])
+    assert.deepEqual(retired(r).map((c) => c.action), ['keep-retired-human'])
+  })
+
+  test('a hand-written page whose rows are all in the layout, with td headers, reports nothing about retired rows', () => {
+    const current = withIds(renderPage(cfg, layout, evaluate(cfg, layout, ev)))
+      .replace(/<span data-type="inline-extension" data-extension-key="anchor"[^>]*><\/span>/g, '')
+      .replaceAll('<th', '<td').replaceAll('</th>', '</td>')
+    const r = merge(current, layout, rowsFor(ev))
+    assert.deepEqual(r.changes.filter((c) => /retired|remove/.test(c.action)), [])
+    assert.doesNotMatch(diffSummary('t', r.changes), /not in the layout/)
+  })
+
+  test('a duplicate of a layout row the generator wrote is removed, and the first is merged', () => {
+    const bugs = row(page, 'Outstanding Bugs')
+    const html = page.slice(0, bugs.end) + page.slice(bugs.start, bugs.end).replace(/data-local-id="0/g, 'data-local-id="e') + page.slice(bugs.end)
+    const dup = infoRows(html).filter((tr) => textOf(cellsOf(tr)[0]) === 'Outstanding Bugs')[1]
+    const r = merge(html, layout, rowsFor(evidence('95.0%', 'Critical – 0, High – 0, Medium – 1, Low – 0')))
+    assert.deepEqual(r.changes.filter((c) => c.key === 'Outstanding Bugs').map((c) => c.action), ['update', 'remove-row'])
+    assert.deepEqual(r.edits.filter((e) => e.name === 'deleteNode').map((e) => e.localId), [row(html, 'Generated'), dup].map((tr) => tr.attrs['data-local-id']))
+    assert.equal(r.edits.find((e) => e.name === 'replaceNode')?.localId, cellsOf(bugs)[1].attrs['data-local-id'])
+    assert.deepEqual(infoRows(r.html).filter((tr) => textOf(cellsOf(tr)[0]) === 'Outstanding Bugs').map((tr) => textOf(cellsOf(tr)[1])), ['Critical – 0, High – 0, Medium – 1, Low – 0'])
+  })
+
+  test('a table with a header column: the header row stays, a retired row is removed', () => {
+    const t = tableAfterHeading(parse(page), /^Release Information$/)!
+    const headed = page.slice(0, t.start) + page.slice(t.start, t.end).replace(/<td( data-local-id="[^"]*" data-colwidth="178">)(<p[^>]*>[^<]*<\/p>)<\/td>/g, '<th$1$2</th>') + page.slice(t.end)
+    assert.ok(cellsOf(row(headed, 'Generated'))[0].tag === 'th')
+    const r = merge(headed, layout, rowsFor(ev))
+    assert.deepEqual(r.changes.filter((c) => c.cell === null).map((c) => [c.key, c.action]), [['Generated', 'remove-row']])
+    assert.equal(row(r.html, 'Generated'), undefined)
+    assert.ok(row(r.html, 'Item'))
   })
 
   test('is removed even when every row keeps what the page has', () => {

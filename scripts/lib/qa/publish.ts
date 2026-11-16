@@ -30,7 +30,8 @@ export type Edit =
   | { name: 'replaceNode' | 'insertNodeAfter' | 'appendNodeToEnd'; localId?: string; value: string }
   | { name: 'deleteNode'; localId: string; value?: undefined }
 
-export type Action = 'update' | 'judgement' | 'unchanged' | 'keep-human' | 'keep-edited' | 'keep-unreachable' | 'add-row' | 'add-table' | 'remove-row' | 'skipped'
+export type Action = 'update' | 'judgement' | 'unchanged' | 'keep-human' | 'keep-edited' | 'keep-unreachable' | 'add-row' | 'add-table' | 'remove-row'
+  | 'keep-retired-human' | 'keep-retired-edited' | 'skipped'
 
 export interface CellChange {
   table: 'info' | 'checklist'
@@ -152,9 +153,10 @@ function mergeRow(m: Merging, table: TableName, r: GenRow, tr: El): void {
 /** Finds a layout row's row in a page's table: by the text of its first cell, else by its `match`. */
 function rowFinder(trs: El[], spec: LayoutTable): (key: string) => El | undefined {
   const firsts = trs.map((tr) => ({ tr, text: cellsOf(tr)[0] ? textOf(cellsOf(tr)[0]) : '' }))
+  const matches = new Map(spec.rows.flatMap((x) => (x.match === undefined ? [] : [[x.key, new RegExp(x.match, 'i')] as const])))
   return (key) => {
-    const match = spec.rows.find((x) => x.key === key)?.match
-    return (firsts.find((f) => f.text === key) ?? (match ? firsts.find((f) => new RegExp(match, 'i').test(f.text)) : undefined))?.tr
+    const match = matches.get(key)
+    return (firsts.find((f) => f.text === key) ?? (match ? firsts.find((f) => match.test(f.text)) : undefined))?.tr
   }
 }
 
@@ -174,19 +176,22 @@ function generated(page: string, table: TableName, key: string, td: El): boolean
 }
 
 /**
- * Removes the page's rows that match no layout row, if the generator wrote them whole and
- * nobody has touched them since. The header row, and every row with a person's cell, stays.
+ * Removes the page's rows that no layout row was matched to (duplicates of a layout row
+ * included), if the generator wrote them whole and nobody has touched them since. Header rows
+ * (all `th`, or reading as the layout's columns, as a hand-written table's `td` header does) and
+ * every row with a person's cell stay.
  */
-function retireRows(m: Merging, table: TableName, spec: LayoutTable, trs: El[]): void {
-  const inLayout = (text: string) => spec.rows.some((x) => x.key === text || (x.match !== undefined && new RegExp(x.match, 'i').test(text)))
-  for (const tr of trs.slice(1)) {
-    const [first, ...rest] = cellsOf(tr)
-    if (!first || cellsOf(tr).some((c) => c.tag === 'th')) continue
+function retireRows(m: Merging, table: TableName, spec: LayoutTable, trs: El[], matched: Set<El>): void {
+  const header = (cells: El[]) => cells.every((c) => c.tag === 'th') || cells.map(textOf).join('|') === spec.columns.join('|')
+  for (const tr of trs) {
+    const cells = cellsOf(tr)
+    if (matched.has(tr) || !cells.length || header(cells)) continue
+    const [first, ...rest] = cells
     const key = textOf(first)
-    if (inLayout(key)) continue
     const id = tr.attrs['data-local-id']
     if (!rest.length || !plainKey(first) || !rest.every((td) => generated(m.page, table, key, td))) {
-      m.changes.push({ table, key, cell: null, action: 'keep-human', why: 'not in the layout, but a person wrote or edited it' })
+      const marked = rest.some((td) => markers(td).some((x) => MARKER.test(x)))
+      m.changes.push({ table, key, cell: null, action: marked ? 'keep-retired-edited' : 'keep-retired-human' })
     } else if (id) {
       m.edits.push({ name: 'deleteNode', localId: id })
       m.splices.push({ start: tr.start, end: tr.end, text: '' })
@@ -203,11 +208,13 @@ function mergeTable(m: Merging, root: El, table: TableName, spec: LayoutTable, m
   if (!el) return false
   const trs = rowsOf(el)
   const rowFor = rowFinder(trs, spec)
+  const matched = new Set<El>()
   let after: { id?: string; end: number } | null = trs.length ? { id: trs[0].attrs['data-local-id'], end: trs[0].end } : null
   const inserts = new Map<number, string[]>()
   for (const r of mine) {
     const tr = rowFor(r.key)
     if (tr) {
+      matched.add(tr)
       after = { id: tr.attrs['data-local-id'], end: tr.end }
       mergeRow(m, table, r, tr)
     } else if (!after?.id) {
@@ -223,7 +230,7 @@ function mergeTable(m: Merging, root: El, table: TableName, spec: LayoutTable, m
   }
   // Before the inserts: a removed row can start where a row is inserted, and splice applies
   // ranges with the same start in the order given, so the removal must not take the insert with it.
-  retireRows(m, table, spec, trs)
+  retireRows(m, table, spec, trs, matched)
   for (const [at, html] of inserts) m.splices.push({ start: at, end: at, text: html.join('') })
   return true
 }
@@ -283,13 +290,15 @@ export interface Counts {
   added: number
   /** Rows the layout no longer has, that the generator wrote and nobody has edited. */
   removed: number
+  /** Rows the layout no longer has, kept because a person wrote or edited them. */
+  retiredKept: number
   skipped: number
   /** Kept as published, because their source couldn't be read. */
   kept: number
 }
 
 export function count(changes: CellChange[]): Counts {
-  const c = { change: 0, judged: 0, unchanged: 0, human: 0, added: 0, removed: 0, skipped: 0, kept: 0 }
+  const c = { change: 0, judged: 0, unchanged: 0, human: 0, added: 0, removed: 0, retiredKept: 0, skipped: 0, kept: 0 }
   for (const x of changes) {
     if (x.action === 'update') c.change++
     else if (x.action === 'judgement') c.judged++
@@ -297,6 +306,7 @@ export function count(changes: CellChange[]): Counts {
     else if (x.action === 'keep-human' || x.action === 'keep-edited') c.human++
     else if (x.action === 'add-row' || x.action === 'add-table') c.added++
     else if (x.action === 'remove-row') c.removed++
+    else if (x.action === 'keep-retired-human' || x.action === 'keep-retired-edited') c.retiredKept++
     else if (x.action === 'keep-unreachable') c.kept++
     else c.skipped++
   }
@@ -306,12 +316,14 @@ export function count(changes: CellChange[]): Counts {
 const WHAT: Record<Action, string> = {
   update: 'would change', judgement: 'would take the judgement, unmarked', unchanged: 'unchanged', 'keep-human': 'kept: written by a person (no marker)',
   'keep-edited': 'kept: edited by a person since it was generated', 'keep-unreachable': 'kept as published: its source could not be read, or the agent gave no answer', 'add-row': 'row would be added',
-  'add-table': 'table would be added', 'remove-row': 'row would be removed: no longer in the layout', skipped: 'skipped',
+  'add-table': 'table would be added', 'remove-row': 'row would be removed: no longer in the layout',
+  'keep-retired-human': 'kept: not in the layout, and a person wrote it', 'keep-retired-edited': 'kept: not in the layout, and a person edited it', skipped: 'skipped',
 }
 
 export function diffSummary(title: string, changes: CellChange[]): string {
   const c = count(changes)
-  const out = [title, `${c.change} cells would change, ${c.judged} would take a judgement, ${c.added} rows would be added, ${c.removed} rows would be removed, ${c.human} cells kept as people wrote them, ` +
+  const retired = c.retiredKept ? `${c.retiredKept} rows not in the layout kept as people wrote them, ` : ''
+  const out = [title, `${c.change} cells would change, ${c.judged} would take a judgement, ${c.added} rows would be added, ${c.removed} rows would be removed, ${retired}${c.human} cells kept as people wrote them, ` +
     `${c.kept} kept as published because a source could not be read or the agent gave no answer, ${c.unchanged} unchanged, ${c.skipped} skipped`, '']
   for (const x of changes) {
     if (x.action === 'unchanged') continue
