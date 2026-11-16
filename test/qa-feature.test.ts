@@ -9,7 +9,7 @@ import { merge } from '../scripts/lib/qa/publish.ts'
 import { evaluate, genRows, renderPage } from '../scripts/lib/qa/render.ts'
 import { HttpError, type Item } from '../scripts/lib/qa/sources/common.ts'
 import { latestFinished, scanTarball } from '../scripts/lib/qa/sources/github.ts'
-import { buildRef, defaultJenkins, reachability, E2E_RULES, featureCases, hasTag, jenkinsReader, jobPath, outcome, readJenkins, revisionOf,
+import { buildRef, defaultJenkins, networkFailure, reachability, reachabilityDetail, E2E_RULES, featureCases, hasTag, jenkinsReader, jobPath, outcome, readJenkins, revisionOf,
   repoPathOf, specScope, underPath, Unreachable } from '../scripts/lib/qa/sources/jenkins.ts'
 import { jiraReader } from '../scripts/lib/qa/sources/jira.ts'
 import { riaReader } from '../scripts/lib/qa/sources/ria.ts'
@@ -284,6 +284,22 @@ describe('reading Jenkins', () => {
     assert.equal(await reachability(answer(new Response('{}', { status: 403, headers: { 'content-type': 'application/json' } }))), 'unauthorised')
     assert.equal(await reachability(answer(new Response('{}', { status: 500, headers: { 'content-type': 'application/json' } }))), 'error')
     assert.equal(await reachability(async () => { throw new Unreachable('Jenkins could not be reached') }), 'network')
+  })
+
+  test('a network failure says what kind it was, from the error code alone', async () => {
+    const failed = (cause: object) => Object.assign(new TypeError('fetch failed'), { cause })
+    assert.equal(networkFailure(failed({ code: 'UND_ERR_CONNECT_TIMEOUT' })), 'timeout')
+    assert.equal(networkFailure(Object.assign(new Error('x'), { name: 'TimeoutError' })), 'timeout')
+    assert.equal(networkFailure(failed({ code: 'ENETUNREACH' })), 'no-route')
+    assert.equal(networkFailure(failed({ errors: [{ code: 'EHOSTUNREACH' }, { code: 'EHOSTUNREACH' }] })), 'no-route')
+    assert.equal(networkFailure(failed({ code: 'ECONNREFUSED' })), 'refused')
+    assert.equal(networkFailure(failed({ code: 'ECONNRESET' })), 'reset')
+    assert.equal(networkFailure(failed({ code: 'ENOTFOUND' })), 'dns')
+    assert.equal(networkFailure(failed({ code: 'ERR_TLS_CERT_ALTNAME_INVALID' })), 'tls')
+    assert.equal(networkFailure(failed({ code: 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' })), 'tls')
+    assert.equal(networkFailure(new Error('x')), 'other')
+    const detail = await reachabilityDetail(async () => { throw new Unreachable('x', 'network', 'timeout') })
+    assert.deepEqual(detail, { kind: 'network', failure: 'timeout' })
   })
 
   test('readers include Jenkins only for a feature', () => {

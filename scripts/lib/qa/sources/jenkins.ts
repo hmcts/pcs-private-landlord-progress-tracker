@@ -46,13 +46,32 @@ export type JenkinsGet = (path: string) => Promise<unknown>
 /** Why Jenkins couldn't be asked. */
 export type UnreachableKind = 'config' | 'no-credentials' | 'network' | 'sign-in-redirect' | 'unauthorised' | 'not-json'
 
+/** What a network failure was, from the error's code: safe to print, unlike its message. */
+export type NetworkFailure = 'timeout' | 'no-route' | 'refused' | 'reset' | 'dns' | 'tls' | 'other'
+
 /** Jenkins couldn't be asked: off the VPN, signed out, or down. */
 export class Unreachable extends Error {
   kind: UnreachableKind
-  constructor(message: string, kind: UnreachableKind = 'network') {
+  failure?: NetworkFailure
+  constructor(message: string, kind: UnreachableKind = 'network', failure?: NetworkFailure) {
     super(message)
     this.kind = kind
+    this.failure = failure
   }
+}
+
+export function networkFailure(e: unknown): NetworkFailure {
+  const err = e as { name?: unknown; cause?: { code?: unknown; errors?: { code?: unknown }[] } }
+  // A host tried on several addresses fails with an AggregateError: its errors carry the codes.
+  const codes = [err?.cause?.code, ...(Array.isArray(err?.cause?.errors) ? err.cause.errors.map((x) => x?.code) : [])]
+  const code = codes.find((c): c is string => typeof c === 'string') ?? ''
+  if (err?.name === 'TimeoutError' || err?.name === 'AbortError' || code === 'ETIMEDOUT' || code === 'UND_ERR_CONNECT_TIMEOUT') return 'timeout'
+  if (code === 'ENETUNREACH' || code === 'EHOSTUNREACH') return 'no-route'
+  if (code === 'ECONNREFUSED') return 'refused'
+  if (code === 'ECONNRESET' || code === 'UND_ERR_SOCKET' || code === 'EPIPE') return 'reset'
+  if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') return 'dns'
+  if (/^(ERR_TLS_|ERR_SSL_|CERT_|UNABLE_TO_|DEPTH_ZERO_|SELF_SIGNED_)/.test(code)) return 'tls'
+  return 'other'
 }
 
 function baseUrl(env: NodeJS.ProcessEnv): string {
@@ -93,8 +112,9 @@ export function defaultJenkins(env: NodeJS.ProcessEnv = process.env): JenkinsGet
         headers: { accept: 'application/json', authorization: `Basic ${Buffer.from(`${user}:${pass}`).toString('base64')}` },
         redirect: 'manual', signal: AbortSignal.timeout(60_000),
       })
-    } catch {
-      throw new Unreachable('Jenkins could not be reached')
+    } catch (e) {
+      const failure = networkFailure(e)
+      throw new Unreachable(`Jenkins could not be reached (${failure})`, 'network', failure)
     }
     return readJenkins(res)
   }
@@ -328,10 +348,15 @@ export type Reachability = 'reachable' | UnreachableKind | 'error'
 
 /** Whether Jenkins can be read with the configured credentials, judged exactly as the reader judges it. */
 export async function reachability(get: JenkinsGet = defaultJenkins()): Promise<Reachability> {
+  return (await reachabilityDetail(get)).kind
+}
+
+/** As reachability, plus what a network failure was. */
+export async function reachabilityDetail(get: JenkinsGet = defaultJenkins()): Promise<{ kind: Reachability; failure?: NetworkFailure }> {
   try {
     await get('/api/json?tree=mode')
-    return 'reachable'
+    return { kind: 'reachable' }
   } catch (e) {
-    return e instanceof Unreachable ? e.kind : 'error'
+    return e instanceof Unreachable ? { kind: e.kind, failure: e.failure } : { kind: 'error' }
   }
 }
