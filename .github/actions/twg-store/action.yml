@@ -16,10 +16,6 @@ inputs:
   secret:
     description: The secret's name in that vault
     required: true
-  home:
-    description: The directory twg-sign-in kept the sign-in in, if not the runner's home
-    required: false
-    default: ''
 
 runs:
   using: composite
@@ -29,11 +25,8 @@ runs:
       env:
         TWG_VAULT: ${{ inputs.vault }}
         TWG_SECRET: ${{ inputs.secret }}
-        TWG_HOME: ${{ inputs.home }}
       run: |
         set -uo pipefail
-        # On a shared runner, keep the sign-in out of the runner's own home.
-        if [[ -n "$TWG_HOME" ]]; then export HOME="$TWG_HOME" XDG_CONFIG_HOME="$TWG_HOME/.config"; fi
         umask 077
         # shellcheck source=../twg-sign-in/twg-auth.sh
         source "$GITHUB_ACTION_PATH/../twg-sign-in/twg-auth.sh"
