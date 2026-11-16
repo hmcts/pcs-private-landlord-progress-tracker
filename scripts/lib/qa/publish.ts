@@ -77,18 +77,30 @@ interface Merging {
 
 type TableName = 'info' | 'checklist'
 
+type Owner = { owner: 'person' } | { owner: 'edited' } | { owner: 'generator'; hash: string }
+
+/**
+ * Whose a page cell is: a person's if it has no marker of ours for this row and cell, edited if
+ * its text no longer matches the marker's hash, else the generator's, written with that hash.
+ */
+function ownerOf(page: string, table: TableName, key: string, name: CellName, td: El): Owner {
+  const re = new RegExp(`^qa-auto-${escRe(markerRow(table, key))}-${name}-`)
+  const marker = markers(td).find((m) => re.test(m))
+  if (!marker) return { owner: 'person' }
+  const hash = MARKER.exec(marker)?.[3]
+  return hash && hash === shortHash(cellText(page.slice(td.start, td.end))) ? { owner: 'generator', hash } : { owner: 'edited' }
+}
+
 /** A generator cell against the page's cell, and what stops it being replaced, if anything. */
 function cellOf(page: string, table: TableName, key: string, gen: GenCell, td: El | undefined, n: number): Cell {
   const base = { table, key, cell: gen.name! }
   if (!td) return { gen, base, held: { ...base, action: 'skipped', why: `the row has no column ${n + 1}` } }
   const before = textOf(td)
-  const re = new RegExp(`^qa-auto-${escRe(markerRow(table, key))}-${gen.name}-`)
-  const marker = markers(td).find((m) => re.test(m))
-  const hash = marker ? MARKER.exec(marker)?.[3] : undefined
+  const o = ownerOf(page, table, key, gen.name!, td)
   let held: CellChange | undefined
-  if (!marker) held = { ...base, action: 'keep-human', before }
-  else if (hash !== shortHash(cellText(page.slice(td.start, td.end)))) held = { ...base, action: 'keep-edited', before }
-  else if (hash === gen.hash) held = { ...base, action: 'unchanged' }
+  if (o.owner === 'person') held = { ...base, action: 'keep-human', before }
+  else if (o.owner === 'edited') held = { ...base, action: 'keep-edited', before }
+  else if (o.hash === gen.hash) held = { ...base, action: 'unchanged' }
   else if (gen.keep) held = { ...base, action: 'keep-unreachable', before }
   else if (!td.attrs['data-local-id']) held = { ...base, action: 'skipped', why: 'the cell has no local id' }
   return { gen, td, base, held, before }
@@ -214,11 +226,7 @@ export function publishedRows(page: string, layout: Layout): Record<string, Publ
     const tr = rowFor(r.key)
     const [, question, status, comment] = tr ? cellsOf(tr) : []
     if (!comment || !sameText(question, plainCell(r.question ?? r.key))) continue
-    const owned = (name: CellName, td: El) => {
-      const re = new RegExp(`^qa-auto-${escRe(markerRow('checklist', r.key))}-${name}-`)
-      const marker = markers(td).find((x) => re.test(x))
-      return !!marker && MARKER.exec(marker)?.[3] === shortHash(cellText(page.slice(td.start, td.end)))
-    }
+    const owned = (name: CellName, td: El) => ownerOf(page, 'checklist', r.key, name, td).owner === 'generator'
     const links = find(comment, (e) => e.tag === 'a').map((a) => str(a.attrs.href)).filter((u) => u.startsWith('https://'))
     out[r.key] = { status: textOf(status), comment: textOf(comment), links, ...(owned('status', status) && owned('comments', comment) ? {} : { byPerson: true as const }) }
   }

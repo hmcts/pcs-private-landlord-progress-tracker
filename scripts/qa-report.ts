@@ -24,8 +24,8 @@
 // A layout's `agent` rows are answered by the QA agent (lib/qa/answers.ts). --collect-only
 // collects the evidence and writes it, with agent-input.json for the agent, to each scope's cache
 // directory, and stops. --answers then renders and merges from that evidence and the agent's
-// answers.json beside it (with --all-active, it implies --evidence); an agent row with no answer
-// keeps what the page says.
+// answers.json beside it (it implies --evidence, so answers meet the evidence they were written
+// against); an agent row with no answer keeps what the page says.
 //
 // This repo and its logs are public, so this prints only counts and each row's pass, fail or
 // unknown. Everything else, evidence included, stays in the cache directory. A failure prints
@@ -93,8 +93,7 @@ interface Options {
   validate: boolean
 }
 
-/** Every source, as the log names it; `agent` is counted when its answers are read, not at collection. */
-const SOURCES = ['sonarcloud', 'cosmos', 'github', 'jira', 'ria', 'e2e', 'agent']
+const SOURCES = ['sonarcloud', 'cosmos', 'github', 'jira', 'ria', 'e2e']
 
 const tallyOf = (items: { status: string }[]) => {
   const n = (s: string) => items.filter((i) => i.status === s).length
@@ -122,7 +121,7 @@ async function gather(cfg: ReleaseConfig, layout: Layout, dir: string, reuse: bo
   const res = await collect(scoped.cfg, layout, { ...readers(scoped.cfg), ...extra })
   if (cfg.kind === 'feature') res.evidence.unpicked = scoped.unpicked
   writeFileSync(join(dir, EVIDENCE_FILE), JSON.stringify(res.evidence, null, 2) + '\n')
-  for (const source of SOURCES.filter((x) => x !== 'agent' && (x !== 'e2e' || cfg.kind === 'feature'))) {
+  for (const source of SOURCES.filter((x) => x !== 'e2e' || cfg.kind === 'feature')) {
     const its = res.evidence.items.filter((i) => i.source === source)
     const away = its.filter((i) => i.unreachable).length
     say(`${source}: ${res.errors[source] ? 'failed' : `${tallyOf(its)}${away ? ` (${away} unreachable)` : ''}`}`)
@@ -285,7 +284,7 @@ async function main(): Promise<number> {
   const config = values.config === undefined ? releasePath(name!) : within(values.config, [CONFIG_DIR, cache])
   await report(config, {
     name, kind,
-    evidence: values.evidence, judgement: values.judgement, collectOnly, answers: values.answers,
+    evidence: values.evidence || values.answers, judgement: values.judgement, collectOnly, answers: values.answers,
     createUnder: values['create-under'], publish: values.publish, validate: values.validate,
   })
   return 0

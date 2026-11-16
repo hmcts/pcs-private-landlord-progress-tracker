@@ -192,7 +192,9 @@ describe('the CLI, with the agent\'s input and answers', () => {
       '2': { answer: 'Yes', comment: AGENT_CANARY[0] },
       [AGENT_CANARY[3]]: { answer: 'Yes', comment: AGENT_CANARY[0], links: link },
     }))
-    const answered = quiet(cli('--evidence', '--answers'))
+    // --answers alone reuses the evidence the answers were written against; it never collects afresh.
+    const answered = quiet(cli('--answers'))
+    assert.match(answered, /^evidence: 3 items from a file$/m)
     assert.match(answered, /^agent: 3 items, 1 pass, 1 fail, 1 unknown, 20 rows without an answer \(3 rejected: see answers-rejected\.txt in the cache directory\)$/m)
     assert.match(answered, /^row 1   pass$/m)
     assert.match(answered, /^row 21  fail$/m)

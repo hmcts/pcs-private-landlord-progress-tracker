@@ -253,9 +253,10 @@ It runs in three steps:
    repos, CI and the epics' tickets, and writes `answers.json` beside it, keyed by row:
    `{ "1": { "answer": "Yes", "comment": "…", "links": [{ "text": "…", "url": "https://…" }] } }`,
    with `answer` one of Yes, No, N/A or To confirm.
-3. `--answers` renders and merges from the cached evidence and the answers (with `--all-active`
-   it implies `--evidence`). Each answer is checked on its own: a comment of up to 1500
-   characters, up to 12 https links, and at least one link for a Yes or No. One that fails is left
+3. `--answers` renders and merges from the cached evidence and the answers (it implies
+   `--evidence`, so the answers meet the evidence they were written against). Each answer is
+   checked on its own: a comment of up to 1500 characters, up to 12 https links, and at least
+   one link for a Yes or No. One that fails is left
    out, and why goes to `answers-rejected.txt`. A row with no answer keeps what the page says.
 
 The answer alone decides the row's status. Its cells carry the pipeline's marker, like any other
@@ -283,7 +284,7 @@ in its config.
 The agent step uses `anthropics/claude-code-action` in agent mode, as hmcts/cath-service does:
 
 - Claude Sonnet on Bedrock, through the shared `HMCTSClaudeGitHubActionsRole` AWS role (OIDC,
-  `eu-west-1`), with `--max-turns 150` and the step limited to 35 minutes (the job to 60).
+  `eu-west-1`), with `--max-turns 150` and the step limited to 35 minutes (the job to 75).
 - A GitHub token from the HMCTS Claude Code app (`CLAUDE_CODE_APP_ID`,
   `CLAUDE_CODE_PRIVATE_KEY`, organisation secrets), minted with read-only contents, actions and
   metadata permissions.
