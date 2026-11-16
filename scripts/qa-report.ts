@@ -4,6 +4,8 @@
 //                             [--validate] [--create-under <parentPageId>] [--config <file>]
 //   node scripts/qa-report.ts --feature <name> [the same options]
 //   node scripts/qa-report.ts --all-active [--publish] [--validate]
+//   node scripts/qa-report.ts --all-active --collect-only
+//   node scripts/qa-report.ts --all-active --answers [--publish] [--validate]
 //
 // Collects evidence for the release's candidate commits (SonarCloud, Jenkins results in Cosmos,
 // GitHub, Jira and the Release Impact Assessment), renders the report, and merges it into
@@ -19,28 +21,36 @@
 // release and feature with `active: true` and a report_page, each on its own: one failing
 // doesn't stop the rest, but fails the run.
 //
+// A layout's `agent` rows are answered by the QA agent (lib/qa/answers.ts). --collect-only
+// collects the evidence and writes it, with agent-input.json for the agent, to each scope's cache
+// directory, and stops. --answers then renders and merges from that evidence and the agent's
+// answers.json beside it (it implies --evidence, so answers meet the evidence they were written
+// against); an agent row with no answer keeps what the page says.
+//
 // This repo and its logs are public, so this prints only counts and each row's pass, fail or
 // unknown. Everything else, evidence included, stays in the cache directory. A failure prints
 // only a fixed message for its kind (lib/qa/errors.ts); the error itself goes to errors.log
 // there. A --config file must be in config/qa-readiness or the cache directory.
 
-import { readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { parseArgs } from 'node:util'
+import { AGENT_INPUT_FILE, agentInput, agentRows, ANSWERS_FILE, answerItems, loadAnswers } from './lib/qa/answers.ts'
 import { cacheDir, releaseDir, releaseName, within } from './lib/qa/cache.ts'
-import { collect, evidenceFor, readers, scopeFeature } from './lib/qa/collect.ts'
+import { collect, evidenceFor, fileUnderRows, readers, scopeFeature } from './lib/qa/collect.ts'
 import { activeReleases, CONFIG_DIR, type Layout, loadRelease, type ReleaseConfig, releasePath, type ScopeKind } from './lib/qa/config.ts'
 import { logError, publicMessage, QaError } from './lib/qa/errors.ts'
 import { judgementFile, type Judgements, loadJudgements } from './lib/qa/judgement.ts'
-import { createPage, publishToPage, type PublishResult, releaseTitle } from './lib/qa/publish.ts'
+import { createPage, getPage, publishedRows, publishToPage, type PublishResult, releaseTitle } from './lib/qa/publish.ts'
 import { evaluate, genRows, renderPage, type Results } from './lib/qa/render.ts'
 import { pageId, quietRunner } from './lib/qa/twg.ts'
 import type { Item } from './lib/qa/sources/common.ts'
 import type { Evidence } from './lib/qa/types.ts'
 
-const USAGE = 'usage: npm run qa-report -- --release <name> [--evidence] [--judgement] [--publish] [--validate] [--create-under <pageId>]\n' +
-  '       npm run qa-report -- --feature <name> [--evidence] [--judgement] [--publish] [--validate] [--create-under <pageId>]\n' +
-  '       npm run qa-report -- --all-active [--publish] [--validate]'
+const USAGE = 'usage: npm run qa-report -- --release <name> [--evidence] [--judgement] [--answers] [--publish] [--validate] [--create-under <pageId>]\n' +
+  '       npm run qa-report -- --feature <name> [--evidence] [--judgement] [--answers] [--publish] [--validate] [--create-under <pageId>]\n' +
+  '       npm run qa-report -- --feature <name> [--evidence] --collect-only\n' +
+  '       npm run qa-report -- --all-active [--collect-only | --answers] [--publish] [--validate]'
 
 const OPTIONS = {
   release: { type: 'string' },
@@ -52,6 +62,8 @@ const OPTIONS = {
   validate: { type: 'boolean', default: false },
   'create-under': { type: 'string' },
   'all-active': { type: 'boolean', default: false },
+  'collect-only': { type: 'boolean', default: false },
+  answers: { type: 'boolean', default: false },
 } as const
 
 function args() {
@@ -75,17 +87,24 @@ interface Options {
   evidence?: boolean
   judgement?: boolean
   createUnder?: string
+  collectOnly?: boolean
+  answers?: boolean
   publish: boolean
   validate: boolean
 }
 
 const SOURCES = ['sonarcloud', 'cosmos', 'github', 'jira', 'ria', 'e2e']
 
+const tallyOf = (items: { status: string }[]) => {
+  const n = (s: string) => items.filter((i) => i.status === s).length
+  return `${items.length} items, ${n('pass')} pass, ${n('fail')} fail, ${n('unknown')} unknown`
+}
+
 /**
  * The evidence from the last collect, or a fresh collect written for next time, and the config
  * with the commits it was collected for (a feature's are picked at collection).
  */
-async function gather(cfg: ReleaseConfig, layout: Layout, dir: string, reuse: boolean): Promise<{ cfg: ReleaseConfig; evidence: Evidence }> {
+async function gather(cfg: ReleaseConfig, layout: Layout, dir: string, reuse: boolean, allowUnpicked = false): Promise<{ cfg: ReleaseConfig; evidence: Evidence }> {
   if (reuse) {
     let doc: unknown
     try {
@@ -93,26 +112,71 @@ async function gather(cfg: ReleaseConfig, layout: Layout, dir: string, reuse: bo
     } catch (e) {
       throw new QaError('evidence-invalid', `the evidence file could not be read as JSON: ${(e as Error).message}`)
     }
-    const evidence = evidenceFor(doc, cfg)
+    const evidence = evidenceFor(doc, cfg, { allowUnpicked })
     say(`evidence: ${evidence.items.length} items from a file`)
     return { cfg: { ...cfg, candidates: evidence.candidates }, evidence }
   }
   const scoped = await scopeFeature(cfg)
   const extra: Record<string, () => Promise<Item[]>> = scoped.items.length ? { 'service-revision': async () => scoped.items } : {}
   const res = await collect(scoped.cfg, layout, { ...readers(scoped.cfg), ...extra })
+  if (cfg.kind === 'feature') res.evidence.unpicked = scoped.unpicked
   writeFileSync(join(dir, EVIDENCE_FILE), JSON.stringify(res.evidence, null, 2) + '\n')
   for (const source of SOURCES.filter((x) => x !== 'e2e' || cfg.kind === 'feature')) {
     const its = res.evidence.items.filter((i) => i.source === source)
-    const n = (s: string) => its.filter((i) => i.status === s).length
     const away = its.filter((i) => i.unreachable).length
-    say(`${source}: ${res.errors[source] ? 'failed' : `${its.length} items, ${n('pass')} pass, ${n('fail')} fail, ${n('unknown')} unknown${away ? ` (${away} unreachable)` : ''}`}`)
+    say(`${source}: ${res.errors[source] ? 'failed' : `${tallyOf(its)}${away ? ` (${away} unreachable)` : ''}`}`)
   }
   return { cfg: scoped.cfg, evidence: res.evidence }
 }
 
+/**
+ * Writes agent-input.json for the layout's agent rows, with what the published page says now if
+ * it can be read, and removes answers.json left from an earlier collection.
+ */
+function writeAgentInput(cfg: ReleaseConfig, layout: Layout, evidence: Evidence, dir: string): void {
+  rmSync(join(dir, ANSWERS_FILE), { force: true })
+  const rows = agentRows(layout)
+  if (!rows.length) {
+    say('agent input: the layout has no agent rows, so none was written')
+    return
+  }
+  let published = null
+  if (cfg.report_page) {
+    try {
+      published = publishedRows(getPage(quietRunner, pageId(cfg.report_page), false).html, layout)
+    } catch (e) {
+      logError(cacheDir(), cfg.release, e)
+    }
+  }
+  const input = agentInput(cfg, layout, evidence, published)
+  writeFileSync(join(dir, AGENT_INPUT_FILE), JSON.stringify(input, null, 2) + '\n')
+  const filed = evidence.items.filter((i) => rows.some((r) => r.key === i.row)).length
+  say(`agent input: ${rows.length} rows, ${filed} evidence items, ${published ? `the page's text for ${Object.keys(published).length} rows` : 'the page could not be read'}`)
+}
+
+/** The evidence with the agent's answers from answers.json added. */
+function withAnswers(name: string, layout: Layout, evidence: Evidence, dir: string): Evidence {
+  if (!agentRows(layout).length) return evidence
+  const loaded = loadAnswers(dir, layout)
+  if (!loaded.found) {
+    say(`agent: no ${ANSWERS_FILE}, so every agent row keeps the published answer`)
+    return evidence
+  }
+  if (loaded.unreadable) {
+    logError(cacheDir(), name, loaded.unreadable)
+    say(`agent: ${ANSWERS_FILE} could not be read, so 0 answers were taken and every agent row keeps the published answer`)
+    return evidence
+  }
+  const items = answerItems(loaded.answers, layout)
+  const missing = agentRows(layout).length - items.length
+  say(`agent: ${tallyOf(items)}, ${missing} rows without an answer${loaded.rejected ? ` (${loaded.rejected} rejected: see answers-rejected.txt in the cache directory)` : ''}`)
+  return { ...evidence, items: [...evidence.items, ...fileUnderRows(layout, items)] }
+}
+
 function sayRows(results: Results, judgements: Judgements, judged: boolean): void {
   for (const r of results.checklist) {
-    const note = judgements[r.key] ? ' (judgement given)' : r.keep ? ' (source unreachable: keeps the published answer)' : r.needsJudgement ? ' (needs a person)' : ''
+    const kept = r.rule === 'agent' ? ' (no agent answer: keeps the published answer)' : ' (source unreachable: keeps the published answer)'
+    const note = judgements[r.key] ? ' (judgement given)' : r.keep ? kept : r.needsJudgement ? ' (needs a person)' : ''
     say(`row ${r.key.padEnd(3)} ${r.status}${note}`)
   }
   const tally = (s: string) => results.checklist.filter((r) => r.status === s).length
@@ -124,7 +188,7 @@ function sayPublished(res: PublishResult): void {
   const c = res.counts
   const would = res.published ? '' : 'would be '
   const tail = `${c.judged} judgement cells ${would}written, ${c.added} rows ${would}added, ${c.human} cells kept as people wrote them, ` +
-    `${c.kept} kept as published (source unreachable), ${c.skipped} skipped`
+    `${c.kept} kept as published (source unreachable or no agent answer), ${c.skipped} skipped`
   say(res.published ? `${c.change} cells changed, ${tail}${res.retried ? ' (after re-reading the page)' : ''}`
     : `${c.change} cells would change, ${tail}`)
   if (res.validated !== undefined) say(`twg validation: ${res.validated ? 'passed' : 'failed'}`)
@@ -141,7 +205,13 @@ async function report(path: string, o: Options): Promise<'done' | 'skipped'> {
   const createUnder = o.createUnder === undefined ? undefined : pageId(o.createUnder)
   const dir = releaseDir(loaded.cfg.release)
 
-  const { cfg, evidence } = await gather(loaded.cfg, layout, dir, !!o.evidence)
+  const gathered = await gather(loaded.cfg, layout, dir, !!o.evidence, !!o.answers)
+  const { cfg } = gathered
+  if (o.collectOnly) {
+    writeAgentInput(cfg, layout, gathered.evidence, dir)
+    return 'done'
+  }
+  const evidence = o.answers ? withAnswers(cfg.release, layout, gathered.evidence, dir) : gathered.evidence
   const results = evaluate(cfg, layout, evidence)
   const judgements: Judgements = o.judgement ? loadJudgements(judgementFile(dir), results.checklist) : {}
   sayRows(results, judgements, !!o.judgement)
@@ -166,6 +236,14 @@ async function report(path: string, o: Options): Promise<'done' | 'skipped'> {
 }
 
 async function main(): Promise<number> {
+  const collectOnly = values['collect-only']
+  if (collectOnly) {
+    const clash = (['answers', 'judgement', 'publish', 'validate', 'create-under'] as const).filter((k) => values[k] !== undefined && values[k] !== false)
+    if (clash.length) {
+      console.error(`--collect-only can't be combined with --${clash.join(', --')}`)
+      return 2
+    }
+  }
   if (values['all-active']) {
     const only = (['release', 'feature', 'config', 'evidence', 'judgement', 'create-under'] as const).filter((k) => values[k] !== undefined && values[k] !== false)
     if (only.length) {
@@ -183,7 +261,8 @@ async function main(): Promise<number> {
       const name = basename(path, '.yaml')
       say(`report ${name}`)
       try {
-        if (await report(path, { publish: values.publish, validate: values.validate }) === 'skipped') skipped++
+        const o = { collectOnly, answers: values.answers, evidence: values.answers, publish: values.publish, validate: values.validate }
+        if (await report(path, o) === 'skipped') skipped++
       } catch (e) {
         failed++
         logError(cacheDir(), name, e)
@@ -205,7 +284,7 @@ async function main(): Promise<number> {
   const config = values.config === undefined ? releasePath(name!) : within(values.config, [CONFIG_DIR, cache])
   await report(config, {
     name, kind,
-    evidence: values.evidence, judgement: values.judgement,
+    evidence: values.evidence || values.answers, judgement: values.judgement, collectOnly, answers: values.answers,
     createUnder: values['create-under'], publish: values.publish, validate: values.validate,
   })
   return 0

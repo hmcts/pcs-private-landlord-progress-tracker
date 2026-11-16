@@ -5,7 +5,8 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { evidenceFor, fileUnderRows, readers, scopeFeature, serviceRules, SERVICE_WIDE } from '../scripts/lib/qa/collect.ts'
-import { loadLayout, loadRelease, type ReleaseConfig, validateAll, validateRelease } from '../scripts/lib/qa/config.ts'
+import { loadYaml } from '../scripts/lib/data.ts'
+import { type Layout, loadLayout, loadRelease, type ReleaseConfig, validateAll, validateLayout, validateRelease } from '../scripts/lib/qa/config.ts'
 import { merge } from '../scripts/lib/qa/publish.ts'
 import { evaluate, genRows, renderPage } from '../scripts/lib/qa/render.ts'
 import { HttpError, type Item } from '../scripts/lib/qa/sources/common.ts'
@@ -19,6 +20,10 @@ import { fact, fakeTwg, jqlOf, NOW, SHA, tarball, withIds } from './qa-helpers.t
 
 const PATH = 'config/qa-readiness/private-landlord-make-a-claim.yaml'
 const { cfg: loaded, layout } = loadRelease(PATH)
+// The committed feature layout's rows are all the agent's; this one answers them from the
+// mechanical rules, as a feature layout can.
+const mechanical = loadYaml('test/fixtures/qa-layout-feature-mechanical.yaml') as Layout
+test('the mechanical feature layout fixture is valid', () => assert.deepEqual(validateLayout(mechanical), []))
 const E2E_SHA = '3d0d6bb55bafc801c36fdc697a82a9421a8f9b2a'
 const cfg: ReleaseConfig = { ...loaded, candidates: [{ name: SERVICE_WIDE, shas: { 'pcs-api': SHA.api2, 'pcs-frontend': SHA.fe2 } }] }
 
@@ -104,6 +109,7 @@ describe('the service-wide commit', () => {
   test('when GitHub can\'t be read, every service-wide rule of the repo is unknown and unreachable', async () => {
     const res = await scopeFeature(loaded, api({}, true), NOW)
     assert.deepEqual(res.cfg.candidates[0].shas, {})
+    assert.deepEqual(res.unpicked, ['pcs-api', 'pcs-frontend'])
     for (const [repo, rc] of Object.entries(loaded.repos)) {
       for (const rule of [...serviceRules(rc), 'service-revision']) {
         assert.ok(res.items.some((i) => i.repo === repo && i.rule === rule && i.status === 'unknown' && i.unreachable && !i.candidate), `${repo} ${rule}`)
@@ -122,6 +128,24 @@ describe('the service-wide commit', () => {
     const pinned = { ...loaded, repos: { ...loaded.repos, 'pcs-api': { ...loaded.repos['pcs-api'], commit: SHA.api1 } } }
     assert.throws(() => evidenceFor(doc, pinned), /other commits than the config's/)
     assert.throws(() => evidenceFor({ ...doc, release: 'other' }, loaded), /evidence is for other/)
+  })
+
+  test('applying answers, evidence may lack a repo it records as unpicked; nothing else changes', () => {
+    const api = { name: SERVICE_WIDE, shas: { 'pcs-api': SHA.api2 } }
+    const doc = (over: Record<string, unknown>) => ({ release: loaded.release, generatedAt: NOW().toISOString(), candidates: [api], items: [], ...over })
+    const allow = { allowUnpicked: true }
+    assert.deepEqual(evidenceFor(doc({ unpicked: ['pcs-frontend'] }), loaded, allow).candidates, [api])
+    assert.throws(() => evidenceFor(doc({ unpicked: ['pcs-frontend'] }), loaded), /other commits/, 'only when applying answers')
+    assert.throws(() => evidenceFor(doc({}), loaded, allow), /other commits/, 'recorded, not inferred')
+    assert.throws(() => evidenceFor(doc({ unpicked: 'pcs-frontend' }), loaded, allow), /other commits/)
+    assert.throws(() => evidenceFor(doc({ unpicked: ['pcs-frontend', 'pcs-frontend'] }), loaded, allow), /other commits/)
+    assert.throws(() => evidenceFor(doc({ unpicked: ['pcs-frontend', 'other'] }), loaded, allow), /other commits/)
+    assert.throws(() => evidenceFor(doc({ unpicked: ['pcs-api', 'pcs-frontend'] }), loaded, allow), /other commits/, 'a repo with a commit is not unpicked')
+    assert.throws(() => evidenceFor(doc({ unpicked: ['pcs-frontend'], release: 'other' }), loaded, allow), /evidence is for other/)
+    assert.throws(() => evidenceFor(doc({ unpicked: ['pcs-frontend'], candidates: [{ ...api, shas: { 'pcs-api': 'abc' } }] }), loaded, allow), /other commits/)
+    const pinned = (repo: string, sha: string) => ({ ...loaded, repos: { ...loaded.repos, [repo]: { ...loaded.repos[repo], commit: sha } } })
+    assert.throws(() => evidenceFor(doc({ unpicked: ['pcs-frontend'] }), pinned('pcs-frontend', SHA.fe2), allow), /other commits/, 'a pinned commit is always picked')
+    assert.throws(() => evidenceFor(doc({ unpicked: ['pcs-frontend'] }), pinned('pcs-api', SHA.api1), allow), /other commits/)
   })
 })
 
@@ -401,9 +425,9 @@ describe('Jira and the RIA for a feature', () => {
 })
 
 describe('a source that can\'t be read keeps what the page says', () => {
-  const ev = (items: Item[]): Evidence => ({ release: cfg.release, generatedAt: NOW().toISOString(), candidates: cfg.candidates, items: fileUnderRows(layout, items) })
+  const ev = (items: Item[]): Evidence => ({ release: cfg.release, generatedAt: NOW().toISOString(), candidates: cfg.candidates, items: fileUnderRows(mechanical, items) })
   const e2e = (over: Partial<Item>) => fact({ rule: 'e2e-feature', status: 'pass', value: '7 of the feature\'s tests: 7 passed', repo: 'pcs-frontend', ...over })
-  const row = (e: Evidence, key: string) => evaluate(cfg, layout, e).checklist.find((r) => r.key === key)!
+  const row = (e: Evidence, key: string) => evaluate(cfg, mechanical, e).checklist.find((r) => r.key === key)!
 
   test('a row is kept only when it is unknown for want of an unreachable source', () => {
     assert.equal(row(ev([e2e({ status: 'unknown', value: 'not checked', unreachable: true })]), '9').keep, true)
@@ -416,11 +440,11 @@ describe('a source that can\'t be read keeps what the page says', () => {
   })
 
   test('publishing leaves those cells as published, and updates the rest', () => {
-    const published = withIds(renderPage(cfg, layout, evaluate(cfg, layout, ev([e2e({}), fact({ rule: 'e2e-build', status: 'pass', value: 'pcs-frontend: PR-2312 #13', repo: 'pcs-frontend' })]))))
+    const published = withIds(renderPage(cfg, mechanical, evaluate(cfg, mechanical, ev([e2e({}), fact({ rule: 'e2e-build', status: 'pass', value: 'pcs-frontend: PR-2312 #13', repo: 'pcs-frontend' })]))))
     const now = ev([e2e({ status: 'unknown', value: 'not checked', note: 'Jenkins could not be read', unreachable: true }),
       fact({ rule: 'e2e-build', status: 'unknown', value: 'not checked', repo: 'pcs-frontend', unreachable: true }),
       fact({ rule: 'high-defects', status: 'pass', value: 'no Critical or High bugs open' })])
-    const m = merge(published, layout, genRows(layout, evaluate(cfg, layout, now)))
+    const m = merge(published, mechanical, genRows(mechanical, evaluate(cfg, mechanical, now)))
     const action = (table: string, key: string, cell: string) => m.changes.find((c) => c.table === table && c.key === key && c.cell === cell)?.action
     assert.equal(action('checklist', '9', 'status'), 'keep-unreachable')
     assert.equal(action('checklist', '9', 'comments'), 'keep-unreachable')
@@ -429,15 +453,15 @@ describe('a source that can\'t be read keeps what the page says', () => {
     assert.match(m.html, /7 of the feature's tests: 7 passed/)
     assert.match(m.html, /pcs-frontend: PR-2312 #13/)
     // The same row, now known to be absent rather than unreachable, is rewritten.
-    const absent = merge(published, layout, genRows(layout, evaluate(cfg, layout, ev([e2e({ status: 'unknown', value: 'not checked' })]))))
+    const absent = merge(published, mechanical, genRows(mechanical, evaluate(cfg, mechanical, ev([e2e({ status: 'unknown', value: 'not checked' })]))))
     assert.equal(absent.changes.find((c) => c.key === '9' && c.cell === 'status')?.action, 'update')
   })
 
   test('service-wide rows say so, with the commit; the header names the feature and its epics', () => {
     const e = ev([fact({ rule: 'sonar-coverage', status: 'pass', value: '96.2%', repo: 'pcs-api', sha: SHA.api2, candidate: SERVICE_WIDE })])
-    const res = evaluate(cfg, layout, e)
+    const res = evaluate(cfg, mechanical, e)
     assert.equal(res.checklist.find((r) => r.key === '1')!.lines[0].text, `service-wide — pcs-api ${SHA.api2.slice(0, 7)}: 96.2%.`)
-    const html = renderPage(cfg, layout, res)
+    const html = renderPage(cfg, mechanical, res)
     assert.match(html, /<h1>QA Readiness Report – private-landlord-make-a-claim<\/h1>/)
     assert.match(html, /https:\/\/hmcts\.atlassian\.net\/browse\/HDPI-10019/)
   })
@@ -515,11 +539,11 @@ describe('review fixes', () => {
 
   test('the Generated row is the run date, and names the rows kept from an earlier run', () => {
     const e = { release: cfg.release, generatedAt: NOW().toISOString(), candidates: cfg.candidates,
-      items: fileUnderRows(layout, [fact({ rule: 'e2e-feature', status: 'unknown', repo: 'pcs-frontend', unreachable: true }),
+      items: fileUnderRows(mechanical, [fact({ rule: 'e2e-feature', status: 'unknown', repo: 'pcs-frontend', unreachable: true }),
         fact({ rule: 'e2e-build', status: 'unknown', repo: 'pcs-frontend', unreachable: true })]) }
-    const gen = evaluate(cfg, layout, e).info.find((r) => r.rule === 'generated')!
+    const gen = evaluate(cfg, mechanical, e).info.find((r) => r.rule === 'generated')!
     assert.deepEqual(gen.lines.map((l) => l.text), ['19 Sep 2026', 'Kept from an earlier run, as a source could not be read: E2E build, row 9.'])
-    const fresh = evaluate(cfg, layout, { ...e, items: [] }).info.find((r) => r.rule === 'generated')!
+    const fresh = evaluate(cfg, mechanical, { ...e, items: [] }).info.find((r) => r.rule === 'generated')!
     assert.deepEqual(fresh.lines.map((l) => l.text), ['19 Sep 2026'])
   })
 })

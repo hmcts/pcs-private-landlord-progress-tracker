@@ -98,6 +98,27 @@ published". The output is counts only, and a failure prints only its kind: the r
 source said), `report.html`, `page.html` (the page as read), `merged.html`, `edits.json` and
 `diff.txt` (what a publish would change, and which cells are kept because a person wrote them).
 
+## Agent rows: preview what CI would write
+
+A feature report's checklist rows (`rule: agent` in `pcs-feature`) are answered by the QA agent
+in the Publish workflow. To preview its answers locally, run the same three steps, writing
+nothing to Confluence:
+
+```sh
+npm run qa-report -- --feature <name> --collect-only    # evidence.json and agent-input.json
+claude -p --model sonnet --max-turns 150 \
+  --allowedTools "Read,Glob,Grep,Write,Bash(gh api:*),Bash(git clone:*),Bash(git -C:*),Bash(twg jira workitem query:*),Bash(twg jira workitem get:*),Bash(twg jira workitem comment query:*),Bash(twg confluence content get:*),Bash(twg confluence search query:*),Bash(twg confluence search text:*)" \
+  "Read config/qa-readiness/agent-prompt.md and follow it exactly. The cache directory is $PWD/.cache/qa. Answer only the scope <name>."
+npm run qa-report -- --feature <name> --evidence --answers    # dry run; add --validate to have twg check it
+```
+
+Run `claude -p` with `TWG_AGENT_DEFAULTS=1` set, so its twg calls match the allowed tools.
+Check `.cache/qa/<name>/answers.json` against `agent-input.json` and `diff.txt`: every row
+answered, a link for each Yes and No, and "To confirm" where the evidence is missing. The CLI
+prints how many answers it took and how many it rejected; the reasons are in
+`answers-rejected.txt`. Show the user the diff. Publishing is the scheduled workflow's job; run
+`--publish` yourself only if the user asks for it on this page.
+
 ## 3. Rows that need a person
 
 Rows marked `(needs a person)`, and rows left "To confirm", have no mechanical answer. For each:

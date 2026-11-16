@@ -134,9 +134,104 @@ describe('the CLI, for a feature with E2E evidence from Cosmos and GitHub', () =
     for (const c of CANARY) assert.ok(!printed.includes(c), `printed ${c}`)
     for (const s of [sha, head]) assert.ok(!printed.includes(s.slice(0, 7)), 'printed a commit')
     assert.doesNotMatch(printed, /https?:\/\/|functionalTest|PR-[12]/)
-    assert.match(r.stdout, /^row 9   fail$/m)
-    assert.match(r.stdout, /^row 10  unknown \(source unreachable: keeps the published answer\)$/m)
+    assert.match(r.stdout, /^row 4   unknown \(no agent answer: keeps the published answer\)$/m)
+    assert.match(r.stdout, /^23 rows: 0 pass, 0 fail, 23 unknown$/m)
     assert.ok(readFileSync(join(out, 'report.html'), 'utf8').includes(CANARY[3]), 'the report itself does carry the build link')
+  })
+})
+
+describe('the CLI, with the agent\'s input and answers', () => {
+  const feature = 'TEST-CANARY-AGENT'
+  const out = join('.cache/qa', feature)
+  const fixtures = join('.cache/qa', 'fixtures-canary-agent')
+  after(() => {
+    for (const d of [out, fixtures]) rmSync(d, { recursive: true, force: true })
+  })
+  const AGENT_CANARY = ['Canary agent comment about HDPI-99999', 'https://canary.internal.example/agent/evidence', 'canary-agent-link-text', 'canary-row-key']
+
+  test('collect-only and answers print only counts; the input, answers and rejections stay in the cache', () => {
+    mkdirSync(fixtures, { recursive: true })
+    const config = join(fixtures, 'config.yaml')
+    writeFileSync(config, [`feature: ${feature}`, 'active: false', 'layout: pcs-feature', 'epics: [HDPI-1]', 'repos:', '  pcs-api: { github: hmcts/pcs-api }', ''].join('\n'))
+    const { layout } = loadRelease(config)
+    const sha = CFG.candidates[0].shas['pcs-api']
+    const items = [
+      fact({ rule: 'sonar-coverage', status: 'pass', value: `91.0% ${CANARY[0]}`, links: [{ text: CANARY[1], url: CANARY[3] }], repo: 'pcs-api', sha, candidate: 'service-wide' }),
+      fact({ rule: 'high-defects', status: 'fail', value: CANARY[2], note: CANARY[1] }),
+    ]
+    mkdirSync(out, { recursive: true })
+    writeFileSync(join(out, 'evidence.json'), JSON.stringify({ release: feature, generatedAt: NOW().toISOString(),
+      candidates: [{ name: 'service-wide', shas: { 'pcs-api': sha } }], items: fileUnderRows(layout, items) }))
+    writeFileSync(join(out, 'answers.json'), '{}')
+
+    const env = { ...process.env }
+    for (const k of ['QA_CACHE_DIR', 'RUNNER_TEMP', 'COSMOS_PIPELINE_METRICS_KEY']) delete env[k]
+    const cli = (...args: string[]) => spawnSync(process.execPath, ['--no-warnings', 'scripts/qa-report.ts', '--config', config, ...args], { encoding: 'utf8', env })
+    const quiet = (r: ReturnType<typeof cli>) => {
+      assert.equal(r.status, 0, r.stderr)
+      const printed = r.stdout + r.stderr
+      for (const c of [...CANARY, ...AGENT_CANARY, sha.slice(0, 7)]) assert.ok(!printed.includes(c), `printed ${c}`)
+      assert.doesNotMatch(printed, /https?:\/\//)
+      return r.stdout
+    }
+
+    const collected = quiet(cli('--evidence', '--collect-only'))
+    assert.match(collected, /^agent input: 23 rows, 3 evidence items, the page could not be read$/m)
+    assert.ok(!existsSync(join(out, 'answers.json')), 'an earlier answers.json is removed')
+    const input = JSON.parse(readFileSync(join(out, 'agent-input.json'), 'utf8'))
+    assert.equal(input.rows.length, 23)
+    assert.equal(input.rows[0].evidence[0].links[0].url, CANARY[3])
+    assert.ok(!existsSync(join(out, 'report.html')), 'collect-only renders nothing')
+
+    const link = [{ text: AGENT_CANARY[2], url: AGENT_CANARY[1] }]
+    writeFileSync(join(out, 'answers.json'), JSON.stringify({
+      '1': { answer: 'Yes', comment: AGENT_CANARY[0], links: link },
+      '21': { answer: 'No', comment: AGENT_CANARY[0], links: link },
+      '9': { answer: 'To confirm', comment: AGENT_CANARY[0], links: [] },
+      '13': { answer: 'N/A', comment: AGENT_CANARY[0], links: [{ text: AGENT_CANARY[2], url: 'http://canary.internal.example/insecure' }] },
+      '2': { answer: 'Yes', comment: AGENT_CANARY[0] },
+      [AGENT_CANARY[3]]: { answer: 'Yes', comment: AGENT_CANARY[0], links: link },
+    }))
+    // --answers alone reuses the evidence the answers were written against; it never collects afresh.
+    const answered = quiet(cli('--answers'))
+    assert.match(answered, /^evidence: 3 items from a file$/m)
+    assert.match(answered, /^agent: 3 items, 1 pass, 1 fail, 1 unknown, 20 rows without an answer \(3 rejected: see answers-rejected\.txt in the cache directory\)$/m)
+    assert.match(answered, /^row 1   pass$/m)
+    assert.match(answered, /^row 21  fail$/m)
+    assert.match(answered, /^row 9   unknown$/m)
+    assert.match(answered, /^row 2   unknown \(no agent answer: keeps the published answer\)$/m)
+    const report = readFileSync(join(out, 'report.html'), 'utf8')
+    assert.ok(report.includes(AGENT_CANARY[0]) && report.includes(AGENT_CANARY[1]), 'the report itself does carry the answers')
+    assert.ok(readFileSync(join(out, 'answers-rejected.txt'), 'utf8').includes(AGENT_CANARY[3]))
+
+    for (const d of ['src', 'data', '_site', 'build', 'config', 'scripts', 'test'].filter((x) => existsSync(x))) {
+      for (const f of files(d)) {
+        const text = readFileSync(f, 'utf8')
+        for (const c of AGENT_CANARY) assert.ok(!text.includes(c) || f.endsWith('qa-public-safety.test.ts'), `${c} in ${f}`)
+      }
+    }
+  })
+
+  test('a malformed answers file counts as no answers: the report still renders, saying only that', () => {
+    writeFileSync(join(out, 'answers.json'), `{ "1": ${JSON.stringify(AGENT_CANARY[0])} `)
+    rmSync(join(out, 'report.html'), { force: true })
+    const env = { ...process.env }
+    for (const k of ['QA_CACHE_DIR', 'RUNNER_TEMP']) delete env[k]
+    const r = spawnSync(process.execPath, ['--no-warnings', 'scripts/qa-report.ts', '--config', join(fixtures, 'config.yaml'), '--evidence', '--answers'], { encoding: 'utf8', env })
+    assert.equal(r.status, 0, r.stderr)
+    assert.ok(!(r.stdout + r.stderr).includes(AGENT_CANARY[0]))
+    assert.match(r.stdout, /^agent: answers\.json could not be read, so 0 answers were taken and every agent row keeps the published answer$/m)
+    assert.match(r.stdout, /^row 1   unknown \(no agent answer: keeps the published answer\)$/m)
+    assert.match(r.stdout, /^23 rows: 0 pass, 0 fail, 23 unknown$/m)
+    assert.ok(existsSync(join(out, 'report.html')))
+    assert.match(readFileSync(join(out, 'answers-rejected.txt'), 'utf8'), /not valid JSON/)
+    assert.match(readFileSync(join('.cache/qa', 'errors.log'), 'utf8'), new RegExp(`${feature} answers-invalid`))
+  })
+
+  test('--collect-only takes no publishing or answers', () => {
+    const r = spawnSync(process.execPath, ['--no-warnings', 'scripts/qa-report.ts', '--all-active', '--collect-only', '--publish'], { encoding: 'utf8' })
+    assert.equal(r.status, 2)
+    assert.match(r.stderr, /^--collect-only can't be combined with --publish$/m)
   })
 })
 

@@ -3,8 +3,11 @@
 // Only cells carrying this generator's marker, with text that still matches its hash, are
 // replaced (see render.ts). Every other cell is a person's and is kept as it is. A judgement
 // (judgement.ts) replaces cells on the same terms, but unmarked, so it becomes a person's once
-// written. A cell of a row whose source couldn't be read (render.ts, `keep`) is left as the page
-// has it. Rows the page lacks are added after the row before them in the layout. The change
+// written. A cell of a row whose source couldn't be read, or that the agent didn't answer
+// (render.ts, `keep`), is left as the page has it. An answered agent row whose question on the
+// page differs from the layout's has its question rewritten with its status and comment
+// (render.ts, `sync`), and only when both of those are written too. Rows the page lacks are added after the row
+// before them in the layout. The change
 // goes to Confluence as targeted edits (replaceNode / insertNodeAfter on the cells' local ids),
 // so the rest of the page, mentions, images and macros included, is never re-sent. Updates
 // carry the snapshot token from the read; on a stale token the page is read again and the
@@ -14,8 +17,8 @@ import { createHash } from 'node:crypto'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Layout, LayoutTable, ReleaseConfig } from './config.ts'
-import { cellsOf, type El, esc, parse, rowsOf, shortHash, splice, tableAfterHeading, textOf } from './html.ts'
-import { cellText, type CellName, type GenCell, type GenRow, MARKER, markerRow, markers, rowHtml, tableHtml, titleOf } from './render.ts'
+import { cellsOf, type El, esc, find, parse, rowsOf, shortHash, splice, tableAfterHeading, textOf } from './html.ts'
+import { cellText, type CellName, type GenCell, type GenRow, MARKER, markerRow, markers, plainCell, rowHtml, tableHtml, titleOf } from './render.ts'
 import type { TwgRunner } from '../roadmap-runner.ts'
 import { QaError } from './errors.ts'
 import { pageId } from './twg.ts'
@@ -74,44 +77,84 @@ interface Merging {
 
 type TableName = 'info' | 'checklist'
 
+type Owner = { owner: 'person' } | { owner: 'edited' } | { owner: 'generator'; hash: string }
+
+/**
+ * Whose a page cell is: a person's if it has no marker of ours for this row and cell, edited if
+ * its text no longer matches the marker's hash, else the generator's, written with that hash.
+ */
+function ownerOf(page: string, table: TableName, key: string, name: CellName, td: El): Owner {
+  const re = new RegExp(`^qa-auto-${escRe(markerRow(table, key))}-${name}-`)
+  const marker = markers(td).find((m) => re.test(m))
+  if (!marker) return { owner: 'person' }
+  const hash = MARKER.exec(marker)?.[3]
+  return hash && hash === shortHash(cellText(page.slice(td.start, td.end))) ? { owner: 'generator', hash } : { owner: 'edited' }
+}
+
 /** A generator cell against the page's cell, and what stops it being replaced, if anything. */
 function cellOf(page: string, table: TableName, key: string, gen: GenCell, td: El | undefined, n: number): Cell {
   const base = { table, key, cell: gen.name! }
   if (!td) return { gen, base, held: { ...base, action: 'skipped', why: `the row has no column ${n + 1}` } }
   const before = textOf(td)
-  const re = new RegExp(`^qa-auto-${escRe(markerRow(table, key))}-${gen.name}-`)
-  const marker = markers(td).find((m) => re.test(m))
-  const hash = marker ? MARKER.exec(marker)?.[3] : undefined
+  const o = ownerOf(page, table, key, gen.name!, td)
   let held: CellChange | undefined
-  if (!marker) held = { ...base, action: 'keep-human', before }
-  else if (hash !== shortHash(cellText(page.slice(td.start, td.end)))) held = { ...base, action: 'keep-edited', before }
-  else if (hash === gen.hash) held = { ...base, action: 'unchanged' }
+  if (o.owner === 'person') held = { ...base, action: 'keep-human', before }
+  else if (o.owner === 'edited') held = { ...base, action: 'keep-edited', before }
+  else if (o.hash === gen.hash) held = { ...base, action: 'unchanged' }
   else if (gen.keep) held = { ...base, action: 'keep-unreachable', before }
   else if (!td.attrs['data-local-id']) held = { ...base, action: 'skipped', why: 'the cell has no local id' }
   return { gen, td, base, held, before }
 }
 
-function replaceCell(m: Merging, c: Cell): void {
-  const td = c.td!
-  const inner = c.gen.html.replace(/^<td[^>]*>/, '').replace(/<\/td>$/, '')
+/** Replaces a page cell's content with a generated cell's, keeping the page cell's attributes. */
+function replaceTd(m: Merging, td: El, gen: GenCell): string {
+  const inner = gen.html.replace(/^<td[^>]*>/, '').replace(/<\/td>$/, '')
   const html = `<${td.tag}${attrsOf(td)}>${inner}</${td.tag}>`
   m.edits.push({ name: 'replaceNode', localId: td.attrs['data-local-id'], value: html })
   m.splices.push({ start: td.start, end: td.end, text: html })
-  m.changes.push({ ...c.base, action: c.gen.judged ? 'judgement' : 'update', before: c.before, after: textOf(parse(html)) })
+  return textOf(parse(html))
 }
+
+function replaceCell(m: Merging, c: Cell): void {
+  const after = replaceTd(m, c.td!, c.gen)
+  m.changes.push({ ...c.base, action: c.gen.judged ? 'judgement' : 'update', before: c.before, after })
+}
+
+/** Whether a page cell reads as a generated cell would: the comparison a `sync` cell is rewritten on. */
+export const sameText = (td: El, gen: GenCell): boolean => textOf(td) === textOf(parse(gen.html))
 
 function mergeRow(m: Merging, table: TableName, r: GenRow, tr: El): void {
   const tds = cellsOf(tr)
+  const stale = r.cells.flatMap((gen, n) => (gen.sync && tds[n] && !sameText(tds[n], gen) ? [{ gen, td: tds[n] }] : []))
   const cells = r.cells.flatMap((gen, n) => (gen.name ? [cellOf(m.page, table, r.key, gen, tds[n], n)] : []))
   // A row's status and comment are replaced together or not at all, so a person's answer is
   // never left beside a comment that disagrees with it. A judgement also waits for a row it
   // can write whole.
   const personal = (c: Cell) => c.held?.action === 'keep-human' || c.held?.action === 'keep-edited'
   const blocked = cells.some(personal) || cells.some((c) => c.gen.judged && c.held)
+  // A changed question is written only with the answer to it: unless the status and comment
+  // are both written now, or already say exactly that answer, the row stays as it is, old
+  // question beside old answer.
+  if (stale.length && (blocked || cells.some((c) => c.held && c.held.action !== 'unchanged') || stale.some((s) => !s.td.attrs['data-local-id']))) {
+    const why = 'the question differs, and the row can\'t be written whole'
+    for (const c of cells) m.changes.push(c.held ?? { ...c.base, action: 'skipped', why })
+    m.changes.push(...stale.map((): CellChange => ({ table, key: r.key, cell: null, action: 'skipped', why })))
+    return
+  }
   for (const c of cells) {
     if (c.held) m.changes.push(c.gen.judged && !c.held.why ? { ...c.held, why: 'the judgement was not written' } : c.held)
     else if (blocked) m.changes.push({ ...c.base, action: 'skipped', why: 'a person has written the rest of this row' })
     else replaceCell(m, c)
+  }
+  for (const s of stale) m.changes.push({ table, key: r.key, cell: null, action: 'update', why: 'the question', before: textOf(s.td), after: replaceTd(m, s.td, s.gen) })
+}
+
+/** Finds a layout row's row in a page's table: by the text of its first cell, else by its `match`. */
+function rowFinder(trs: El[], spec: LayoutTable): (key: string) => El | undefined {
+  const firsts = trs.map((tr) => ({ tr, text: cellsOf(tr)[0] ? textOf(cellsOf(tr)[0]) : '' }))
+  return (key) => {
+    const match = spec.rows.find((x) => x.key === key)?.match
+    return (firsts.find((f) => f.text === key) ?? (match ? firsts.find((f) => new RegExp(match, 'i').test(f.text)) : undefined))?.tr
   }
 }
 
@@ -120,11 +163,7 @@ function mergeTable(m: Merging, root: El, table: TableName, spec: LayoutTable, m
   const el = tableAfterHeading(root, new RegExp(`^${escRe(spec.heading)}$`, 'i'))
   if (!el) return false
   const trs = rowsOf(el)
-  const firsts = trs.map((tr) => ({ tr, text: cellsOf(tr)[0] ? textOf(cellsOf(tr)[0]) : '' }))
-  const rowFor = (key: string) => {
-    const match = spec.rows.find((x) => x.key === key)?.match
-    return (firsts.find((f) => f.text === key) ?? (match ? firsts.find((f) => new RegExp(match, 'i').test(f.text)) : undefined))?.tr
-  }
+  const rowFor = rowFinder(trs, spec)
   let after: { id?: string; end: number } | null = trs.length ? { id: trs[0].attrs['data-local-id'], end: trs[0].end } : null
   const inserts = new Map<number, string[]>()
   for (const r of mine) {
@@ -165,6 +204,35 @@ export function merge(page: string, layout: Layout, rows: GenRow[]): MergeResult
   return { html, edits: m.edits, changes: m.changes }
 }
 
+export interface PublishedRow {
+  status: string
+  comment: string
+  links: string[]
+  /** A person has written the row, so no answer will replace it. */
+  byPerson?: true
+}
+
+/**
+ * The layout's agent rows as a page has them, so the agent can keep wording that still holds.
+ * A row whose question on the page is another one is left out.
+ */
+export function publishedRows(page: string, layout: Layout): Record<string, PublishedRow> {
+  const spec = layout.checklist
+  const el = tableAfterHeading(parse(page), new RegExp(`^${escRe(spec.heading)}$`, 'i'))
+  if (!el) return {}
+  const rowFor = rowFinder(rowsOf(el), spec)
+  const out: Record<string, PublishedRow> = {}
+  for (const r of spec.rows.filter((x) => x.rule === 'agent')) {
+    const tr = rowFor(r.key)
+    const [, question, status, comment] = tr ? cellsOf(tr) : []
+    if (!comment || !sameText(question, plainCell(r.question ?? r.key))) continue
+    const owned = (name: CellName, td: El) => ownerOf(page, 'checklist', r.key, name, td).owner === 'generator'
+    const links = find(comment, (e) => e.tag === 'a').map((a) => str(a.attrs.href)).filter((u) => u.startsWith('https://'))
+    out[r.key] = { status: textOf(status), comment: textOf(comment), links, ...(owned('status', status) && owned('comments', comment) ? {} : { byPerson: true as const }) }
+  }
+  return out
+}
+
 export interface Counts {
   change: number
   judged: number
@@ -192,14 +260,14 @@ export function count(changes: CellChange[]): Counts {
 
 const WHAT: Record<Action, string> = {
   update: 'would change', judgement: 'would take the judgement, unmarked', unchanged: 'unchanged', 'keep-human': 'kept: written by a person (no marker)',
-  'keep-edited': 'kept: edited by a person since it was generated', 'keep-unreachable': 'kept as published: its source could not be read', 'add-row': 'row would be added',
+  'keep-edited': 'kept: edited by a person since it was generated', 'keep-unreachable': 'kept as published: its source could not be read, or the agent gave no answer', 'add-row': 'row would be added',
   'add-table': 'table would be added', skipped: 'skipped',
 }
 
 export function diffSummary(title: string, changes: CellChange[]): string {
   const c = count(changes)
   const out = [title, `${c.change} cells would change, ${c.judged} would take a judgement, ${c.added} rows would be added, ${c.human} cells kept as people wrote them, ` +
-    `${c.kept} kept as published because a source could not be read, ${c.unchanged} unchanged, ${c.skipped} skipped`, '']
+    `${c.kept} kept as published because a source could not be read or the agent gave no answer, ${c.unchanged} unchanged, ${c.skipped} skipped`, '']
   for (const x of changes) {
     if (x.action === 'unchanged') continue
     out.push(`${x.table} ${x.key}${x.cell ? ` ${x.cell}` : ''}: ${WHAT[x.action]}${x.why ? ` (${x.why})` : ''}`)

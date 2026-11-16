@@ -1,16 +1,18 @@
-# The PCS QA readiness report for a feature: a "Feature Information" table, then a "QA Readiness
-# Checklist" in two parts. Service-wide rows are about each repo as a whole, at the commit its
-# header row names; their comments say "service-wide" and the commit. Feature rows are about the
-# feature's own scope: the E2E tests its config picks, and its epics' child tickets.
+# The PCS QA readiness report for a feature: the R1.3A template (pcs.yaml), question for
+# question, with a "Feature Information" table in place of "Release Information".
 #
-# Rules and `good` work as in pcs.yaml. Performance and security rows are read from the feature's
-# Release Impact Assessment if its config has a ria_page, and are N/A ("no RIA for this
-# feature") if not.
+# Every checklist row is answered by the QA agent (rule `agent`, README.md "Agent answers"). It
+# reads config/qa-readiness/agent-prompt.md, investigates the code, CI and tickets, and writes
+# answers.json in the feature's cache directory. `evidence` lists the rules whose mechanical
+# findings it gets as facts for the row; they inform the answer but don't decide it. `guide` says
+# what Yes, No and N/A mean for the question. `good` is the answer that means "no concern", as in
+# pcs.yaml. A row the agent hasn't answered keeps what the page says.
 
 title: QA Readiness Report – {feature}
 intro:
-  - This readiness checklist covers one feature. Rows marked service-wide are about each service as a whole, at the commit named under Service-wide revision; the rest are about the feature's own E2E tests and Jira tickets.
+  - This readiness checklist covers one feature, using the questions of the release QA readiness report.
   - Where applicable, supporting evidence has been provided. Any items marked as N/A include an explanation.
+  - Each weekday an AI agent (Claude) answers the checklist from the feature's code, CI and Jira tickets, and cites its evidence. Edit a cell to take it over.
 
 info:
   heading: Feature Information
@@ -18,37 +20,135 @@ info:
   widths: [178, 1133]
   rows:
     - { key: Feature, rule: feature }
+    - { key: Release Type, rule: human }
     - { key: Epics, rule: epics }
+    - { key: Test Environments, rule: human }
+    - { key: External Dependencies, rule: human }
+    - { key: External Risks, rule: human }
     - { key: Outstanding Bugs, rule: outstanding-bugs }
     - { key: GIT, rule: repos }
-    - { key: Service-wide revision, rule: service-revision }
-    - { key: E2E build, rule: e2e-build }
-    - { key: Test Environments, rule: human }
-    - { key: Generated, rule: generated }
+    - { key: GIT Revision, rule: service-revision }
 
 checklist:
   heading: QA Readiness Checklist
   columns: [No, Question, Status, Comments / Evidence]
   widths: [49, 334, 60, 924]
   rows:
-    - { key: '1', rule: sonar-coverage, question: 'Service-wide: is unit test coverage greater than 80% for all services?' }
-    - { key: '2', rule: sonar-quality-gate, question: 'Service-wide: have all SonarCloud Quality Gates passed?' }
-    - { key: '3', rule: integration-contract, question: 'Service-wide: have all Integration and Contract Tests passed?' }
-    - { key: '4', rule: functional, question: 'Service-wide: have all Functional Automation Tests passed?' }
-    - { key: '5', rule: yarn-audit, good: 'No', question: 'Service-wide: has Yarn Audit reported any vulnerabilities?' }
-    - { key: '6', rule: sonar-security, good: 'No', question: 'Service-wide: have SonarJava / Static Analysis checks reported any vulnerabilities?' }
-    - { key: '7', rule: dependency-check, good: 'No', question: 'Service-wide: has Dependency Checker reported any vulnerabilities?' }
-    - { key: '8', rule: ignored-tests, good: 'No', question: 'Service-wide: are any Automation Tests ignored, removed or pending?' }
-    - { key: '9', rule: e2e-feature, question: "Have the feature's E2E tests passed?" }
-    - { key: '10', rule: ignored-tests-feature, good: 'No', question: "Are any of the feature's E2E tests ignored, removed or pending?" }
-    - { key: '11', rule: human, question: "Have the feature's Cross Browser Tests passed?" }
-    - { key: '12', rule: human, good: 'No', question: Was any additional Manual Accessibility Testing required? }
-    - { key: '13', rule: perf-signoff, question: Have all Performance Tests passed? }
-    - { key: '14', rule: perf-required, question: Was any additional Performance Testing required? }
-    - { key: '15', rule: security-signoff, question: Has Security Testing been completed? }
-    - { key: '16', rule: human, question: "Has the feature's Manual Test Suite passed successfully?" }
-    - { key: '17', rule: stories-done, question: "Are all the feature's stories, tasks and bugs done?" }
-    - { key: '18', rule: human, question: Has the Product Owner signed off the stories? }
-    - { key: '19', rule: test-complete, question: Have Test Complete comments been added to all Stories and Defects? }
-    - { key: '20', rule: high-defects, question: Have all Critical and High Priority defects been resolved? }
-    - { key: '21', rule: human, question: Have remaining defects been triaged and prioritised? }
+    - key: '1'
+      rule: agent
+      question: Is unit test coverage greater than 80% for all services?
+      evidence: [sonar-coverage]
+      guide: Yes if SonarCloud's coverage is over 80% for every repo at the commit named; No if any is at or under 80%, naming it and its figure. Cite each repo's SonarCloud project.
+    - key: '2'
+      rule: agent
+      question: Have all SonarCloud Quality Gates passed?
+      evidence: [sonar-quality-gate]
+      guide: Yes if every repo's quality gate passed at the commit named; No if any failed, saying which condition. Cite each repo's SonarCloud project.
+    - key: '3'
+      rule: agent
+      question: Have all Integration and Contract Tests passed?
+      evidence: [integration-contract]
+      guide: Yes if the integration, cftlib and Pact stages passed in each repo's latest finished master build; No if any failed. Cite the builds or commit statuses.
+    - key: '4'
+      rule: agent
+      question: Have all Functional Automation Tests passed?
+      evidence: [functional, e2e-feature, e2e-build]
+      guide: Yes if the master functional stages and the feature's E2E tests passed; No if either failed, saying which. Say which build ran the feature's tests. Cite the builds.
+    - key: '5'
+      rule: agent
+      question: Have all Cross Browser Tests passed?
+      evidence: [functional]
+      guide: Yes only with a passing cross-browser run (a crossBrowserTest stage or a ticket recording one) covering the feature; N/A if the team runs none for this feature, saying so. Otherwise To confirm.
+    - key: '6'
+      rule: agent
+      question: Have all Performance Tests passed?
+      evidence: [perf-signoff]
+      guide: Yes with a recorded performance run or sign-off covering the feature (the RIA, or a performance ticket); N/A if none was required, citing where that is said. Otherwise To confirm.
+    - key: '7'
+      rule: agent
+      question: Was any additional Performance Testing required?
+      evidence: [perf-required]
+      guide: Yes if the RIA or a ticket asks for performance testing of the feature, No if it says none is needed. With no RIA and no ticket, To confirm.
+    - key: '8'
+      rule: agent
+      question: Has Security Testing been completed?
+      evidence: [security-signoff]
+      guide: Yes with a security sign-off or ITHC/pen-test ticket covering the feature; N/A if none was required, citing where that is said. Otherwise To confirm.
+    - key: '9'
+      rule: agent
+      good: 'No'
+      question: Was any additional Manual Accessibility Testing required?
+      guide: Yes if a ticket or the RIA calls for a manual accessibility audit of the feature's pages, citing it; No if the feature's pages were covered by the automated accessibility checks and nothing asks for more. Otherwise To confirm.
+    - key: '10'
+      rule: agent
+      good: 'No'
+      question: Has Yarn Audit reported any vulnerabilities?
+      evidence: [yarn-audit]
+      guide: No if yarn audit passed (or its findings are all suppressed with a reason) at the commit named; Yes if it reports open vulnerabilities, giving the count. Cite the build or report.
+    - key: '11'
+      rule: agent
+      good: 'No'
+      question: Have SonarJava / Static Analysis checks reported any vulnerabilities?
+      evidence: [sonar-security]
+      guide: No if SonarCloud shows no open vulnerabilities for any repo; Yes if it shows any, giving the count per repo. Cite each repo's SonarCloud issues.
+    - key: '12'
+      rule: agent
+      good: 'No'
+      question: Has Dependency Checker reported any vulnerabilities?
+      evidence: [dependency-check]
+      guide: No if the OWASP dependency check passed (or its findings are suppressed with a reason); Yes if it reports open vulnerabilities, giving the count. Cite the build or report.
+    - key: '13'
+      rule: agent
+      good: 'No'
+      question: Has OWASP ZAP Scanner reported any High or Medium vulnerabilities?
+      evidence: [security-signoff]
+      guide: No or Yes only from a recorded ZAP or ITHC run covering the feature; N/A if no ZAP/ITHC run is recorded, saying so. Cite the RIA or ITHC ticket.
+    - key: '14'
+      rule: agent
+      question: Has the Release Candidate been deployed to AAT/SIT?
+      evidence: [deployed-aat]
+      guide: Yes if each repo's commit named (or a later one) passed its AAT deploy and smoke stages; No if not. Cite the build or commit status.
+    - key: '15'
+      rule: agent
+      good: 'No'
+      question: Are any Automation Tests ignored, removed or pending?
+      evidence: [ignored-tests, ignored-tests-feature]
+      guide: Yes if any test is skipped, disabled or marked fixme, listing the feature's ones first, with a count for the rest; No if none. Cite the files at the commit.
+    - key: '16'
+      rule: agent
+      question: Has the Manual Regression Test Suite passed successfully?
+      evidence: [test-complete]
+      guide: Yes with a recorded manual test run covering the feature (a test execution ticket, Test Complete comments on its stories); No if it recorded failures still open. Otherwise To confirm.
+    - key: '17'
+      rule: agent
+      question: Have dependent services completed validation?
+      guide: Yes if the services the feature calls (CCD, IDAM, payments, Notify and the like) are recorded as validated with it, citing where; N/A if it depends on no service outside PCS that changed. Otherwise To confirm.
+    - key: '18'
+      rule: agent
+      question: Was formal Business Acceptance Testing (BAT) required?
+      guide: Yes if a ticket or plan calls for BAT of the feature, citing it, and saying whether it is done; No if none was planned. Otherwise To confirm.
+    - key: '19'
+      rule: agent
+      question: Has the Product Owner signed off the stories?
+      evidence: [stories-done]
+      guide: Yes if the epics' stories are closed or carry the Product Owner's sign-off; No if stories are still open or awaiting sign-off, giving the count. Cite the epics.
+    - key: '20'
+      rule: agent
+      question: Have Test Complete comments been added to all Stories and Defects?
+      evidence: [test-complete]
+      guide: Yes if every done story and defect under the epics has a Test Complete comment; No if some lack one, giving the count. Cite the tickets or the epics.
+    - key: '21'
+      rule: agent
+      question: Have all Critical and High Priority defects been resolved?
+      evidence: [high-defects]
+      guide: Yes if no Critical or High bug under the epics is open; No if any is, listing them. Cite the tickets.
+    - key: '22'
+      rule: agent
+      question: Have remaining defects been triaged and prioritised?
+      evidence: [outstanding-bugs, high-defects]
+      guide: Yes if every open bug under the epics has a priority and is not in a new or untriaged status; No if some are untriaged, giving the count. Cite the tickets.
+    - key: '23'
+      rule: agent
+      question: Has testing been completed using representative Production-like environments?
+      evidence: [deployed-aat, e2e-build]
+      guide: Yes if the feature was tested on AAT/SIT or another production-like environment, citing the build or ticket; No if it was tested only on preview or locally. Otherwise To confirm.

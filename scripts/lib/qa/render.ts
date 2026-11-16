@@ -64,6 +64,26 @@ function lineFor(i: EvidenceItem, many: boolean): Line {
   return { text: `${who ? `${who}: ` : ''}${said}.`.replace(/\.\.$/, '.'), links: i.links }
 }
 
+/** A comment as paragraphs: blank lines split it, other whitespace is one space. */
+export const paragraphs = (comment: string): Line[] => comment.trim().split(/\n[ \t\r]*\n/)
+  .map((text) => text.replace(/\s+/g, ' ').trim()).filter(Boolean).map((text) => ({ text, links: [] }))
+
+/**
+ * An `agent` row is decided by the agent's answer alone; the mechanical evidence filed under it
+ * was the agent's to weigh. With no answer the row keeps what the page says, and a row the page
+ * lacks is added with that evidence.
+ */
+function agentRow(row: LayoutRow, items: EvidenceItem[], evidence: Line[]): RowResult {
+  const base = { table: 'checklist' as const, key: row.key, label: row.question ?? row.key, rule: row.rule, needsJudgement: false }
+  const given = items.find((i) => i.source === 'agent' && i.rule === 'agent')
+  if (!given) {
+    return { ...base, status: 'unknown', answer: 'To confirm', keep: true, lines: [{ text: 'To confirm: the agent has not answered this row.', links: [] }, ...evidence] }
+  }
+  const lines = paragraphs(given.value)
+  if (given.links.length) lines.push({ text: '', links: given.links })
+  return { ...base, status: given.status, answer: given.answer ?? 'To confirm', keep: false, lines }
+}
+
 export function evaluateRow(row: LayoutRow, table: 'info' | 'checklist', cfg: ReleaseConfig, ev: Evidence): RowResult {
   const id = table === 'info' ? `info:${row.key}` : row.key
   const items = ev.items.filter((i) => i.row === id)
@@ -92,6 +112,7 @@ export function evaluateRow(row: LayoutRow, table: 'info' | 'checklist', cfg: Re
 
   const order = [...cfg.candidates.map((c) => c.name), undefined]
   const lines = gs.flat().sort((a, b) => order.indexOf(a.candidate) - order.indexOf(b.candidate)).map((i) => lineFor(i, many))
+  if (table === 'checklist' && row.rule === 'agent') return agentRow(row, items, lines)
   const needsJudgement = row.rule === 'human'
   if (needsJudgement && table === 'checklist') {
     if (!items.length) lines.unshift({ text: 'Needs a person to confirm: nothing records this automatically.', links: [] })
@@ -176,6 +197,12 @@ export interface GenCell {
   judged?: boolean
   /** The row's source couldn't be read: the page's cell, if the generator still owns it, stays as it is. */
   keep?: boolean
+  /**
+   * A cell with no marker (an answered agent row's question) that is rewritten when the page's
+   * text differs, only in a merge that also writes the row's status and comment. An unanswered
+   * row has none, so its old question stays beside its old answer.
+   */
+  sync?: boolean
 }
 
 export interface GenRow {
@@ -221,13 +248,13 @@ export function ownedCell(table: 'info' | 'checklist', key: string, name: CellNa
   return { name, html: `<td${width(w)}>${marked}</td>`, hash }
 }
 
-const plainCell = (text: string, w?: number): GenCell => ({ name: null, html: `<td${width(w)}><p>${esc(text)}</p></td>`, hash: null })
+export const plainCell = (text: string, w?: number): GenCell => ({ name: null, html: `<td${width(w)}><p>${esc(text)}</p></td>`, hash: null })
 
 const judgedCell = (name: CellName, lines: Line[], w?: number): GenCell =>
   ({ name, html: `<td${width(w)}>${lines.map(para).join('')}</td>`, hash: null, judged: true })
 
 function judgedCells(j: Judgement, cw: number[]): GenCell[] {
-  const comment: Line[] = j.comment.trim().split(/\n\s*\n/).map((text) => ({ text: text.replace(/\s+/g, ' '), links: [] }))
+  const comment = paragraphs(j.comment)
   if (j.links?.length) comment.push({ text: '', links: j.links })
   return [judgedCell('status', [{ text: j.status, links: [] }], cw[2]), judgedCell('comments', comment, cw[3])]
 }
@@ -244,7 +271,8 @@ export function genRows(layout: Layout, res: Results, judgements: Judgements = {
   const cw = layout.checklist.widths ?? []
   for (const r of res.checklist) {
     const j = judgements[r.key]
-    out.push({ table: 'checklist', key: r.key, cells: [plainCell(r.key, cw[0]), plainCell(r.label, cw[1]),
+    const question = plainCell(r.label, cw[1])
+    out.push({ table: 'checklist', key: r.key, cells: [plainCell(r.key, cw[0]), r.rule === 'agent' && !r.keep ? { ...question, sync: true } : question,
       ...(j ? judgedCells(j, cw) : [kept(ownedCell('checklist', r.key, 'status', [{ text: r.answer ?? 'To confirm', links: [] }], cw[2]), r),
         kept(ownedCell('checklist', r.key, 'comments', r.lines, cw[3]), r)])] })
   }
