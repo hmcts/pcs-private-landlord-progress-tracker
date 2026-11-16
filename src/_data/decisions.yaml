@@ -395,3 +395,10 @@
   title: Where a private landlord can make a claim
   decision: "Agree the area of eligibility for private landlord claims. The service as built accepts properties in England only, and only where the postcode is covered by one of the release 1 pilot courts (Bradford, Huddersfield and Wandsworth), the same courts legal representatives are limited to. The prototype accepts any property in England or Wales, and a Wales version of the approved screens exists."
   outcome: open-question
+
+- id: DEC-050
+  date: "2026-11-16"
+  area: journey
+  title: Getting to make a claim from the claims list and the service's home address
+  decision: "Decide whether the claims list (/claims) links to making a claim, and what the service's home address (/) does for someone who isn't signed in. Today /claims lists only the claims made against the signed-in person, with no way to start one, and / sends anyone not signed in straight to sign-in. A private landlord who arrives at / therefore skips the start page and the eligibility checks at /make-a-claim, and lands on /claims after signing in. The planned journey signs a landlord in only after they've confirmed they're a private landlord, and the service name in the header links to /make-a-claim before sign-in and to /claims after."
+  outcome: open-question
