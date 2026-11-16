@@ -1,13 +1,12 @@
 import { govukEleventyPlugin } from '@x-govuk/govuk-eleventy-plugin'
 import { existsSync } from 'node:fs'
-import { loadYaml } from './scripts/lib/data.ts'
+import { confluenceUrl, loadYaml } from './scripts/lib/data.ts'
 import { fmtDate } from './scripts/lib/svg.ts'
 
 const NAV = [
   ['Overview', '/'],
   ['Roadmap', '/roadmap/'],
-  ['Quality assurance', '/quality/'],
-  ['Performance', '/performance/'],
+  ['Reports', '/reports/'],
   ['NFRs', '/nfrs/'],
   ['RAID log', '/raid/'],
   ['Decisions', '/decisions/'],
@@ -46,6 +45,7 @@ export default function (eleventyConfig) {
   // Nunjucks' selectattr only tests truthiness, so it can't match on a value.
   eleventyConfig.addFilter('where', (items, key, value) => (items ?? []).filter((i) => i[key] === value))
   eleventyConfig.addFilter('whereNot', (items, key, value) => (items ?? []).filter((i) => i[key] !== value))
+  eleventyConfig.addFilter('confluenceUrl', (page) => confluenceUrl(page) ?? '')
   eleventyConfig.addFilter('date', (iso) => (iso ? fmtDate(String(iso)) : ''))
   eleventyConfig.addFilter('ragTag', (rag) =>
     `<strong class="govuk-tag ${RAG_TAG[rag] ?? 'govuk-tag--grey'}">${String(rag ?? 'unknown').toUpperCase()}</strong>`)

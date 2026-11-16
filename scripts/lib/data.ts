@@ -4,7 +4,8 @@
 // Validation runs before every build (npm run build) and in the tests, so a bad PR fails CI
 // instead of publishing a broken page.
 
-import { readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { JSON_SCHEMA, load } from 'js-yaml'
 
 export const loadYaml = (path: string): unknown => load(readFileSync(path, 'utf8'), { schema: JSON_SCHEMA })
@@ -76,6 +77,18 @@ export interface Overview {
   headline: string
   updated: string
   milestones: { date: string; title: string; status?: string }[]
+}
+
+export interface PerformanceReport {
+  title: string
+  page: string | number // a Confluence page id
+  description?: string
+}
+
+export interface ReportLink {
+  title: string
+  url: string
+  description?: string
 }
 
 type Rec = Record<string, unknown>
@@ -173,4 +186,50 @@ export function validateOverview(doc: unknown): string[] {
   list(errors, 'overview.milestones', o.milestones).forEach((m, n) =>
     check(errors, `overview.milestones[${n}]`, m, ['date', 'title'], ['date'], {}))
   return errors
+}
+
+const PAGE_ID = /^\d+$/
+
+/** The link to a Confluence page from its id, or undefined if it isn't one. */
+export function confluenceUrl(page: unknown): string | undefined {
+  const id = typeof page === 'number' || typeof page === 'string' ? String(page) : ''
+  if (!PAGE_ID.test(id)) return undefined
+  return `https://hmcts.atlassian.net/wiki/pages/viewpage.action?pageId=${Number.parseInt(id, 10)}`
+}
+
+export function validateReports(doc: unknown): string[] {
+  const errors: string[] = []
+  if (doc === null || doc === undefined) return errors
+  if (typeof doc !== 'object' || Array.isArray(doc)) return ['reports: expected a mapping']
+  const items = list(errors, 'reports.performance', (doc as Rec).performance)
+  const seen = new Set<string>()
+  items.forEach((o, n) => {
+    const where = `reports.performance[${n}]`
+    check(errors, where, o, ['title'], [], {})
+    if (!confluenceUrl(o.page)) errors.push(`${where}: "page" must be a Confluence page id`)
+    else if (seen.has(String(o.page))) errors.push(`reports.performance: duplicate page ${String(o.page)}`)
+    else seen.add(String(o.page))
+    if (o.description !== undefined && !str(o, 'description')) errors.push(`${where}: "description" must be text`)
+  })
+  return errors
+}
+
+/**
+ * The QA readiness reports to link to: each config in `dir` with `active: true` and a report_page,
+ * titled from its layout's title as its Confluence page is. Only the YAML is read, so the site
+ * build doesn't load the report's collectors.
+ */
+export function qaReports(dir = 'config/qa-readiness'): ReportLink[] {
+  const files = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.yaml')).sort() : []
+  return files.flatMap((f) => {
+    const doc = loadYaml(join(dir, f)) as Rec | null
+    const url = confluenceUrl(doc?.report_page)
+    if (doc?.active !== true || !url) return []
+    const name = typeof doc.feature === 'string' ? doc.feature : String(doc.release ?? '')
+    const layout = String(doc.layout ?? '')
+    if (!name || !/^[\w-]+$/.test(layout)) return []
+    const template = (loadYaml(join(dir, 'layouts', `${layout}.yaml`)) as Rec | null)?.title
+    if (typeof template !== 'string' || !template.trim()) return []
+    return [{ title: template.replace('{release}', name).replace('{feature}', name), url }]
+  })
 }

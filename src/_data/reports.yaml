@@ -1,0 +1,15 @@
+# Performance test reports, listed on the Reports page. Edit through a PR.
+# The QA readiness reports are listed automatically (src/_data/reports.js), so don't add them here.
+# This site is public: give each report the title of its Confluence page, and nothing from inside it.
+#
+# performance:
+#   - page: '317130017'        # the Confluence page id, from the page's URL
+#     title: Title of the Confluence page
+#     description: Optional, for example the date of the run
+
+performance:
+  - page: '317130017'
+    title: PCS Performance Test Report – Renters Reform (R1.1A / R1.2 / R1.3)
+    description: Run on 19 September 2026 (HDPI-8959)
+  - page: '381847943'
+    title: PCS - Single User Performance Results (JMeter)

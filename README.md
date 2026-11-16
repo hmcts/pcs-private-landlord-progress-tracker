@@ -1,16 +1,15 @@
 # PCS Private Landlord progress tracker
 
 A public site where stakeholders can follow the Possession Claims Service (PCS) Private Landlord
-workstream: roadmap, RAID log (including dependencies on other teams), product and design
-decisions, non-functional requirements and architecture decisions. It's published with
-GitHub Pages and rebuilt every weekday morning.
+workstream: roadmap, links to the QA and performance reports, RAID log (including dependencies on
+other teams), product and design decisions, non-functional requirements and architecture
+decisions. It's published with GitHub Pages and rebuilt every weekday morning.
 
 | Page | Where the content comes from |
 |---|---|
 | Overview | `src/_data/overview.yaml`, plus figures from the latest roadmap snapshot |
 | Roadmap | Epics labelled `PrivateLandlord` in the HDPI Jira project |
-| Quality assurance | Not live yet: test layering and pipeline health |
-| Performance | Not live yet: waiting for the performance tests to run in Jenkins |
+| Reports | Links to the QA readiness reports in `config/qa-readiness/` with `active: true` and a `report_page`, and to the performance test reports in `src/_data/reports.yaml` |
 | NFRs | `src/_data/nfrs.yaml`: PCS NFRs, QA standards and HMCTS engineering standards |
 | RAID log | `src/_data/raid.yaml` |
 | Decisions | `src/_data/decisions.yaml` |
@@ -44,8 +43,10 @@ This is a public site.
   tickets in an epic are laid end to end, in the order of the number their summary starts with,
   across the whole timeline. The site marks these as a forecast, never as Jira dates.
 - Any issue labelled `not-public` is left out.
-- The RAID log, decisions log, NFRs and ADRs change only through pull requests, so a person reviews
-  everything before it's published. Write entries for a public audience, and use roles
+- From the QA readiness configs, the Reports page shows only each active report's title and
+  Confluence page id.
+- The RAID log, decisions log, NFRs, performance report links and ADRs change only through pull
+  requests, so a person reviews everything before it's published. Write entries for a public audience, and use roles
   rather than people's names.
 
 ## Updating the content
@@ -57,6 +58,11 @@ This is a public site.
   explains the fields. Architecture decisions are ADRs instead.
 - **Non-functional requirements:** add an entry to `src/_data/nfrs.yaml`, citing one of its
   `standards`. The file explains the fields.
+- **Performance test report:** add its Confluence page id and title to `performance` in
+  `src/_data/reports.yaml`. The file explains the fields.
+- **QA readiness report:** nothing to do on the site. A report is listed on the Reports page once
+  its config in `config/qa-readiness/` has `active: true` and a `report_page`, under the title the
+  report has on Confluence.
 - **Architecture decision:** copy `src/adr/template.md.txt` to the next number, for example
   `src/adr/0003-choose-x.md`.
 - **Roadmap:** change Jira. Label an HDPI epic `PrivateLandlord` and give it a start and due
@@ -85,7 +91,8 @@ npm run typecheck
 
 `npm run qa-report -- --release R1.3A` fills in a release's QA readiness report on Confluence, and
 `npm run qa-report -- --feature <name>` a feature's.
-It is internal, not part of the site: nothing it collects is committed, published or printed.
+It is internal, not part of the site: nothing it collects is committed, published or printed. The
+site's Reports page only links to each active report's Confluence page.
 
 ```sh
 npm run qa-report -- --release R1.3A                 # dry run: collect, render, merge
