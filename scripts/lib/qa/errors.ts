@@ -14,6 +14,7 @@ export const PUBLIC = {
   'evidence-invalid': 'the evidence file is not valid: see errors.log in the cache directory',
   'evidence-mismatch': 'the evidence file is for another release or feature, or other commits',
   'judgement-invalid': 'the judgement file is not valid: see errors.log in the cache directory',
+  'answers-invalid': 'the agent\'s answers file is not valid: see errors.log in the cache directory',
   'page-read': 'twg could not read the Confluence page',
   'page-update': 'twg could not update the Confluence page',
   'page-create': 'twg could not create the Confluence page',

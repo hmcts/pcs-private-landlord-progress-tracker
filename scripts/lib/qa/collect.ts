@@ -83,17 +83,23 @@ export async function scopeFeature(cfg: ReleaseConfig, api: GitHubApi = defaultG
   return { cfg: { ...cfg, candidates: [{ name: SERVICE_WIDE, shas }] }, items: picked.flatMap((p) => p.items) }
 }
 
-/** Gives each item the row(s) its rule answers in this layout; items no row asks for are dropped. */
+/** Rules whose items name the checklist row they answer, in `data.row`. */
+const ROW_TARGETED = new Set(['human', 'agent'])
+
+/**
+ * Gives each item the row(s) its rule answers in this layout, or gives evidence to as an
+ * `agent` row's `evidence`; items no row asks for are dropped.
+ */
 export function fileUnderRows(layout: Layout, items: Item[]): EvidenceItem[] {
   const rows = [...(layout.info?.rows ?? []).map((r) => ({ ...r, table: 'info' })), ...layout.checklist.rows.map((r) => ({ ...r, table: 'checklist' }))]
   const out: EvidenceItem[] = []
   for (const it of items) {
-    if (it.rule === 'human') {
+    if (ROW_TARGETED.has(it.rule)) {
       const row = str(it.data?.row)
-      if (layout.checklist.rows.some((r) => r.key === row)) out.push({ ...it, row })
+      if (layout.checklist.rows.some((r) => r.key === row && (it.rule === 'human' || r.rule === 'agent'))) out.push({ ...it, row })
       continue
     }
-    for (const r of rows.filter((r) => r.rule === it.rule)) out.push({ ...it, row: r.table === 'info' ? `info:${r.key}` : r.key })
+    for (const r of rows.filter((r) => r.rule === it.rule || r.evidence?.includes(it.rule))) out.push({ ...it, row: r.table === 'info' ? `info:${r.key}` : r.key })
   }
   return out
 }

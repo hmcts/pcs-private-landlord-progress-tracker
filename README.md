@@ -103,6 +103,8 @@ npm run qa-report -- --release R1.4 --create-under <parentPageId> [--publish]   
 npm run qa-report -- --release R1.3A --judgement     # rows a person answers, from judgement.yaml
 npm run qa-report -- --feature private-landlord-make-a-claim   # a feature: the same options apply
 npm run qa-report -- --all-active [--publish]        # every release and feature with active: true and a report_page
+npm run qa-report -- --feature private-landlord-make-a-claim --collect-only     # evidence and the agent's input only
+npm run qa-report -- --feature private-landlord-make-a-claim --evidence --answers   # render with the agent's answers.json
 ```
 
 Each release has `config/qa-readiness/<release>.yaml`: the `candidates` (a full commit SHA per
@@ -118,8 +120,10 @@ names, E2E tags and spec paths).
 
 The Private Landlord workstream has no releases, so a report can cover a feature instead:
 `config/qa-readiness/<feature>.yaml` with `feature: <name>` in place of `release`, and no
-`candidates` or `jql`. It uses the `pcs-feature` layout. See
-`config/qa-readiness/private-landlord-make-a-claim.yaml`.
+`candidates` or `jql`. It uses the `pcs-feature` layout: the R1.3A report's 23 questions, in the
+same order, all answered by the QA agent (see "Agent answers"), under a "Feature Information"
+table (Feature, Release Type, Epics, Test Environments, External Dependencies, External Risks,
+Outstanding Bugs, GIT and GIT Revision). See `config/qa-readiness/private-landlord-make-a-claim.yaml`.
 
 ```yaml
 feature: private-landlord-make-a-claim
@@ -137,14 +141,17 @@ repos:
       paths: [src/test/ui/e2eTest/privateLandlordMakeAClaim.spec.ts]   # spec files or folders
 ```
 
-- **Service-wide rows** (coverage, quality gate, static analysis, integration and contract,
+For a feature, the collectors below gather the evidence the agent answers from; in a layout of
+mechanical rows they answer the rows themselves.
+
+- **Service-wide checks** (coverage, quality gate, static analysis, integration and contract,
   functional, yarn audit, dependency check, ignored tests) are about each repo as a whole. They are
   read at one commit per repo, picked when the evidence is collected: the newest commit on
   `commit` (default: the repo's default branch) whose Jenkins build has finished, passed or
   failed, going by its `continuous-integration/jenkins/branch` status. A full SHA pins it. The
-  header's "Service-wide revision" row names the commit, and each row's comment says
-  "service-wide" and the commit.
-- **Feature rows** are about the feature only. The E2E row is the outcome of the E2E stages of
+  header's "GIT Revision" row names the commit, and each finding says "service-wide" and the
+  commit.
+- **Feature checks** are about the feature only. The E2E finding is the outcome of the E2E stages of
   the configured Jenkins build, as Cosmos `pipeline-metrics` records them under the repo's
   `cosmos_product` and `cosmos_component` and the configured `job`: the branch's latest finished
   build in the last 60 days, or the build number given, judged as the master builds are
@@ -162,9 +169,9 @@ repos:
   says so. Its success is a pass only with `label` set (and on the PR); without one it is "To
   confirm". When Cosmos can't be read, the fallback's answer goes in the comment only, and a
   publish keeps the page's. Neither source has per-test results, so the row says which stages
-  passed, not how many tests did. The header's
-  "E2E build" row names the build and the commit it ran (or, from GitHub, the PR head). The
-  feature's ignored-tests row scans only the specs `tags` and `paths` pick, at that commit.
+  passed, not how many tests did. The `e2e-build` finding names the build and the commit it ran
+  (or, from GitHub, the PR head). The
+  feature's ignored-tests check scans only the specs `tags` and `paths` pick, at that commit.
   Outstanding bugs, Critical and High bugs, test complete comments and "are the stories done"
   read the epics' child tickets (`parent in (…)`, as the roadmap does). Performance and security
   rows come from `ria_page` if set, and are N/A ("no RIA for this feature") if not.
@@ -174,7 +181,7 @@ repos:
 | SonarCloud (public API), the analysis of each candidate commit | coverage, quality gate, static analysis |
 | Cosmos `pipeline-metrics` and `cve-reports` (databases `jenkins` and `sds-jenkins`), the Jenkins builds of each candidate commit | integration and contract, functional, deployed to AAT, yarn audit, dependency check |
 | GitHub check runs on each candidate commit | integration and contract, functional, deployed to AAT |
-| Cosmos `pipeline-metrics`, else GitHub's Jenkins status on the PR head, for a feature's configured build | a feature's E2E tests passed, the "E2E build" header row |
+| Cosmos `pipeline-metrics`, else GitHub's Jenkins status on the PR head, for a feature's configured build | a feature's E2E tests passed, and which build ran them |
 | The source at each candidate commit, and at a feature's E2E build | ignored or pending tests |
 | Jira, through twg | outstanding bugs, Critical and High bugs, test complete comments, rows in `human_rows` |
 | The Release Impact Assessment, through twg | performance and security sign-off |
@@ -225,15 +232,71 @@ walks an agent through it: the release config, a dry run, researching each row i
 Confluence, drafting the judgements, and publishing once you've seen the diff and said so.
 Run locally, edits are made as your own twg login.
 
+### Agent answers
+
+A layout row with `rule: agent` is answered by the QA agent, Claude, rather than by a mechanical
+check. Every checklist row of `pcs-feature` is one. Such a row can also have:
+
+- `evidence`: the rules whose findings the agent gets as facts for the row, e.g.
+  `[functional, e2e-feature, e2e-build]` for "Have all Functional Automation Tests passed?".
+  They inform the answer but don't decide it: a failing check isn't combined with the answer.
+- `guide`: what Yes, No and N/A mean for the question, and what to look for.
+
+It runs in three steps:
+
+1. `--collect-only` collects the evidence and writes `evidence.json` and `agent-input.json` to
+   the scope's cache directory, and stops. The input holds the scope (epics, repos, the commits
+   read, the E2E config) and, per row, the question, guide, evidence and what the published page
+   says now (read through twg, read-only; left out if the page can't be read), so the agent keeps
+   the wording when nothing has changed. It removes any earlier `answers.json`.
+2. The agent follows `config/qa-readiness/agent-prompt.md`: it reads the input, investigates the
+   repos, CI and the epics' tickets, and writes `answers.json` beside it, keyed by row:
+   `{ "1": { "answer": "Yes", "comment": "…", "links": [{ "text": "…", "url": "https://…" }] } }`,
+   with `answer` one of Yes, No, N/A or To confirm.
+3. `--answers` renders and merges from the cached evidence and the answers (with `--all-active`
+   it implies `--evidence`). Each answer is checked on its own: a comment of up to 1500
+   characters, up to 12 https links, and at least one link for a Yes or No. One that fails is left
+   out, and why goes to `answers-rejected.txt`. A row with no answer keeps what the page says.
+
+The answer alone decides the row's status. Its cells carry the pipeline's marker, like any other
+generated cell, so the next run's answer replaces them, and a person who edits one takes the row
+over. If a row's question on the page differs from the layout's, as when the layout's rows are
+renumbered, the question is rewritten too, with the row's answer, unless a person has written it.
+
+To preview what CI would write, run the same steps locally (the skill below does this):
+`--collect-only`, the prompt through `claude -p`, then `--evidence --answers` as a dry run.
+
 ### In the Publish workflow
 
-The Publish workflow's `qa-report` job runs `npm run qa-report -- --all-active --publish`. It has
+The Publish workflow's `qa-report` job runs `npm run qa-report -- --all-active --collect-only`,
+then the QA agent, then `npm run qa-report -- --all-active --answers --publish`. It has
 its own twg sign-in, the QA secret (see "Jira sign-in"), so Confluence edits are made as whoever
-seeded that, and that account needs edit rights on each report page. Each active release and
+seeded that, and that account needs edit rights on each report page. The answers come from
+Claude on Amazon Bedrock. Each active release and
 feature is done on its own; if any fails, or twg can't sign in, the run is marked as failed, but
 the site is still deployed. Evidence goes to `$RUNNER_TEMP/qa` and is deleted with the sign-ins
 at the end, and the log gets only counts. To stop a report being updated, set `active: false`
 in its config.
+
+The agent step uses `anthropics/claude-code-action` in agent mode, as hmcts/cath-service does:
+
+- Claude Sonnet on Bedrock, through the shared `HMCTSClaudeGitHubActionsRole` AWS role (OIDC,
+  `eu-west-1`), with `--max-turns 150` and the step limited to 35 minutes (the job to 60).
+- A GitHub token from the HMCTS Claude Code app (`CLAUDE_CODE_APP_ID`,
+  `CLAUDE_CODE_PRIVATE_KEY`, organisation secrets), minted with read-only contents, actions and
+  metadata permissions.
+- The twg sign-in for read-only Jira and Confluence calls. Azure is signed out before the step, so
+  the agent can't reach the vault; the job signs in again afterwards to store the twg sign-in.
+- `--dangerously-skip-permissions`, as the other HMCTS workflows pass, so its `--allowedTools`
+  list documents the read-only tools it's meant to use rather than enforcing them. The prompt
+  forbids any command that writes, and has the agent treat Jira and Confluence text as data.
+  Reads of the sign-ins on disk are denied, the full output is off (the logs are public), and
+  the publish step runs only if the checkout is unchanged after the agent, with its dependencies
+  reinstalled.
+
+If the agent fails or times out, the reports are still published, with the agent rows as the
+page had them, and the job fails. Before it can run, the repo must be in the AWS role's trust
+policy (a platform request, as for hmcts/cft-workspace's doc-drift).
 
 The job runs on GitHub's own runners (`ubuntu-latest`), each a fresh VM, only on the schedule
 and on a manual dispatch from `master`, never on a push or from another branch. It has its own

@@ -80,6 +80,10 @@ export interface LayoutRow {
   rule: string
   question?: string
   good?: 'Yes' | 'No'
+  /** `agent` rows: the rules whose evidence goes to the agent as facts for this row. */
+  evidence?: string[]
+  /** `agent` rows: what Yes, No and N/A mean for the question, and what evidence to look for. */
+  guide?: string
 }
 
 export interface LayoutTable {
@@ -96,11 +100,14 @@ export interface Layout {
   checklist: LayoutTable
 }
 
-/** Checklist rules the collectors can answer; `human` takes its answer from human_rows. */
+/**
+ * Checklist rules the collectors can answer; `human` takes its answer from human_rows, and
+ * `agent` from the QA agent's answers.json (answers.ts).
+ */
 export const CHECKLIST_RULES = [
   'sonar-coverage', 'sonar-quality-gate', 'sonar-security', 'integration-contract', 'functional',
   'deployed-aat', 'yarn-audit', 'dependency-check', 'ignored-tests', 'test-complete', 'high-defects',
-  'perf-signoff', 'perf-required', 'security-signoff', 'human', 'e2e-feature', 'ignored-tests-feature', 'stories-done',
+  'perf-signoff', 'perf-required', 'security-signoff', 'human', 'e2e-feature', 'ignored-tests-feature', 'stories-done', 'agent',
 ] as const
 
 export const INFO_RULES = ['release', 'dashboards', 'outstanding-bugs', 'repos', 'revisions', 'human',
@@ -111,8 +118,14 @@ export const FEATURE_RULES = new Set(['e2e-feature', 'ignored-tests-feature', 'f
 /** Rules only a release config can answer. */
 export const RELEASE_RULES = new Set(['release', 'revisions'])
 
-const ROW_FIELDS = ['key', 'match', 'rule', 'question', 'good']
+/** Rules an `agent` row can take evidence from: the ones the source readers answer. */
+export const EVIDENCE_RULES = new Set<string>([...CHECKLIST_RULES.filter((r) => r !== 'human' && r !== 'agent'),
+  'outstanding-bugs', 'service-revision', 'e2e-build'])
 
+const ROW_FIELDS = ['key', 'match', 'rule', 'question', 'good', 'evidence', 'guide']
+
+/** The longest `guide` a row may have: it goes to the agent on every run. */
+export const GUIDE_MAX = 600
 
 /** Whether `v` is a string that compiles as a regular expression. */
 function isRegex(v: unknown, flags?: string): boolean {
@@ -123,6 +136,17 @@ function isRegex(v: unknown, flags?: string): boolean {
   } catch {
     return false
   }
+}
+
+function validateAgentFields(r: Rec, w: string): string[] {
+  if (r.rule !== 'agent') return ['evidence', 'guide'].filter((k) => r[k] !== undefined).map((k) => `${w}: "${k}" is only for rule agent`)
+  const errors: string[] = []
+  const ev = r.evidence
+  if (ev !== undefined && !(Array.isArray(ev) && ev.every((x) => EVIDENCE_RULES.has(str(x))) && new Set(ev).size === ev.length)) {
+    errors.push(`${w}: "evidence" must list distinct rules from ${[...EVIDENCE_RULES].join(', ')}`)
+  }
+  if (r.guide !== undefined && !(nonEmpty(r.guide) && r.guide.length <= GUIDE_MAX)) errors.push(`${w}: "guide" must be text of at most ${GUIDE_MAX} characters`)
+  return errors
 }
 
 export function validateLayout(doc: unknown, name = 'layout'): string[] {
@@ -149,6 +173,7 @@ export function validateLayout(doc: unknown, name = 'layout'): string[] {
       if (needQuestion && !nonEmpty(r.question)) errors.push(`${w}: "question" is required`)
       if (r.good !== undefined && r.good !== 'Yes' && r.good !== 'No') errors.push(`${w}: "good" must be Yes or No`)
       if (r.match !== undefined && !isRegex(r.match, 'i')) errors.push(`${w}: "match" is not a valid regular expression`)
+      errors.push(...validateAgentFields(r, w))
     })
   }
   if (doc.info !== undefined) table(doc.info, `${name}.info`, INFO_RULES, false)
@@ -252,8 +277,8 @@ function validateRepos(repos: Rec, name: string, kind: ScopeKind): string[] {
 function validateLayoutFor(kind: ScopeKind, layout: Layout | undefined, name: string): string[] {
   if (!layout) return []
   const other = kind === 'release' ? FEATURE_RULES : RELEASE_RULES
-  return [...(layout.info?.rows ?? []), ...layout.checklist.rows].filter((r) => other.has(r.rule))
-    .map((r) => `${name}: layout row ${r.key} uses rule ${r.rule}, which a ${kind} config can't answer`)
+  return [...(layout.info?.rows ?? []), ...layout.checklist.rows].flatMap((r) => [r.rule, ...(r.evidence ?? [])]
+    .filter((rule) => other.has(rule)).map((rule) => `${name}: layout row ${r.key} uses rule ${rule}, which a ${kind} config can't answer`))
 }
 
 function validateCandidates(candidates: unknown, repos: Rec, name: string): string[] {
