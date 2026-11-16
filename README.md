@@ -286,7 +286,7 @@ The agent step uses `anthropics/claude-code-action` in agent mode, as hmcts/cath
 - Claude Sonnet on Bedrock, through the shared `HMCTSClaudeGitHubActionsRole` AWS role (OIDC,
   `eu-west-1`), with `--max-turns 150` and the step limited to 35 minutes (the job to 75).
 - A GitHub token from the HMCTS Claude Code app (`CLAUDE_CODE_APP_ID`,
-  `CLAUDE_CODE_PRIVATE_KEY`, organisation secrets), minted with read-only contents, actions and
+  `CLAUDE_CODE_PRIVATE_KEY`, organisation secrets), minted with read-only contents and
   metadata permissions.
 - The twg sign-in for read-only Jira and Confluence calls. Azure is signed out before the step, so
   the agent can't reach the vault; the job signs in again afterwards to store the twg sign-in.

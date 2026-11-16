@@ -228,7 +228,6 @@ jobs:
           private-key: ${{ secrets.CLAUDE_CODE_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
           permission-contents: read
-          permission-actions: read
           permission-metadata: read
 
       - name: Configure AWS credentials
