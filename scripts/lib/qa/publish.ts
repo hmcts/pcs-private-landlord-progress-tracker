@@ -7,8 +7,10 @@
 // (render.ts, `keep`), is left as the page has it. An answered agent row whose question on the
 // page differs from the layout's has its question rewritten with its status and comment
 // (render.ts, `sync`), and only when both of those are written too. Rows the page lacks are added after the row
-// before them in the layout. The change
-// goes to Confluence as targeted edits (replaceNode / insertNodeAfter on the cells' local ids),
+// before them in the layout. A row no layout row matches any more is removed when the generator
+// wrote it whole and nobody has touched it since: its key cell as render writes it, and every
+// other cell marked and unedited. Any other such row is a person's and stays. The change
+// goes to Confluence as targeted edits (replaceNode / insertNodeAfter / deleteNode on local ids),
 // so the rest of the page, mentions, images and macros included, is never re-sent. Updates
 // carry the snapshot token from the read; on a stale token the page is read again and the
 // merge redone, once.
@@ -17,20 +19,18 @@ import { createHash } from 'node:crypto'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Layout, LayoutTable, ReleaseConfig } from './config.ts'
-import { cellsOf, type El, esc, find, parse, rowsOf, shortHash, splice, tableAfterHeading, textOf } from './html.ts'
+import { cellsOf, type El, esc, find, type Node, parse, rowsOf, shortHash, splice, tableAfterHeading, textOf } from './html.ts'
 import { cellText, type CellName, type GenCell, type GenRow, MARKER, markerRow, markers, plainCell, rowHtml, tableHtml, titleOf } from './render.ts'
 import type { TwgRunner } from '../roadmap-runner.ts'
 import { QaError } from './errors.ts'
 import { pageId } from './twg.ts'
 import { str } from './util.ts'
 
-export interface Edit {
-  name: 'replaceNode' | 'insertNodeAfter' | 'appendNodeToEnd'
-  localId?: string
-  value: string
-}
+export type Edit =
+  | { name: 'replaceNode' | 'insertNodeAfter' | 'appendNodeToEnd'; localId?: string; value: string }
+  | { name: 'deleteNode'; localId: string; value?: undefined }
 
-export type Action = 'update' | 'judgement' | 'unchanged' | 'keep-human' | 'keep-edited' | 'keep-unreachable' | 'add-row' | 'add-table' | 'skipped'
+export type Action = 'update' | 'judgement' | 'unchanged' | 'keep-human' | 'keep-edited' | 'keep-unreachable' | 'add-row' | 'add-table' | 'remove-row' | 'skipped'
 
 export interface CellChange {
   table: 'info' | 'checklist'
@@ -158,6 +158,45 @@ function rowFinder(trs: El[], spec: LayoutTable): (key: string) => El | undefine
   }
 }
 
+const blank = (n: Node) => n.type === 'text' && !n.text.trim()
+
+/** Whether a key cell is as render writes it: one paragraph of plain text, with no marks, links or macros. */
+function plainKey(td: El): boolean {
+  const [p, ...more] = td.children.filter((c) => !blank(c))
+  return !more.length && p?.type === 'el' && p.tag === 'p' && p.children.length > 0 && p.children.every((c) => c.type === 'text')
+}
+
+/** Whether a page cell is the generator's, unedited, for the row with this key. */
+function generated(page: string, table: TableName, key: string, td: El): boolean {
+  const re = new RegExp(`^qa-auto-${escRe(markerRow(table, key))}-(status|comments|details)-`)
+  const name = markers(td).map((x) => re.exec(x)?.[1]).find(Boolean) as CellName | undefined
+  return !!name && ownerOf(page, table, key, name, td).owner === 'generator'
+}
+
+/**
+ * Removes the page's rows that match no layout row, if the generator wrote them whole and
+ * nobody has touched them since. The header row, and every row with a person's cell, stays.
+ */
+function retireRows(m: Merging, table: TableName, spec: LayoutTable, trs: El[]): void {
+  const inLayout = (text: string) => spec.rows.some((x) => x.key === text || (x.match !== undefined && new RegExp(x.match, 'i').test(text)))
+  for (const tr of trs.slice(1)) {
+    const [first, ...rest] = cellsOf(tr)
+    if (!first || cellsOf(tr).some((c) => c.tag === 'th')) continue
+    const key = textOf(first)
+    if (inLayout(key)) continue
+    const id = tr.attrs['data-local-id']
+    if (!rest.length || !plainKey(first) || !rest.every((td) => generated(m.page, table, key, td))) {
+      m.changes.push({ table, key, cell: null, action: 'keep-human', why: 'not in the layout, but a person wrote or edited it' })
+    } else if (id) {
+      m.edits.push({ name: 'deleteNode', localId: id })
+      m.splices.push({ start: tr.start, end: tr.end, text: '' })
+      m.changes.push({ table, key, cell: null, action: 'remove-row', before: textOf(tr) })
+    } else {
+      m.changes.push({ table, key, cell: null, action: 'skipped', why: 'not in the layout, but the row has no local id to remove it by' })
+    }
+  }
+}
+
 /** Merges one table's rows into the page's table; returns false when the page has no such table. */
 function mergeTable(m: Merging, root: El, table: TableName, spec: LayoutTable, mine: GenRow[]): boolean {
   const el = tableAfterHeading(root, new RegExp(`^${escRe(spec.heading)}$`, 'i'))
@@ -182,6 +221,9 @@ function mergeTable(m: Merging, root: El, table: TableName, spec: LayoutTable, m
       m.changes.push({ table, key: r.key, cell: null, action: 'add-row', after: textOf(parse(html)) })
     }
   }
+  // Before the inserts: a removed row can start where a row is inserted, and splice applies
+  // ranges with the same start in the order given, so the removal must not take the insert with it.
+  retireRows(m, table, spec, trs)
   for (const [at, html] of inserts) m.splices.push({ start: at, end: at, text: html.join('') })
   return true
 }
@@ -239,19 +281,22 @@ export interface Counts {
   unchanged: number
   human: number
   added: number
+  /** Rows the layout no longer has, that the generator wrote and nobody has edited. */
+  removed: number
   skipped: number
   /** Kept as published, because their source couldn't be read. */
   kept: number
 }
 
 export function count(changes: CellChange[]): Counts {
-  const c = { change: 0, judged: 0, unchanged: 0, human: 0, added: 0, skipped: 0, kept: 0 }
+  const c = { change: 0, judged: 0, unchanged: 0, human: 0, added: 0, removed: 0, skipped: 0, kept: 0 }
   for (const x of changes) {
     if (x.action === 'update') c.change++
     else if (x.action === 'judgement') c.judged++
     else if (x.action === 'unchanged') c.unchanged++
     else if (x.action === 'keep-human' || x.action === 'keep-edited') c.human++
     else if (x.action === 'add-row' || x.action === 'add-table') c.added++
+    else if (x.action === 'remove-row') c.removed++
     else if (x.action === 'keep-unreachable') c.kept++
     else c.skipped++
   }
@@ -261,18 +306,19 @@ export function count(changes: CellChange[]): Counts {
 const WHAT: Record<Action, string> = {
   update: 'would change', judgement: 'would take the judgement, unmarked', unchanged: 'unchanged', 'keep-human': 'kept: written by a person (no marker)',
   'keep-edited': 'kept: edited by a person since it was generated', 'keep-unreachable': 'kept as published: its source could not be read, or the agent gave no answer', 'add-row': 'row would be added',
-  'add-table': 'table would be added', skipped: 'skipped',
+  'add-table': 'table would be added', 'remove-row': 'row would be removed: no longer in the layout', skipped: 'skipped',
 }
 
 export function diffSummary(title: string, changes: CellChange[]): string {
   const c = count(changes)
-  const out = [title, `${c.change} cells would change, ${c.judged} would take a judgement, ${c.added} rows would be added, ${c.human} cells kept as people wrote them, ` +
+  const out = [title, `${c.change} cells would change, ${c.judged} would take a judgement, ${c.added} rows would be added, ${c.removed} rows would be removed, ${c.human} cells kept as people wrote them, ` +
     `${c.kept} kept as published because a source could not be read or the agent gave no answer, ${c.unchanged} unchanged, ${c.skipped} skipped`, '']
   for (const x of changes) {
     if (x.action === 'unchanged') continue
     out.push(`${x.table} ${x.key}${x.cell ? ` ${x.cell}` : ''}: ${WHAT[x.action]}${x.why ? ` (${x.why})` : ''}`)
     if (x.action === 'update' || x.action === 'judgement') out.push(`  - ${x.before}`, `  + ${x.after}`)
     if (x.action === 'add-row') out.push(`  + ${x.after}`)
+    if (x.action === 'remove-row') out.push(`  - ${x.before}`)
   }
   return out.join('\n') + '\n'
 }

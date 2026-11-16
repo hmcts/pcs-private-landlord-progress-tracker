@@ -164,7 +164,7 @@ describe('publishing agent rows', () => {
     assert.deepEqual(row1(unanswered), [['status', 'keep-unreachable'], ['comments', 'keep-unreachable']])
     assert.match(unanswered.html, /Service-wide: is unit test coverage greater than 80%\?/)
     assert.match(unanswered.html, /Coverage is 91%/)
-    assert.equal(unanswered.edits.filter((e) => e.value.includes('unit test coverage')).length, 0)
+    assert.equal(unanswered.edits.filter((e) => e.value?.includes('unit test coverage')).length, 0)
 
     const answer = genRows(layout, evaluate(cfg, layout, answered({ '1': { answer: 'No', comment: 'Coverage is 61%.', links: [link] } })))
     const edited = merge(old.replace('Coverage is 91%.', 'Checked by hand.'), layout, answer)
