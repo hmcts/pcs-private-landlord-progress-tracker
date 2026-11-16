@@ -11,4 +11,56 @@
 #   raised: "2026-11-09"
 #   review: "2026-11-23"       # required while open
 #   mitigation: What we're doing about it
-[]
+
+- id: R-001
+  type: risk
+  title: Engineers are not familiar with agentic coding
+  description: Most engineers joining the project have not delivered with AI coding agents before, so early delivery may be slower and quality less consistent while they learn.
+  owner: Delivery lead
+  rag: amber
+  status: open
+  raised: "2026-11-16"
+  review: "2026-11-30"
+  mitigation: Onboard engineers before the project starts, pair them with experienced practitioners and review agent-produced work closely in the first sprints.
+
+- id: R-002
+  type: risk
+  title: We may be unable to procure licences for engineers
+  description: Without licences for agentic coding tools, engineers can't work in the way the plan assumes, and delivery would slow or stall.
+  owner: Delivery lead
+  rag: red
+  status: open
+  raised: "2026-11-16"
+  review: "2026-11-23"
+  mitigation: Start procurement now and escalate blockers early. Agree a fallback way of working in case licences arrive late.
+
+- id: R-003
+  type: risk
+  title: Our ways of working may disrupt other Possessions teams
+  description: Agentic delivery changes how often and how much code we change, which may conflict with the release, review and branching practices of other Possessions teams working in the same repositories.
+  owner: Delivery lead
+  rag: amber
+  status: open
+  raised: "2026-11-16"
+  review: "2026-11-30"
+  mitigation: Agree working practices with the other Possessions teams before the project starts, and keep changes small and easy to review.
+
+- id: A-001
+  type: assumption
+  title: The project starts on 30 November 2026
+  owner: Delivery lead
+  rag: green
+  status: open
+  raised: "2026-11-16"
+  review: "2026-11-30"
+
+- id: A-002
+  type: assumption
+  title: The prototype is broadly correct
+  description: We are building from the prototype on the basis that its journeys and content need refining, not redesigning.
+  owner: Product owner
+  rag: amber
+  status: open
+  raised: "2026-11-16"
+  review: "2026-11-30"
+  mitigation: Test the prototype with users and policy colleagues early, and record any significant change as a decision.
