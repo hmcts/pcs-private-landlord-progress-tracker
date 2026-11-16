@@ -5,7 +5,7 @@
 //
 //   node --no-warnings scripts/qa-jenkins-check.ts
 
-import { type Reachability, reachability } from './lib/qa/sources/jenkins.ts'
+import { type NetworkFailure, type Reachability, reachabilityDetail } from './lib/qa/sources/jenkins.ts'
 
 const SAY: Record<Reachability, string> = {
   reachable: 'Jenkins is reachable and the credentials work, so the E2E rows will be read',
@@ -18,5 +18,16 @@ const SAY: Record<Reachability, string> = {
   error: 'Jenkins answered with an error, so the E2E rows keep their published answers',
 }
 
-const line = SAY[await reachability()]
+const FAILURE: Record<NetworkFailure, string> = {
+  timeout: 'the connection timed out (a firewall dropping it?)',
+  'no-route': 'there is no route to it (a firewall rejecting it, or no network path)',
+  refused: 'the connection was refused',
+  reset: 'the connection was reset',
+  dns: 'build.hmcts.net did not resolve',
+  tls: "the TLS handshake failed (the certificate doesn't match?)",
+  other: 'the request failed',
+}
+
+const { kind, failure } = await reachabilityDetail()
+const line = kind === 'network' && failure ? `${SAY.network}: ${FAILURE[failure]}` : SAY[kind]
 console.log(process.env.GITHUB_ACTIONS ? `::notice::${line}` : line)
