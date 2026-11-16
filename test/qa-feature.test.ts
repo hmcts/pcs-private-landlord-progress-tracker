@@ -23,7 +23,7 @@ const { cfg: loaded, layout } = loadRelease(PATH)
 // The committed feature layout's rows are all the agent's; this one answers them from the
 // mechanical rules, as a feature layout can.
 const mechanical = loadYaml('test/fixtures/qa-layout-feature-mechanical.yaml') as Layout
-assert.deepEqual(validateLayout(mechanical), [])
+test('the mechanical feature layout fixture is valid', () => assert.deepEqual(validateLayout(mechanical), []))
 const E2E_SHA = '3d0d6bb55bafc801c36fdc697a82a9421a8f9b2a'
 const cfg: ReleaseConfig = { ...loaded, candidates: [{ name: SERVICE_WIDE, shas: { 'pcs-api': SHA.api2, 'pcs-frontend': SHA.fe2 } }] }
 
