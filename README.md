@@ -141,7 +141,8 @@ epics: [HDPI-10019]                # Jira scope: these epics' child tickets
 repos:
   pcs-frontend:
     github: hmcts/pcs-frontend     # sonar, cosmos_product, cosmos_component, builder as for a release
-    commit: master                 # service-wide rows: this branch's latest finished build, or a full SHA
+    pr: 2312                       # every row read at this pull request (or `commit`, not both)
+    # commit: master               # service-wide rows: this branch's latest finished build, or a full SHA
     e2e:                           # optional: where the feature's E2E tests ran
       jenkins: { job: HMCTS_j_to_z/pcs-frontend, branch: PR-2312, build: last-completed }   # or a build number
       label: enable_private_landlord_test   # optional: the PR label that runs the feature's tests
@@ -156,9 +157,17 @@ mechanical rows they answer the rows themselves.
   functional, yarn audit, dependency check, ignored tests) are about each repo as a whole. They are
   read at one commit per repo, picked when the evidence is collected: the newest commit on
   `commit` (default: the repo's default branch) whose Jenkins build has finished, passed or
-  failed, going by its `continuous-integration/jenkins/branch` status. A full SHA pins it. The
-  header's "GIT Revision" row names the commit, and each finding says "service-wide" and the
-  commit.
+  failed, going by its `continuous-integration/jenkins/branch` status. A full SHA pins it. With
+  `pr` instead, the commit is that of the PR job's latest finished Jenkins build (Cosmos
+  `pipeline-metrics`, branch `PR-<n>`), else, when Cosmos has none or can't be read, the PR's
+  head commit on GitHub, if its `continuous-integration/jenkins/pr-head` status says the build
+  finished (success or failure); the finding says which. A head whose build is pending, errored or
+  has no status isn't picked: the GIT Revision cell still names it, but the repo's rows are unknown. Then every reader measures the PR: SonarCloud's analysis of the pull request (by
+  `pullRequest`; with only new-code coverage, the row is unknown and gives that figure), the PR
+  job's latest finished build for the stage rows and CVE reports, where functional stages run on
+  preview and no AAT stage runs, and the GitHub checks and source at the commit. `e2e.jenkins.branch`
+  must then be `PR-<pr>`. The header's "GIT Revision" row is `<repo> = <sha7>` per repo,
+  linked to the commit, and each finding says "service-wide" and the commit.
 - **Feature checks** are about the feature only. The E2E finding is the outcome of the E2E stages of
   the configured Jenkins build, as Cosmos `pipeline-metrics` records them under the repo's
   `cosmos_product` and `cosmos_component` and the configured `job`: the branch's latest finished

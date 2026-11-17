@@ -20,10 +20,10 @@
 
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { type Layout, type LayoutRow, type ReleaseConfig, SECTION_KINDS } from './config.ts'
+import { type Layout, type LayoutRow, prOfRepo, type ReleaseConfig, SECTION_KINDS } from './config.ts'
 import { QaError } from './errors.ts'
 import type { PublishedPart, PublishedRow } from './publish.ts'
-import { item, type Item } from './sources/common.ts'
+import { item, type Item, short } from './sources/common.ts'
 import type { Answer, Evidence, EvidenceItem, Link, Status } from './types.ts'
 import { isRec, str } from './util.ts'
 
@@ -305,10 +305,32 @@ export interface Published {
  * name is kept there too, for the pipeline's "Created by" line (collectedName).
  */
 export function agentInput(cfg: ReleaseConfig, layout: Layout, ev: Evidence, published: Published | null, createdBy: string | null = null): Record<string, unknown> {
-  const repos = Object.fromEntries(Object.entries(cfg.repos).map(([name, rc]) => [name, {
-    github: rc.github, ...(rc.sonar ? { sonar: rc.sonar } : {}), ...(rc.e2e ? { e2e: rc.e2e } : {}),
-    commits: Object.fromEntries(cfg.candidates.filter((c) => c.shas[name]).map((c) => [c.name, c.shas[name]])),
-  }]))
+  // How each repo's service-wide commit was picked, or why none was, for the agent to mention where it matters.
+  const revision = (name: string) => {
+    const it = ev.items.find((i) => i.rule === 'service-revision' && i.repo === name)
+    const from = str(it?.data?.from)
+    return it ? { status: it.status, ...(it.sha ? { sha: it.sha } : {}), ...(from ? { from } : {}), ...(it.note ? { note: it.note } : {}) } : null
+  }
+  const pullRequest = (name: string, pr: number) => {
+    const sha = cfg.candidates[0]?.shas[name]
+    return { number: pr, repo: cfg.repos[name].github, url: `https://github.com/${cfg.repos[name].github}/pull/${String(pr)}`, ...(sha ? { commit: sha } : {}) }
+  }
+  const pulls = Object.keys(cfg.repos).flatMap((name) => {
+    const pr = prOfRepo(cfg, name)
+    return pr ? [[name, pullRequest(name, pr)] as const] : []
+  })
+  const repos = Object.fromEntries(Object.entries(cfg.repos).map(([name, rc]) => {
+    const pull = pulls.find(([n]) => n === name)?.[1]
+    const rev = revision(name)
+    return [name, {
+      github: rc.github, ...(rc.sonar ? { sonar: rc.sonar } : {}), ...(rc.e2e ? { e2e: rc.e2e } : {}),
+      ...(pull ? { pullRequest: pull } : {}), ...(rev ? { revision: rev } : {}),
+      commits: Object.fromEntries(cfg.candidates.filter((c) => c.shas[name]).map((c) => [c.name, c.shas[name]])),
+    }]
+  }))
+  // Said once, so the agent judges the feature's PRs, not master.
+  const measuredAt = pulls.length ? { measuredAt: `The evidence is from the feature's pull requests, not master: ${pulls.map(([, p]) =>
+    `${p.repo}#${String(p.number)}${p.commit ? ` at ${short(p.commit)}` : ', with no commit picked'}`).join(', ')}.` } : {}
   const compact = (i: EvidenceItem) => ({ rule: i.rule, status: i.status, value: i.value, ...(i.note ? { note: i.note } : {}),
     ...(i.answer ? { answer: i.answer } : {}), ...(i.unreachable ? { unreachable: true } : {}), links: i.links,
     ...(i.sha ? { sha: i.sha } : {}), ...(i.repo ? { repo: i.repo } : {}) })
@@ -322,7 +344,7 @@ export function agentInput(cfg: ReleaseConfig, layout: Layout, ev: Evidence, pub
   } : {}
   return {
     scope: { kind: cfg.kind ?? 'release', name: cfg.release, ...(cfg.epics ? { epics: cfg.epics } : {}), ...(cfg.kind === 'feature' ? {} : { jql: cfg.jql }),
-      ...(cfg.report_page ? { reportPage: cfg.report_page } : {}), ...(cfg.ria_page ? { riaPage: cfg.ria_page } : {}), repos },
+      ...(cfg.report_page ? { reportPage: cfg.report_page } : {}), ...(cfg.ria_page ? { riaPage: cfg.ria_page } : {}), ...measuredAt, repos },
     collectedAt: ev.generatedAt,
     answersFile: ANSWERS_FILE,
     pageRead: published !== null,

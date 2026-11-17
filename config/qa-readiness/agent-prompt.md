@@ -70,8 +70,17 @@ replaces it, so answer those first, even if only with a blank status.
 
 - `scope`: the feature, its `epics` (its Jira scope is their child tickets,
   `parent in (<epics>)`), its `repos` with the GitHub name, Sonar key, the commit its
-  service-wide rows were read at (`commits`) and, where set, the Jenkins build that ran the
-  feature's E2E tests and their tags and spec paths (`e2e`).
+  service-wide rows were read at (`commits`), how that commit was picked (`revision`: its
+  `status`, `from` and `note`), the feature's pull request (`pullRequest`: its number, link
+  and that commit) and, where set, the Jenkins build that ran the feature's
+  E2E tests and their tags and spec paths (`e2e`).
+- `scope.measuredAt`, when set, names the feature's pull requests and their commits. Then all the
+  evidence is from them, not master: SonarCloud's analysis of each PR, the PR's latest finished
+  Jenkins build in Cosmos, the GitHub checks and the source at the PR's commit. Judge the PRs, and
+  name them in comments ("pcs-api PR #3196"). A PR build deploys to preview, not AAT, so an AAT
+  row has no PR evidence: say so, and don't answer it from master. A repo whose `revision` is
+  unknown has no commit picked (its PR head has no finished Jenkins build, say): its rows have no
+  evidence, so say why in their comments, from the revision's `note`.
 - `rows`: for each checklist row, its `key`, `question`, `guide` (what Yes, No and N/A mean for
   it, and what evidence to look for), `evidence` (what the pipeline's own checks found:
   `status` pass, fail or unknown, `value`, `note`, `links`, and `unreachable: true` when the
@@ -106,8 +115,7 @@ For each row:
 Write as the R1.3A report does: short, factual, specific, in British English. One to three
 sentences. Name the figure, the build or the ticket; don't explain the process or hedge.
 
-- Good: "Coverage 91.2% (pcs-api) and 88.0% (pcs-frontend) on SonarCloud, at the latest master
-  builds."
+- Good: "Coverage 91.2% (pcs-api PR #3196) and 88.0% (pcs-frontend PR #2312) on SonarCloud."
 - Good: "No Critical or High bugs open under HDPI-10019."
 - Good: "No ZAP or ITHC run is recorded for this feature."
 - Bad: "I have checked SonarCloud and it appears that coverage is likely above the threshold."
@@ -157,10 +165,10 @@ A JSON object keyed by row number, one entry per row you answer, and `sections`:
 {
   "1": {
     "answer": "Yes",
-    "comment": "Coverage 91.2% (pcs-api) and 88.0% (pcs-frontend) on SonarCloud, at the latest master builds.",
+    "comment": "Coverage 91.2% (pcs-api PR #3196) and 88.0% (pcs-frontend PR #2312) on SonarCloud.",
     "links": [
-      { "text": "pcs-api on SonarCloud", "url": "https://sonarcloud.io/summary/overall?id=uk.gov.hmcts.reform%3Apcs-api-2" },
-      { "text": "pcs-frontend on SonarCloud", "url": "https://sonarcloud.io/summary/overall?id=pcs-frontend" }
+      { "text": "pcs-api PR #3196 on SonarCloud", "url": "https://sonarcloud.io/summary/new_code?id=uk.gov.hmcts.reform%3Apcs-api-2&pullRequest=3196" },
+      { "text": "pcs-frontend PR #2312 on SonarCloud", "url": "https://sonarcloud.io/summary/new_code?id=pcs-frontend&pullRequest=2312" }
     ]
   },
   "13": {
@@ -175,14 +183,14 @@ A JSON object keyed by row number, one entry per row you answer, and `sections`:
   },
   "sections": {
     "info": {
-      "Test Environments": { "text": "AAT", "links": [{ "text": "pcs-frontend master build 1748", "url": "https://build.hmcts.net/…" }] },
+      "Test Environments": { "text": "Preview", "links": [{ "text": "pcs-frontend PR-2312 build 14", "url": "https://build.hmcts.net/…" }] },
       "External Risks": { "text": "None", "links": [] }
     },
     "testingSummary": { "Smoke Testing": "✅ Completed", "Functional Testing": "", "Regression Testing": "", "Automation Regression": "",
       "Integration Testing": "✅ Completed", "PCQ & Your support Validation": "NA", "Liberata Reconciliation Testing": "NA", "Production Readiness Validation": "" },
     "defectSummary": { "counts": { "Critical": "0", "High": "0", "Medium": "1", "Low": "0" }, "comment": "No outstanding defects prevent this feature from progressing to Production." },
     "risks": [{ "risk": "None", "mitigation": "", "links": [] }],
-    "qaSummary": "Unit, integration and contract testing have been completed on the latest master builds.\n\nThe feature's E2E tests have not yet passed.",
+    "qaSummary": "Unit, integration and contract testing have been completed on the feature's pull requests.\n\nThe feature's E2E tests have not yet passed.",
     "recommendation": { "approved": false, "reason": "The feature's E2E tests have not passed, so QA can't yet recommend it for release." },
     "signOff": {
       "QA Manager": { "name": "", "status": "", "links": [] },

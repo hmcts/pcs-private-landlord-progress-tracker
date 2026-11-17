@@ -46,6 +46,8 @@ import { evaluate, genRows, renderPage, type Results } from './lib/qa/render.ts'
 import { genParts } from './lib/qa/sections.ts'
 import { accountName, pageId, quietRunner } from './lib/qa/twg.ts'
 import type { Item } from './lib/qa/sources/common.ts'
+import { defaultCosmosQuery } from './lib/qa/sources/cosmos.ts'
+import { defaultGitHubApi } from './lib/qa/sources/github.ts'
 import type { Evidence } from './lib/qa/types.ts'
 import { str } from './lib/qa/util.ts'
 
@@ -118,9 +120,11 @@ async function gather(cfg: ReleaseConfig, layout: Layout, dir: string, reuse: bo
     say(`evidence: ${evidence.items.length} items from a file`)
     return { cfg: { ...cfg, candidates: evidence.candidates }, evidence }
   }
-  const scoped = await scopeFeature(cfg)
+  // One Cosmos client and GitHub api for the run, so the PR build and head lookups are shared.
+  const sources = { cosmos: defaultCosmosQuery(), githubApi: defaultGitHubApi() }
+  const scoped = await scopeFeature(cfg, sources.githubApi, undefined, sources.cosmos)
   const extra: Record<string, () => Promise<Item[]>> = scoped.items.length ? { 'service-revision': async () => scoped.items } : {}
-  const res = await collect(scoped.cfg, layout, { ...readers(scoped.cfg), ...extra })
+  const res = await collect(scoped.cfg, layout, { ...readers(scoped.cfg, sources), ...extra })
   if (cfg.kind === 'feature') res.evidence.unpicked = scoped.unpicked
   writeFileSync(join(dir, EVIDENCE_FILE), JSON.stringify(res.evidence, null, 2) + '\n')
   for (const source of SOURCES.filter((x) => x !== 'e2e' || cfg.kind === 'feature')) {

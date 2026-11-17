@@ -18,10 +18,14 @@
 //     type, the newer (_ts) wins.
 //
 // Only builds of the candidate commit count: master builds, and nightly builds that ran on it.
-// A feature's E2E rows read the builds of the branch its config names the same way (e2e.ts).
+// A feature's repo with `pr` is read at its PR job's latest finished build (branch PR-<n>)
+// instead: a PR build deploys to preview, not AAT (sectionDeployToAKS in cnp-jenkins-library), so
+// its functional stages are :preview ones and it has no AAT stage to answer deployed-aat. A
+// feature's E2E rows read the builds of the branch its config names the same way (e2e.ts).
 // Every repo of every candidate gets an item for each rule it answers, unknown if need be.
 
-import type { Candidate, ReleaseConfig } from '../config.ts'
+import { type Candidate, prOfRepo, type ReleaseConfig, type RepoConfig } from '../config.ts'
+import { str } from '../util.ts'
 import { day, item, type Item, reason, short } from './common.ts'
 import { codebaseType, type CodebaseType, type CveDoc, repoFromGitUrl, summariseCve } from './cve.ts'
 
@@ -45,6 +49,8 @@ export interface StageEvent {
   current_build_duration?: number
   current_build_scheduled_time?: string
   git_commit?: string
+  /** When Cosmos stored the event, in seconds. */
+  _ts?: number
 }
 
 /** Runs one Cosmos SQL query against a container in one database. Injected in tests. */
@@ -154,12 +160,21 @@ export const STAGE_RULES: Record<string, RegExp> = {
   'deployed-aat': /^(smoketest|functionalTest):aat$/i,
 }
 
+/** For a PR build: its functional stages run on preview. */
+export const PR_STAGE_RULES: Record<string, RegExp> = {
+  ...STAGE_RULES,
+  functional: /^(smoketest|functionalTest|fullFunctionalTest|E2eTest|crossBrowserTest|mutationTest|apiGatewayTest):/i,
+}
+
+/** What a build is called in a finding: "master #12", or a PR's "PR-2312 #14". */
+const labelOf = (b: Build) => `${b.kind === 'branch' ? b.branch : b.kind} #${b.number}`
+
 /** The latest build of each job, master jobs first. */
 const latestPerJob = (builds: Build[]) => [...new Map(builds.map((b) => [b.job, b] as const).reverse()).values()].sort((a, b) =>
   a.kind === b.kind ? a.job.localeCompare(b.job) : a.kind === 'master' ? -1 : 1)
 
 function stageItem(rule: string, re: RegExp, picked: Build[], repo: string, sha: string, base: Omit<Parameters<typeof item>[0], 'rule' | 'status' | 'value'>,
-  now?: () => Date): Item {
+  now?: () => Date, pr?: number): Item {
   const hits: string[] = []
   const links = []
   const unsure: string[] = []
@@ -170,11 +185,17 @@ function stageItem(rule: string, re: RegExp, picked: Build[], repo: string, sha:
     if (!st.length) continue
     for (const [, s] of st) s === 'pass' ? pass++ : fail++
     if (b.suspects.length > 1 && st.some(([name, s]) => s === 'fail' && b.suspects.includes(name))) {
-      unsure.push(`${b.kind} #${b.number}: Jenkins can't tell whether ${b.suspects.join(' or ')} failed`)
+      unsure.push(`${labelOf(b)}: Jenkins can't tell whether ${b.suspects.join(' or ')} failed`)
     }
-    hits.push(`${b.kind} #${b.number}${b.started ? ` (${day(b.started)})` : ''}: ` +
+    hits.push(`${labelOf(b)}${b.started ? ` (${day(b.started)})` : ''}: ` +
       st.map(([name, s]) => `${name} ${s === 'pass' ? 'passed' : 'failed'}`).join(', '))
-    if (b.url) links.push({ text: `${repo} ${b.kind} #${b.number}`, url: b.url })
+    if (b.url) links.push({ text: `${repo} ${labelOf(b)}`, url: b.url })
+  }
+  if (!pass && !fail && pr) {
+    const none = `no finished Jenkins build of PR-${String(pr)} is recorded in the last ${BRANCH_DAYS} days`
+    const aat = rule === 'deployed-aat' && picked.length ? 'PR builds deploy to preview, not AAT' : null
+    return item({ ...base, rule, status: 'unknown', value: 'not run',
+      note: aat ?? (picked.length ? `no matching stage ran in ${picked.map(labelOf).join(', ')}` : none) }, now)
   }
   if (!pass && !fail) {
     return item({ ...base, rule, status: 'unknown', value: 'not run',
@@ -184,10 +205,11 @@ function stageItem(rule: string, re: RegExp, picked: Build[], repo: string, sha:
     data: { builds: picked.map((b) => ({ job: b.job, number: b.number, outcome: b.outcome })) } }, now)
 }
 
-export function stageItems(repo: string, sha: string, c: Candidate, builds: Build[], now?: () => Date): Item[] {
+/** The stage rules' items; for a repo read at its PR, `pr` is its number and `builds` the PR build. */
+export function stageItems(repo: string, sha: string, c: Candidate, builds: Build[], now?: () => Date, pr?: number): Item[] {
   const picked = latestPerJob(builds)
   const base = { source: SOURCE, sha, repo, candidate: c.name }
-  return Object.entries(STAGE_RULES).map(([rule, re]) => stageItem(rule, re, picked, repo, sha, base, now))
+  return Object.entries(pr ? PR_STAGE_RULES : STAGE_RULES).map(([rule, re]) => stageItem(rule, re, picked, repo, sha, base, now, pr))
 }
 
 export const CVE_RULE: Record<CodebaseType, string> = { java: 'dependency-check', node: 'yarn-audit' }
@@ -207,8 +229,8 @@ export function cveItem(repo: string, sha: string, c: Candidate, build: Build, d
   const answer = s.open + s.suppressed > 0 ? 'Yes' : 'No'
   return item({ source: SOURCE, sha, repo, candidate: c.name, rule: CVE_RULE[s.type], status: s.open ? 'fail' : 'pass', answer,
     value: `${CHECKER[s.type]}: ${s.open} open${sev ? ` (${sev})` : ''}, ${s.suppressed} suppressed`,
-    links: build.url ? [{ text: `${repo} ${build.kind} #${build.number}`, url: build.url }] : [],
-    note: `${build.kind} build #${build.number} of ${short(sha)}`, data: { open: s.open, suppressed: s.suppressed, bySeverity: s.bySeverity } }, now)
+    links: build.url ? [{ text: `${repo} ${labelOf(build)}`, url: build.url }] : [],
+    note: build.kind === 'branch' ? `${labelOf(build)}${build.sha ? `, at ${short(build.sha)}` : ''}` : `${build.kind} build #${build.number} of ${short(sha)}`, data: { open: s.open, suppressed: s.suppressed, bySeverity: s.bySeverity } }, now)
 }
 
 /** Per build tag and codebase type, the newest report about this repo; ties keep the first read. */
@@ -238,7 +260,7 @@ function cveItems(repo: string, sha: string, c: Candidate, builds: Build[], repo
 }
 
 const STAGE_FIELDS = ['job_name', 'branch_name', 'build_number', 'build_tag', 'build_url', 'current_step_name',
-  'current_build_current_result', 'current_build_duration', 'current_build_scheduled_time', 'git_commit']
+  'current_build_current_result', 'current_build_duration', 'current_build_scheduled_time', 'git_commit', '_ts']
 
 const STAGE_QUERY = `SELECT ${STAGE_FIELDS.map((f) => `c.${f}`).join(', ')} FROM c ` +
   'WHERE c.git_commit = @sha AND c.product = @p AND c.component = @c'
@@ -248,10 +270,81 @@ export const BRANCH_DAYS = 60
 /** The stage events of one build of a branch (@n, as Jenkins's BUILD_NUMBER string), or of its builds since @since (_ts). */
 export const branchQuery = (pinned: boolean): string => `SELECT ${STAGE_FIELDS.map((f) => `c.${f}`).join(', ')} FROM c ` +
   `WHERE c.branch_name = @b AND c.product = @p AND c.component = @c AND ${pinned ? 'c.build_number = @n' : 'c._ts > @since'}`
-// Joined to master and nightly builds of the commit through build_tag; a report that names no
-// branch is kept, since the build it joins to already says which.
+// Joined to master and nightly builds of the commit (or a PR's build) through build_tag; a report
+// that names no branch is kept, since the build it joins to already says which.
 const CVE_QUERY = 'SELECT c._ts, c.build, c.report FROM c WHERE ARRAY_CONTAINS(@tags, c.build.build_tag) AND ' +
   '(NOT IS_DEFINED(c.build.branch_name) OR IS_NULL(c.build.branch_name) OR ARRAY_CONTAINS(@branches, c.build.branch_name))'
+
+/** Whether a Cosmos job_name (<folder>/<repo>/<branch>) is the configured job's build of the branch. */
+export function isJob(jobName: string, job: string, branch: string): boolean {
+  return jobName === `${job}/${branch}` || jobName === `${job}/${encodeURIComponent(branch)}`
+}
+
+/**
+ * Whether a Cosmos job_name is the repo's build of the branch: the configured job's, or with none,
+ * any folder's job named after the repo (<folder>/<repo>/<branch>).
+ */
+export function isRepoJob(jobName: string, github: string, branch: string, job?: string): boolean {
+  if (job) return isJob(jobName, job, branch)
+  const parts = jobName.split('/')
+  const repo = github.split('/').at(-1)
+  return parts.length === 3 && !parts[0].endsWith('_Nightly') && parts[1] === repo && (parts[2] === branch || parts[2] === encodeURIComponent(branch))
+}
+
+type BranchRepo = Pick<RepoConfig, 'github' | 'cosmos_product' | 'cosmos_component'>
+
+// One query per repo, branch and job for the run: scopeFeature, cosmosReader and the E2E reader
+// all read a PR's builds, and share the query they are given.
+const branchMemo = new WeakMap<CosmosQuery, Map<string, Promise<StageEvent[][]>>>()
+
+/** The repo's builds of a branch in Cosmos, as stage events grouped by build: one build (@n), or those of the last BRANCH_DAYS. */
+export function branchBuilds(query: CosmosQuery, rc: BranchRepo, branch: string, job: string | undefined, wanted: number | null,
+  now: () => Date): Promise<StageEvent[][]> {
+  const memo = branchMemo.get(query) ?? new Map<string, Promise<StageEvent[][]>>()
+  branchMemo.set(query, memo)
+  const key = JSON.stringify([rc.github, rc.cosmos_product, rc.cosmos_component, branch, job ?? null, wanted])
+  const hit = memo.get(key)
+  if (hit) return hit
+  const read = readBranchBuilds(query, rc, branch, job, wanted, now)
+  memo.set(key, read)
+  return read
+}
+
+async function readBranchBuilds(query: CosmosQuery, rc: BranchRepo, branch: string, job: string | undefined, wanted: number | null,
+  now: () => Date): Promise<StageEvent[][]> {
+  const bound = wanted === null ? { name: '@since', value: Math.floor(now().getTime() / 1000) - BRANCH_DAYS * 86_400 } : { name: '@n', value: String(wanted) }
+  const events = await everywhere(query, 'pipeline-metrics', branchQuery(wanted !== null), [{ name: '@b', value: branch },
+    { name: '@p', value: rc.cosmos_product }, { name: '@c', value: rc.cosmos_component }, bound]) as StageEvent[]
+  return byBuild(events.filter((e) => e.branch_name === branch && isRepoJob(str(e.job_name), rc.github, branch, job)))
+}
+
+/**
+ * The PR build a repo read at its PR is measured by: its newest finished build of the candidate
+ * commit, else its newest finished build, which ran a different commit (its finding says which).
+ */
+export function prBuild(groups: StageEvent[][], sha: string): Build | null {
+  const builds = finished(groups)
+  return builds.find((b) => b.sha === sha) ?? builds[0] ?? null
+}
+
+const eventTime = (e: StageEvent) => e._ts ?? (Date.parse(e.current_build_scheduled_time ?? '') / 1000 || 0)
+
+/**
+ * The builds of the job with the newest event, when the groups span several (a repo's PR job
+ * moved folder, say). Build numbers are only comparable within a job.
+ */
+export function newestJob(groups: StageEvent[][]): StageEvent[][] {
+  const latest = new Map<string, number>()
+  for (const e of groups.flat()) latest.set(e.job_name, Math.max(latest.get(e.job_name) ?? 0, eventTime(e)))
+  const [job] = [...latest].sort((a, b) => b[1] - a[1])[0] ?? []
+  return groups.filter((g) => g[0].job_name === job)
+}
+
+/** The finished builds of the newest job among the groups, newest first. */
+const finished = (groups: StageEvent[][]): Build[] => newestJob(groups).map(completedBuild).filter((b): b is Build => !!b).sort((a, b) => b.number - a.number)
+
+/** The newest finished build among the groups, or null. */
+export const latestBuild = (groups: StageEvent[][]): Build | null => finished(groups)[0] ?? null
 
 export function cosmosReader(cfg: ReleaseConfig, query: CosmosQuery = defaultCosmosQuery(), now?: () => Date): () => Promise<Item[]> {
   return async () => {
@@ -271,16 +364,28 @@ export function cosmosReader(cfg: ReleaseConfig, query: CosmosQuery = defaultCos
           out.push(...unknown(down, true))
           continue
         }
+        const pr = prOfRepo(cfg, repo)
         let builds: Build[]
         try {
-          builds = toBuilds(await everywhere(query, 'pipeline-metrics', STAGE_QUERY, [{ name: '@sha', value: sha },
-            { name: '@p', value: rc.cosmos_product }, { name: '@c', value: rc.cosmos_component }]) as StageEvent[])
+          if (pr) {
+            const b = prBuild(await branchBuilds(query, rc, `PR-${String(pr)}`, rc.e2e?.jenkins.job, null, now ?? (() => new Date())), sha)
+            builds = b ? [b] : []
+          } else {
+            builds = toBuilds(await everywhere(query, 'pipeline-metrics', STAGE_QUERY, [{ name: '@sha', value: sha },
+              { name: '@p', value: rc.cosmos_product }, { name: '@c', value: rc.cosmos_component }]) as StageEvent[])
+          }
         } catch (e) {
           down = `Cosmos pipeline-metrics could not be read: ${reason(e)}`
           out.push(...unknown(down, true))
           continue
         }
-        out.push(...stageItems(repo, sha, c, builds, now))
+        // A PR build of another commit says nothing about the candidate's.
+        const other = pr ? builds.find((b) => b.sha !== sha) : undefined
+        if (other) {
+          out.push(...unknown(`${labelOf(other)}, the PR's latest finished Jenkins build, ran ${other.sha ? short(other.sha) : 'no recorded commit'}, not ${short(sha)}`))
+          continue
+        }
+        out.push(...stageItems(repo, sha, c, builds, now, pr))
 
         const withCve = builds.filter((b) => b.tag)
         let docs: CveDoc[] = []
@@ -288,7 +393,7 @@ export function cosmosReader(cfg: ReleaseConfig, query: CosmosQuery = defaultCos
         if (withCve.length) {
           try {
             docs = await everywhere(query, 'cve-reports', CVE_QUERY,
-              [{ name: '@tags', value: withCve.map((b) => b.tag) }, { name: '@branches', value: BRANCHES }]) as CveDoc[]
+              [{ name: '@tags', value: withCve.map((b) => b.tag) }, { name: '@branches', value: pr ? [`PR-${String(pr)}`] : BRANCHES }]) as CveDoc[]
           } catch (e) {
             cveError = `Cosmos cve-reports could not be read: ${reason(e)}`
           }

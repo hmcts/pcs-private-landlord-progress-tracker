@@ -22,7 +22,7 @@
 import type { E2eConfig, ReleaseConfig, RepoConfig } from '../config.ts'
 import { mapLimit, SHA, str } from '../util.ts'
 import { item, type Item, reason, short } from './common.ts'
-import { type Build, BRANCH_DAYS, branchQuery, byBuild, completedBuild, type CosmosQuery, defaultCosmosQuery, everywhere, type StageEvent } from './cosmos.ts'
+import { type Build, BRANCH_DAYS, branchBuilds, completedBuild, type CosmosQuery, defaultCosmosQuery, latestBuild, type StageEvent } from './cosmos.ts'
 import { BRANCH_STATUS, defaultGitHubApi, defaultTarball, type GitHubApi, type GitHubTarball, ignoredItem, type Scan, scanTarball } from './github.ts'
 
 const SOURCE = 'e2e'
@@ -89,11 +89,6 @@ export function buildNumberOf(url: string, branch: string): number | null {
   return Number.isSafeInteger(n) && n > 0 && String(n) === digits ? n : null
 }
 
-/** Whether a Cosmos job_name (<folder>/<repo>/<branch>) is the configured job's build of the branch. */
-export function isJob(jobName: string, job: string, branch: string): boolean {
-  return jobName === `${job}/${branch}` || jobName === `${job}/${encodeURIComponent(branch)}`
-}
-
 type CosmosFind =
   | { kind: 'found'; build: Build }
   | { kind: 'pending'; number: number }
@@ -103,26 +98,23 @@ type CosmosFind =
 async function fromCosmos(query: CosmosQuery, rc: RepoConfig, e2e: E2eConfig, wanted: number | null, now: () => Date): Promise<CosmosFind> {
   if (!rc.cosmos_product) return { kind: 'unset', note: 'no Jenkins product and component are configured for the repo' }
   const { job, branch } = e2e.jenkins
-  const bound = wanted === null ? { name: '@since', value: Math.floor(now().getTime() / 1000) - BRANCH_DAYS * 86_400 } : { name: '@n', value: String(wanted) }
-  let events: StageEvent[]
+  let groups: StageEvent[][]
   try {
-    events = await everywhere(query, 'pipeline-metrics', branchQuery(wanted !== null), [{ name: '@b', value: branch },
-      { name: '@p', value: rc.cosmos_product }, { name: '@c', value: rc.cosmos_component }, bound]) as StageEvent[]
+    groups = await branchBuilds(query, rc, branch, job, wanted, now)
   } catch (e) {
     return { kind: 'down', note: `Cosmos pipeline-metrics could not be read: ${reason(e)}` }
   }
-  const groups = byBuild(events.filter((e) => e.branch_name === branch && isJob(str(e.job_name), job, branch)))
   if (wanted !== null) {
     const ev = groups.find((g) => Number(g[0].build_number) === wanted)
     if (!ev) return { kind: 'missing', note: `Cosmos records no build #${wanted} of ${branch}` }
     const build = completedBuild(ev)
     return build ? { kind: 'found', build } : { kind: 'pending', number: wanted }
   }
-  const builds = groups.map(completedBuild).filter((b): b is Build => !!b).sort((a, b) => b.number - a.number)
-  return builds.length ? { kind: 'found', build: builds[0] } : { kind: 'missing', note: `Cosmos records no finished build of ${branch} in the last ${BRANCH_DAYS} days` }
+  const build = latestBuild(groups)
+  return build ? { kind: 'found', build } : { kind: 'missing', note: `Cosmos records no finished build of ${branch} in the last ${BRANCH_DAYS} days` }
 }
 
-interface Head {
+export interface Head {
   sha: string
   pr: number | null
   /** The Jenkins status on the head commit, if it has one. */
@@ -131,8 +123,22 @@ interface Head {
   number?: number | null
 }
 
+// One lookup per repo and branch for the run: scopeFeature and the E2E reader share the api they are given.
+const headMemo = new WeakMap<GitHubApi, Map<string, Promise<Head | null>>>()
+
 /** The head commit of the branch (a PR's head, for PR-<n>) and its Jenkins status. */
-async function fromGitHub(api: GitHubApi, gh: string, branch: string): Promise<Head | null> {
+export function fromGitHub(api: GitHubApi, gh: string, branch: string): Promise<Head | null> {
+  const memo = headMemo.get(api) ?? new Map<string, Promise<Head | null>>()
+  headMemo.set(api, memo)
+  const key = `${gh}|${branch}`
+  const hit = memo.get(key)
+  if (hit) return hit
+  const read = readHead(api, gh, branch)
+  memo.set(key, read)
+  return read
+}
+
+async function readHead(api: GitHubApi, gh: string, branch: string): Promise<Head | null> {
   const pr = prNumber(branch)
   const res = await api(pr === null ? `repos/${gh}/commits/${encodeURIComponent(branch)}` : `repos/${gh}/pulls/${String(pr)}`) as
     { sha?: unknown; head?: { sha?: unknown } }
