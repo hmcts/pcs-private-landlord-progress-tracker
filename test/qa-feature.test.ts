@@ -404,11 +404,12 @@ describe('Jira and the RIA for a feature', () => {
     const run = fakeTwg((args) => {
       const jql = jqlOf(args)
       if (jql.includes('statusCategory != Done')) return { data: { issues: [] } }
-      return { data: { issues: [{ key: 'HDPI-2', status: { name: 'Closed', statusCategory: { key: 'done' } }, comment: { total: 0, comments: [] } },
-        { key: 'HDPI-3', status: { name: 'New', statusCategory: { key: 'new' } }, comment: { total: 0, comments: [] } }] } }
+      return { data: { issues: [{ key: 'HDPI-2', issuetype: { name: 'Story' }, status: { name: 'Closed', statusCategory: { key: 'done' } }, comment: { total: 0, comments: [] } },
+        { key: 'HDPI-3', issuetype: { name: 'Bug' }, status: { name: 'New', statusCategory: { key: 'new' } }, comment: { total: 0, comments: [] } }] } }
     })
     const items = await jiraReader(cfg, run, NOW)()
     assert.ok(run.calls.every((a) => jqlOf(a).startsWith('(parent in (HDPI-10019)) AND ') || jqlOf(a) === 'parent in (HDPI-10019)'))
+    assert.deepEqual(run.calls.map(jqlOf).filter((j) => !j.includes('statusCategory')), ['parent in (HDPI-10019)'], 'one query for the work and the tickets')
     const done = items.find((i) => i.rule === 'stories-done')!
     assert.deepEqual([done.status, done.value], ['fail', '1 of 2 stories, tasks and bugs are done'])
     const tickets = items.find((i) => i.rule === 'epic-tickets')!
@@ -522,17 +523,22 @@ describe('review fixes', () => {
       return { data: { issues: [] } }
     })
     await jiraReader({ ...cfg, bug_types: ['Bug', 'Issue'] }, run, NOW)()
-    assert.ok(jqls.includes('(parent in (HDPI-10019)) AND issuetype in ("Story", "Task", "Bug", "Issue")'))
+    assert.ok(jqls.includes('parent in (HDPI-10019)'), "a feature's work is picked out of all its tickets")
+    const typed = fakeTwg((args) => ({ data: { issues: jqlOf(args).includes('statusCategory') ? [] : ['Story', 'Issue', 'Spike', 'bug'].map((t, n) =>
+      ({ key: `HDPI-${n + 1}`, issuetype: { name: t }, status: { name: 'Closed', statusCategory: { key: 'done' } }, comment: { total: 0, comments: [] } })) } }))
+    const items = await jiraReader({ ...cfg, bug_types: ['Bug', 'Issue'] }, typed, NOW)()
+    assert.equal(items.find((i) => i.rule === 'stories-done')!.value, '3 of 3 stories, tasks and bugs are done')
+    assert.equal(items.find((i) => i.rule === 'epic-tickets')!.links.length, 4, 'every type is a ticket to link')
     jqls.length = 0
     await jiraReader({ ...cfg, kind: 'release', jql: 'project = HDPI' }, run, NOW)()
     assert.ok(jqls.includes('(project = HDPI) AND issuetype in (Story, Task, Bug)'))
   })
 
   test('a long comment thread is read in full; only a failed read leaves it unknown and unreachable', async () => {
-    const work = (key: string) => ({ key, status: { name: 'Closed', statusCategory: { key: 'done' } }, comment: { total: 30, comments: [{ body: 'chatter' }] } })
+    const work = (key: string) => ({ key, issuetype: { name: 'Story' }, status: { name: 'Closed', statusCategory: { key: 'done' } }, comment: { total: 30, comments: [{ body: 'chatter' }] } })
     const answer = (failThread: boolean) => fakeTwg((args) => {
       if (args[2] === 'comment') return failThread ? new Error('twg exited 1') : { data: [{ body: 'Testing is complete' }], pageInfo: { hasNextPage: false } }
-      return { data: { issues: jqlOf(args).includes('issuetype in') ? [work('HDPI-5')] : [] } }
+      return { data: { issues: jqlOf(args).includes('statusCategory') ? [] : [work('HDPI-5')] } }
     })
     const read = (await jiraReader(cfg, answer(false), NOW)()).find((i) => i.rule === 'test-complete')!
     assert.equal(read.status, 'pass')

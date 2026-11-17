@@ -8,8 +8,7 @@ The report reproduces the R1.3A report's template exactly, and the pipeline lays
 write only the content of its cells and sections, nothing else: no notes, headings, extra rows,
 statuses or wording of your own around them. The page is:
 
-1. **Created by** (`createdBy` in `agent-input.json`) and **Last Updated** (the run's date,
-   which the pipeline writes).
+1. **Created by** and **Last Updated**, which the pipeline writes.
 2. The title and two fixed intro paragraphs, which the pipeline writes.
 3. **Release Information**: Release (the feature's name), Release Type, Jira Board (the epics),
    Jira Tickets (the epics' child tickets), Test Environments, External Dependencies, External
@@ -78,7 +77,6 @@ replaces it, so answer those first, even if only with a blank status.
   `status` pass, fail or unknown, `value`, `note`, `links`, and `unreachable: true` when the
   source couldn't be read, which is not a failure) and `published` (what the page says now, if
   it could be read; `byPerson: true` means a person wrote it and your answer won't replace it).
-- `createdBy`: the name for the "Created by" line, to copy exactly.
 - `info`: the Release Information rows you write, each with its `guide`, `evidence` and
   `published` text.
 - `sections`: each section's `kind`, `heading`, its table's `columns` and the fixed first
@@ -176,7 +174,6 @@ A JSON object keyed by row number, one entry per row you answer, and `sections`:
     "links": []
   },
   "sections": {
-    "createdBy": "<createdBy from agent-input.json>",
     "info": {
       "Test Environments": { "text": "AAT", "links": [{ "text": "pcs-frontend master build 1748", "url": "https://build.hmcts.net/…" }] },
       "External Risks": { "text": "None", "links": [] }
@@ -203,8 +200,8 @@ A JSON object keyed by row number, one entry per row you answer, and `sections`:
 - `links`: up to 12 `{ "text", "url" }`, `text` up to 200 characters, `url` an `https://` URL
   of up to 1000 characters. At least one for Yes and No.
 - No other fields. Keys are the rows' `key` values from `agent-input.json`, and `sections`.
-- `sections`: any of the fields above, each checked on its own. `createdBy` must be exactly
-  the input's. `info` keys are the `info` rows' keys; `text` 1 to 1500 characters.
+- `sections`: any of the fields above, each checked on its own. `info` keys are the `info`
+  rows' keys; `text` 1 to 1500 characters.
   `testingSummary`, `defectSummary.counts` and `signOff` need every one of the section's
   `rows`, and no others. Counts are digits, or `""` if not known. The defect sentence, each
   risk and each mitigation are at most 500 characters; `qaSummary` at most 3000; the

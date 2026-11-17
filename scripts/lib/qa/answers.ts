@@ -3,13 +3,13 @@
 //
 //   { "1": { "answer": "Yes", "comment": "Coverage is 91.2% (pcs-api) and 88.0% (pcs-frontend).",
 //            "links": [{ "text": "pcs-api on SonarCloud", "url": "https://sonarcloud.io/…" }] },
-//     "sections": { "createdBy": "…", "info": { "Release Type": { "text": "…", "links": [] } }, "qaSummary": "…", … } }
+//     "sections": { "info": { "Release Type": { "text": "…", "links": [] } }, "qaSummary": "…", … } }
 //
 // An answer of "" leaves the row's status blank: the agent couldn't establish it, and its comment
 // says what is missing. `sections` holds the rest of a template-reproducing layout (sections.ts):
-// the info rows with rule `agent`, each section after the checklist, and "Created by", which
-// must be the account name collected into agent-input.json. Each section is checked on its own,
-// like each row.
+// the info rows with rule `agent` and each section after the checklist. Each section is checked
+// on its own, like each row. "Created by" is not the agent's: the pipeline writes the account
+// name it collected into agent-input.json (collectedName).
 //
 // Unlike a judgement, an answer is the generator's: its cells carry the ownership marker, the
 // next run's answer replaces them, and a person editing one takes it over. Each answer is checked
@@ -87,7 +87,6 @@ export const TEST_STATUSES = ['✅ Completed', 'NA', ''] as const
 export const SIGN_STATUSES = ['✅ Approved', ''] as const
 
 export interface SectionAnswers {
-  createdBy?: string
   info?: Record<string, { text: string; links: Link[] }>
   testingSummary?: Record<string, (typeof TEST_STATUSES)[number]>
   defectSummary?: { counts: Record<string, string>; comment: string }
@@ -97,7 +96,7 @@ export interface SectionAnswers {
   signOff?: Record<string, { name: string; status: (typeof SIGN_STATUSES)[number]; links: Link[] }>
 }
 
-const SECTION_ANSWERS = ['createdBy', 'info', ...SECTION_KINDS]
+const SECTION_ANSWERS = ['info', ...SECTION_KINDS]
 
 /** Text of at most `max` characters, `min` or more of them not blank. */
 const textOk = (v: unknown, max: number, min = 1): v is string => typeof v === 'string' && v.length <= max && v.trim().length >= min
@@ -117,14 +116,10 @@ function fixedRows(v: unknown, rows: string[], w: string, each: (x: unknown, at:
 }
 
 /** What's wrong with one section's answer, if anything. */
-function sectionErrors(kind: string, v: unknown, layout: Layout, createdBy: string | null, w: string): string[] {
+function sectionErrors(kind: string, v: unknown, layout: Layout, w: string): string[] {
   const section = layout.sections?.find((s) => s.kind === kind)
   const rows = section?.rows ?? []
   switch (kind) {
-    case 'createdBy':
-      if (!layout.header) return [`${w}: the layout has no "Created by" line`]
-      if (!oneLine(v, LIMITS.name, 1)) return [`${w}: must be a name of 1 to ${LIMITS.name} characters`]
-      return createdBy === v ? [] : [`${w}: must be the createdBy given in ${AGENT_INPUT_FILE}${createdBy === null ? ', which has none' : ''}`]
     case 'info': {
       const keys = agentInfoRows(layout).map((r) => r.key)
       if (!isRec(v)) return [`${w}: expected a mapping of info rows to { text, links }`]
@@ -190,7 +185,7 @@ function normaliseSection(kind: string, v: unknown): unknown {
 }
 
 /** The section answers that pass, and what was wrong with the rest. */
-export function validateSectionAnswers(doc: unknown, layout: Layout, createdBy: string | null): { sections: SectionAnswers; errors: string[]; rejected: number } {
+export function validateSectionAnswers(doc: unknown, layout: Layout): { sections: SectionAnswers; errors: string[]; rejected: number } {
   if (!isRec(doc)) return { sections: {}, errors: ['answers.sections: expected a mapping'], rejected: 1 }
   const sections: Record<string, unknown> = {}
   const all: string[] = []
@@ -199,7 +194,7 @@ export function validateSectionAnswers(doc: unknown, layout: Layout, createdBy: 
   for (const [kind, v] of Object.entries(doc)) {
     const w = `answers.sections.${kind}`
     const errors = !known.includes(kind) || (SECTION_KINDS.includes(kind as never) && !layout.sections?.some((s) => s.kind === kind))
-      ? [`${w}: the layout has no such section`] : sectionErrors(kind, v, layout, createdBy, w)
+      ? [`${w}: the layout has no such section`] : sectionErrors(kind, v, layout, w)
     if (errors.length) {
       all.push(...errors)
       rejected++
@@ -211,7 +206,7 @@ export function validateSectionAnswers(doc: unknown, layout: Layout, createdBy: 
 }
 
 /** The answers that pass for the layout's agent rows and sections, and what was wrong with the rest. */
-export function validateAnswers(doc: unknown, layout: Layout, createdBy: string | null = null): { answers: AgentAnswers; sections: SectionAnswers; errors: string[]; rejected: number } {
+export function validateAnswers(doc: unknown, layout: Layout): { answers: AgentAnswers; sections: SectionAnswers; errors: string[]; rejected: number } {
   if (!isRec(doc)) throw new QaError('answers-invalid', 'expected a mapping of row keys to { answer, comment, links }')
   const keys = new Set(agentRows(layout).map((r) => r.key))
   const answers: AgentAnswers = {}
@@ -220,7 +215,7 @@ export function validateAnswers(doc: unknown, layout: Layout, createdBy: string 
   let sections: SectionAnswers = {}
   for (const [key, a] of Object.entries(doc)) {
     if (key === 'sections') {
-      const s = validateSectionAnswers(a, layout, createdBy)
+      const s = validateSectionAnswers(a, layout)
       sections = s.sections
       all.push(...s.errors)
       rejected += s.rejected
@@ -280,7 +275,7 @@ export function loadAnswers(dir: string, layout: Layout): LoadedAnswers {
   rmSync(rejectedPath, { force: true })
   if (!existsSync(path)) return { found: false, answers: {}, sections: {}, rejected: 0 }
   try {
-    const { answers, sections, errors, rejected } = validateAnswers(readJson(path, ANSWERS_FILE), layout, collectedName(dir))
+    const { answers, sections, errors, rejected } = validateAnswers(readJson(path, ANSWERS_FILE), layout)
     if (errors.length) writeFileSync(rejectedPath, errors.join('\n') + '\n')
     return { found: true, answers, sections, rejected }
   } catch (e) {
@@ -306,8 +301,8 @@ export interface Published {
 /**
  * What the agent is given for a scope (agent-input.json): the scope; for each agent row its
  * question, guide, the evidence filed under it and, if the page could be read, what it says now;
- * and for a layout with sections, the agent info rows, the sections it fills in, and the
- * account name "Created by" takes.
+ * and for a layout with sections, the agent info rows and the sections it fills in. The account
+ * name is kept there too, for the pipeline's "Created by" line (collectedName).
  */
 export function agentInput(cfg: ReleaseConfig, layout: Layout, ev: Evidence, published: Published | null, createdBy: string | null = null): Record<string, unknown> {
   const repos = Object.fromEntries(Object.entries(cfg.repos).map(([name, rc]) => [name, {

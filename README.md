@@ -127,9 +127,10 @@ the "Created by" and "Last Updated" lines, the title, the template's two intro p
 External Dependencies, External Risks, Outstanding Bugs, GIT and GIT Revision), the 23 checklist
 questions in the same order, and the Testing Summary, Defect Summary, Risks, QA Summary, QA
 Recommendation and Sign-off sections, at the template's heading levels. For a feature, Release
-is the feature's name, Jira Board links its epics and Jira Tickets their child tickets. The QA
-agent (see "Agent answers") writes the checklist, Release Type, Test Environments, External
-Dependencies, External Risks, the sections and "Created by"; "Last Updated" is the run's date.
+is the feature's name, Jira Board links its epics and Jira Tickets their child tickets (the
+first 15, then one link to the search for the rest). The QA agent (see "Agent answers") writes
+the checklist, Release Type, Test Environments, External Dependencies, External Risks and the
+sections. "Created by" is the account twg runs as, and "Last Updated" the run's date.
 See `config/qa-readiness/private-landlord-make-a-claim.yaml`.
 
 ```yaml
@@ -219,8 +220,9 @@ The cells the pipeline writes begin with a hidden anchor macro, `qa-auto-<row>-<
 hash being of the cell's text, links and macros. A publish replaces only those cells, and only while
 they still match the hash. Edit a cell, even just a link in it, and the pipeline leaves it alone from
 then on, and leaves the other cell of that row alone too; delete a row and it is added back.
-A row the page has out of the layout's order is moved where the layout has it, but only when
-nothing in it is a person's; otherwise it stays where it is.
+Rows the page has out of the layout's order are moved where the layout has it, as few as it
+takes to put the table in order, whoever wrote them. A move keeps the row as it is: its content,
+local ids and inline comments.
 
 A layout with `sections` (`pcs-feature`) owns the rest of the page the same way. The header lines
 above the title, the intro below it and each section (everything between its heading and the
@@ -233,7 +235,8 @@ Changing a layout is migrated the same way, touching only what the pipeline wrot
 longer has are removed if nobody edited them, a table's heading is rewritten if it reads exactly
 as one in the table's `formerly` list, and unmarked paragraphs between the title and the first
 table are replaced if each reads exactly as one in the layout's `intro` or `former_intro`. If
-only some do, those alone are removed and the intro is left to the person who wrote the rest.
+only some do, those alone are replaced, and the paragraphs a person wrote stay beside the
+template's intro, which the pipeline owns from then on.
 
 Classic pages are edited through their draft. If the draft holds changes nobody has published yet,
 publishing ours would publish theirs too, so `--publish` and `--validate` leave that page alone and
@@ -275,14 +278,15 @@ It runs in three steps:
    says now (read through twg, read-only; left out if the page can't be read), so the agent keeps
    the wording when nothing has changed. For a layout with sections it also has the agent info
    rows, each section's heading, columns and fixed entries, and `createdBy`, the display name of
-   the account twg runs as (`twg confluence space me`, read-only; never printed). It removes any
-   earlier `answers.json`.
+   the account twg runs as (`twg confluence space me`, read-only; never printed), which the
+   pipeline writes on the "Created by" line itself. With no name, the page's line stays as it
+   is. It removes any earlier `answers.json`.
 2. The agent follows `config/qa-readiness/agent-prompt.md`: it reads the input, investigates the
    repos, CI and the epics' tickets, and writes `answers.json` beside it, keyed by row:
    `{ "1": { "answer": "Yes", "comment": "…", "links": [{ "text": "…", "url": "https://…" }] } }`,
    with `answer` one of Yes, No, N/A or `""`, which leaves the status blank when the evidence
-   can't establish it (the comment says what is missing). Under `sections` go `createdBy`
-   (exactly the input's), `info` (the agent info rows' `text` and `links`),
+   can't establish it (the comment says what is missing). Under `sections` go
+   `info` (the agent info rows' `text` and `links`),
    `testingSummary` (each activity: `✅ Completed`, `NA` or `""`), `defectSummary` (a count
    per severity and the sentence under the table), `risks` (up to 10 risks with their mitigations),
    `qaSummary`, `recommendation` (`approved` and the reason, rendered as the template's bold

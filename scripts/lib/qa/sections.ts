@@ -92,19 +92,23 @@ function sectionBlocks(s: LayoutSection, a: SectionAnswers): string[] {
 
 const has = (a: SectionAnswers, kind: SectionKind): boolean => a[kind] !== undefined
 
-function header(name: string | undefined, date: string): GenPart {
-  const p = `<p><strong>Created by:</strong> ${esc(name ?? '')}<br><strong>Last Updated:</strong> ${esc(date)}</p>`
-  return marked('header', [p], { keep: name === undefined, withDate: (d) => header(name, d) })
+function header(name: string, date: string): GenPart {
+  const p = `<p><strong>Created by:</strong> ${esc(name)}<br><strong>Last Updated:</strong> ${esc(date)}</p>`
+  return marked('header', [p], { withDate: (d) => header(name, d) })
 }
 
-/** The parts a layout with sections has, in page order: header, intro, then each section. */
-export function genParts(layout: Layout, answers: SectionAnswers, date: Date): GenPart[] {
+/**
+ * The parts a layout with sections has, in page order: header, intro, then each section. The
+ * header names `createdBy`, the account name the pipeline collected; with none, there is no
+ * header part, so the page's stays as it is. A part with nothing to write is left out.
+ */
+export function genParts(layout: Layout, answers: SectionAnswers, date: Date, createdBy: string | null = null): GenPart[] {
   if (!layout.sections) return []
   const parts: GenPart[] = []
-  if (layout.header) parts.push(header(answers.createdBy, ukDate(date)))
+  if (layout.header && createdBy) parts.push(header(createdBy, ukDate(date)))
   parts.push(marked('intro', (layout.intro ?? []).map((p) => `<p>${esc(p)}</p>`), { legacy: layout.former_intro ?? [] }))
   for (const s of layout.sections) {
     parts.push(marked(s.kind.toLowerCase(), sectionBlocks(s, answers), { heading: { text: s.heading, level: s.level }, keep: !has(answers, s.kind) }))
   }
-  return parts
+  return parts.filter((p) => p.html)
 }

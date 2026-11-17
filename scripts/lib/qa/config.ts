@@ -211,7 +211,14 @@ export function validateLayout(doc: unknown, name = 'layout'): string[] {
   if (doc.header !== undefined && typeof doc.header !== 'boolean') errors.push(`${name}: "header" must be true or false`)
   if (doc.former_intro !== undefined && !isList(doc.former_intro, nonEmpty)) errors.push(`${name}: "former_intro" must be a list of paragraphs`)
   if (doc.sections !== undefined) errors.push(...validateSections(doc.sections, `${name}.sections`))
-  else if (doc.header !== undefined || doc.former_intro !== undefined) errors.push(`${name}: "header" and "former_intro" are only for a layout with "sections"`)
+  else {
+    if (doc.header !== undefined || doc.former_intro !== undefined) errors.push(`${name}: "header" and "former_intro" are only for a layout with "sections"`)
+    // The agent answers info rows under `sections` in answers.json.
+    const info = isRec(doc.info) && Array.isArray(doc.info.rows) ? doc.info.rows : []
+    info.forEach((r: unknown, n: number) => {
+      if (isRec(r) && r.rule === 'agent') errors.push(`${name}.info.rows[${n}]: rule agent is only for a layout with "sections"`)
+    })
+  }
   return errors
 }
 

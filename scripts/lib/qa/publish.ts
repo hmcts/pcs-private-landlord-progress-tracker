@@ -7,11 +7,13 @@
 // (render.ts, `keep`), is left as the page has it. An answered agent row whose question on the
 // page differs from the layout's has its question rewritten with its status and comment
 // (render.ts, `sync`), and only when both of those are written too. Rows the page lacks are added after the row
-// before them in the layout. A row no layout row matches any more is removed when the generator
+// before them in the layout. Rows the page has out of the layout's order are moved, as few as
+// it takes to put the table in order, whoever wrote them: a move keeps a row's content, local
+// ids and comments. A row no layout row matches any more is removed when the generator
 // wrote it whole and nobody has touched it since: its key cell as render writes it, and every
-// other cell marked and unedited. Any other such row is a person's and stays. The change
-// goes to Confluence as targeted edits (replaceNode / insertNodeAfter / deleteNode on local ids),
-// so the rest of the page, mentions, images and macros included, is never re-sent. Updates
+// other cell marked and unedited. Any other such row is a person's and stays. The change goes to
+// Confluence as targeted edits (replaceNode / insertNodeAfter / deleteNode / moveNode on local
+// ids), so the rest of the page, mentions, images and macros included, is never re-sent. Updates
 // carry the snapshot token from the read; on a stale token the page is read again and the
 // merge redone, once.
 
@@ -31,9 +33,10 @@ import { str } from './util.ts'
 export type Edit =
   | { name: 'replaceNode' | 'insertNodeAfter' | 'insertNodeBefore' | 'appendNodeToEnd'; localId?: string; value: string }
   | { name: 'deleteNode'; localId: string; value?: undefined }
+  | { name: 'moveNode'; arguments: { localId: string; targetLocalId: string; position: number }; localId?: undefined; value?: undefined }
 
 export type Action = 'update' | 'judgement' | 'unchanged' | 'keep-human' | 'keep-edited' | 'keep-unreachable' | 'add-row' | 'add-table' | 'remove-row'
-  | 'keep-retired-human' | 'keep-retired-edited' | 'skipped' | 'move-row' | 'add-part' | 'remove-text'
+  | 'keep-retired-human' | 'keep-retired-edited' | 'skipped' | 'move-row' | 'add-part'
 
 export interface CellChange {
   /** `part`: the header, intro or a section (sections.ts); its key is the section's heading. */
@@ -95,10 +98,10 @@ function ownerOf(page: string, table: TableName, key: string, name: CellName, td
   return hash && hash === shortHash(cellText(page.slice(td.start, td.end))) ? { owner: 'generator', hash } : { owner: 'edited' }
 }
 
-/** A generator cell against the page's cell, and what stops it being replaced, if anything. */
 /** Whether a page cell holds nothing: no text, link, mention, image or macro. */
 const emptyCell = (page: string, td: El) => !cellText(page.slice(td.start, td.end))
 
+/** A generator cell against the page's cell, and what stops it being replaced, if anything. */
 function cellOf(page: string, table: TableName, key: string, gen: GenCell, td: El | undefined, n: number): Cell {
   const base = { table, key, cell: gen.name! }
   if (!td) return { gen, base, held: { ...base, action: 'skipped', why: `the row has no column ${n + 1}` } }
@@ -208,20 +211,24 @@ function retireRows(m: Merging, table: TableName, spec: LayoutTable, trs: El[], 
   }
 }
 
-/**
- * Whether a row the page has out of the layout's order can be moved, by removing it and adding
- * it afresh where it belongs: only when nothing in it is a person's, so nothing is lost by
- * rewriting it. Its key cell is as render writes it; every other cell is the generator's and
- * unedited, empty, or (a question) reads as the layout has it; and none is to stay as published.
- */
-function movable(page: string, table: TableName, r: GenRow, tr: El): boolean {
-  const [first, ...rest] = cellsOf(tr)
-  if (!tr.attrs['data-local-id'] || !first || !plainKey(first) || rest.length !== r.cells.length - 1) return false
-  if (r.cells.some((c) => c.keep || c.judged)) return false
-  return rest.every((td, n) => {
-    const gen = r.cells[n + 1]
-    return emptyCell(page, td) || (gen.name ? generated(page, table, r.key, td) : sameText(td, gen))
+/** Indexes of a longest strictly increasing run (not necessarily contiguous) of `xs`. */
+export function increasing(xs: number[]): Set<number> {
+  const tails: number[] = []
+  const prev = xs.map(() => -1)
+  xs.forEach((x, i) => {
+    let lo = 0
+    let hi = tails.length
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1
+      if (xs[tails[mid]] < x) lo = mid + 1
+      else hi = mid
+    }
+    if (lo > 0) prev[i] = tails[lo - 1]
+    tails[lo] = i
   })
+  const out = new Set<number>()
+  for (let i = tails.at(-1) ?? -1; i >= 0; i = prev[i]) out.add(i)
+  return out
 }
 
 /** The page's table for a layout table: under its heading, or under a heading the layout had before. */
@@ -277,40 +284,54 @@ function mergeTable(m: Merging, root: El, table: TableName, spec: LayoutTable, m
   const rowFor = rowFinder(trs, spec)
   const matched = new Set<El>()
   let after: { id?: string; end: number } | null = trs.length ? { id: trs[0].attrs['data-local-id'], end: trs[0].end } : null
-  // The page position of the last row found in the layout's order: a row found before it is out of order.
-  let last = 0
   const inserts = new Map<number, string[]>()
-  const insert = (r: GenRow, action: 'add-row' | 'move-row', before?: string) => {
+  const place = (html: string) => inserts.set(after!.end, [...(inserts.get(after!.end) ?? []), html])
+  const insert = (r: GenRow) => {
     const id = newId(`${table}:${r.key}`)
     const html = rowHtml(r).replace(/^<tr>/, `<tr data-local-id="${id}">`)
     m.edits.push({ name: 'insertNodeAfter', localId: after!.id!, value: html })
-    inserts.set(after!.end, [...(inserts.get(after!.end) ?? []), html])
+    place(html)
     after = { id, end: after!.end }
-    m.changes.push({ table, key: r.key, cell: null, action, before, after: textOf(parse(html)) })
+    m.changes.push({ table, key: r.key, cell: null, action: 'add-row', after: textOf(parse(html)) })
   }
+  // Moves a row after `after`, with its cells merged as they are where it stands. twg's moveNode
+  // puts the node straight after its target; it requires a numeric position, but goes by the target.
+  const move = (r: GenRow, tr: El, id: string) => {
+    m.edits.push({ name: 'moveNode', arguments: { localId: id, targetLocalId: after!.id!, position: 0 } })
+    m.changes.push({ table, key: r.key, cell: null, action: 'move-row' })
+    const from = m.splices.length
+    mergeRow(m, table, r, tr)
+    const within = m.splices.splice(from).map((x) => ({ ...x, start: x.start - tr.start, end: x.end - tr.start }))
+    m.splices.push({ start: tr.start, end: tr.end, text: '' })
+    place(splice(m.page.slice(tr.start, tr.end), within))
+    after = { id, end: after!.end }
+  }
+  const onPage: (El | undefined)[] = []
   for (const r of mine) {
     const tr = rowFor(r.key)
-    const at = tr ? trs.indexOf(tr) : -1
-    if (tr && at >= last) {
-      matched.add(tr)
-      last = at
-      after = { id: tr.attrs['data-local-id'], end: tr.end }
+    onPage.push(tr && !onPage.includes(tr) ? tr : undefined)
+  }
+  // The rows that stay where they are: as many of those found as are already in the layout's order.
+  const located = mine.flatMap((_, n) => (onPage[n] ? [n] : []))
+  const staying = new Set([...increasing(located.map((n) => trs.indexOf(onPage[n]!)))].map((i) => located[i]))
+  mine.forEach((r, n) => {
+    const tr = onPage[n]
+    const id = tr?.attrs['data-local-id']
+    if (tr) matched.add(tr)
+    if (tr && staying.has(n)) {
+      after = { id, end: tr.end }
       mergeRow(m, table, r, tr)
-    } else if (tr && after?.id && movable(m.page, table, r, tr)) {
-      matched.add(tr)
-      m.edits.push({ name: 'deleteNode', localId: tr.attrs['data-local-id'] })
-      m.splices.push({ start: tr.start, end: tr.end, text: '' })
-      insert(r, 'move-row', textOf(tr))
+    } else if (tr && id && after?.id) {
+      move(r, tr, id)
     } else if (tr) {
-      // Out of order, but a person has written in it: it stays where it is.
-      matched.add(tr)
+      m.changes.push({ table, key: r.key, cell: null, action: 'skipped', why: id ? 'out of order, but no row before it has a local id to move it after' : 'out of order, but it has no local id to move it by' })
       mergeRow(m, table, r, tr)
     } else if (!after?.id) {
       m.changes.push({ table, key: r.key, cell: null, action: 'skipped', why: 'no row with a local id to add it after' })
     } else {
-      insert(r, 'add-row')
+      insert(r)
     }
-  }
+  })
   // Before the inserts: a removed row can start where a row is inserted, and splice applies
   // ranges with the same start in the order given, so the removal must not take the insert with it.
   retireRows(m, table, spec, trs, matched)
@@ -339,18 +360,26 @@ export function merge(page: string, layout: Layout, rows: GenRow[], parts: GenPa
 
 // ------------------------------------------------------------------ parts
 
-type PartOwner = { owner: 'generator'; hash: string } | { owner: 'edited' | 'person' | 'empty' | 'legacy' } | { owner: 'mixed'; legacy: El[] }
+type PartOwner = { owner: 'generator'; hash: string; nodes: El[] } | { owner: 'edited' | 'person' | 'empty' | 'legacy' } | { owner: 'mixed'; legacy: El[] }
 
 /**
  * Whose a part on the page is: the generator's if its marker's hash matches its text, edited if
- * not, empty if there is nothing in it. An unmarked intro is the generator's too (legacy) when
- * each of its blocks is a paragraph reading exactly as one the generator wrote, or empty; if only
- * some are, those alone are (mixed). Anything else is a person's.
+ * not, empty if there is nothing in it. In the intro (the part with `legacy`) a person's
+ * paragraphs may stand beside the generator's: its blocks from the marker on, as many as match the
+ * hash, are the generator's, and the rest are the person's. An unmarked intro is the generator's
+ * too (legacy) when each of its blocks is a paragraph reading exactly as one the generator wrote,
+ * or empty; if only some are, those alone are (mixed). Anything else is a person's.
  */
-function partOwner(part: GenPart, nodes: El[]): PartOwner {
-  const marker = nodes.flatMap((n) => markers(n)).map(partMarker).find((x) => x?.part === part.part)
+function partOwner(part: Pick<GenPart, 'part' | 'legacy'>, nodes: El[]): PartOwner {
+  const mine = (n: El) => markers(n).map(partMarker).find((x) => x?.part === part.part)
+  const at = nodes.findIndex((n) => mine(n))
   const text = partText(nodes)
-  if (marker) return marker.hash === shortHash(text) ? { owner: 'generator', hash: marker.hash } : { owner: 'edited' }
+  if (at >= 0) {
+    const hash = mine(nodes[at])!.hash
+    const runs = part.legacy ? nodes.slice(at).map((_, n) => nodes.slice(at, at + n + 1)) : [nodes]
+    const own = runs.find((r) => shortHash(partText(r)) === hash)
+    return own ? { owner: 'generator', hash, nodes: own } : { owner: 'edited' }
+  }
   if (!text) return { owner: 'empty' }
   const legacy = part.legacy ?? []
   const old = nodes.filter((n) => n.tag === 'p' && legacy.includes(fingerprint(n)))
@@ -411,27 +440,26 @@ function mergePart(pm: PartMerge, part: GenPart, nodes: El[], place: Place, date
   const base = { table: 'part' as const, key: partKey(part), cell: null }
   const o = partOwner(part, nodes)
   const before = nodes.map(textOf).join(' ')
-  const write = (): Place | null => {
+  // Replaces the generator's blocks `old` with the part's.
+  const write = (old: El[], why?: string): Place | null => {
     if (!place.id) {
       pm.m.changes.push({ ...base, action: 'skipped', why: 'no block with a local id to write it beside' })
       return null
     }
-    if (!removeBlocks(pm, nodes)) {
+    if (!removeBlocks(pm, old)) {
       pm.m.changes.push({ ...base, action: 'skipped', why: 'a block of it has no local id' })
       return null
     }
-    pm.m.changes.push({ ...base, action: 'update', before, after: textOf(parse(part.html)) })
+    pm.m.changes.push({ ...base, action: 'update', before: old.map(textOf).join(' '), after: textOf(parse(part.html)), ...(why ? { why } : {}) })
     return insertBlocks(pm, place, partBlocks(part.html, `part:${part.part}`))
   }
   if (o.owner === 'person') pm.m.changes.push({ ...base, action: 'keep-human', before })
   else if (o.owner === 'edited') pm.m.changes.push({ ...base, action: 'keep-edited', before })
-  else if (o.owner === 'mixed') {
-    if (!removeBlocks(pm, o.legacy)) pm.m.changes.push({ ...base, action: 'skipped', why: 'a block of it has no local id' })
-    else pm.m.changes.push({ ...base, action: 'remove-text', before: o.legacy.map(textOf).join(' '), why: 'what the generator wrote before; a person wrote the rest' })
-  } else if (o.owner === 'generator' && (o.hash === part.hash || dateOnly)) {
+  else if (o.owner === 'mixed') return write(o.legacy, 'a person wrote the rest, which stays')
+  else if (o.owner === 'generator' && (o.hash === part.hash || dateOnly)) {
     pm.m.changes.push({ ...base, action: 'unchanged', ...(dateOnly && o.hash !== part.hash ? { why: 'only the date would change' } : {}) })
   } else if (o.owner === 'generator' && part.keep) pm.m.changes.push({ ...base, action: 'keep-unreachable', before })
-  else return write()
+  else return write(o.owner === 'generator' ? o.nodes : nodes)
   return null
 }
 
@@ -443,6 +471,12 @@ function regionAfter(blocks: El[], from: number): El[] {
     out.push(b)
   }
   return out
+}
+
+/** A section on the page: where its heading is among the page's blocks, and its blocks; null if the page lacks it. */
+function findSection(blocks: El[], heading: string): { at: number; nodes: El[] } | null {
+  const at = blocks.findIndex((b) => isHeading(b) && textOf(b).toLowerCase() === heading.toLowerCase())
+  return at < 0 ? null : { at, nodes: regionAfter(blocks, at) }
 }
 
 const placeAfter = (e: El): Place => ({ id: e.attrs['data-local-id'], at: e.end })
@@ -463,10 +497,10 @@ function mergeParts(m: Merging, root: El, layout: Layout, parts: GenPart[]): str
   let place: Place = top >= 0 ? placeAfter([checklist!.heading, ...regionAfter(blocks, top)].at(-1)!) : { at: m.page.length }
   const appended: string[] = []
   for (const part of parts.filter((p) => p.heading)) {
-    const h = blocks.findIndex((b) => isHeading(b) && textOf(b).toLowerCase() === part.heading!.text.toLowerCase())
-    if (h >= 0) {
-      const nodes = regionAfter(blocks, h)
-      place = mergePart(pm, part, nodes, placeAfter(blocks[h])) ?? placeAfter([blocks[h], ...nodes].at(-1)!)
+    const found = findSection(blocks, part.heading!.text)
+    if (found) {
+      const h = blocks[found.at]
+      place = mergePart(pm, part, found.nodes, placeAfter(h)) ?? placeAfter([h, ...found.nodes].at(-1)!)
       continue
     }
     const html = [headingHtml(part.heading!), ...partBlocks(part.html, `part:${part.part}`)]
@@ -546,12 +580,11 @@ export function publishedParts(page: string, layout: Layout): { info: Record<str
   const sections: Record<string, PublishedPart> = {}
   const blocks = blocksOf(root)
   for (const s of layout.sections ?? []) {
-    const h = blocks.findIndex((b) => isHeading(b) && textOf(b).toLowerCase() === s.heading.toLowerCase())
-    if (h < 0) continue
-    const nodes = regionAfter(blocks, h)
-    const text = nodes.map(textOf).join(' ')
-    const marker = nodes.flatMap((n) => markers(n)).map(partMarker).find((x) => x?.part === s.kind.toLowerCase())
-    if (text) sections[s.kind] = { text, links: httpsLinks(nodes), ...(marker?.hash === shortHash(partText(nodes)) ? {} : { byPerson: true as const }) }
+    const found = findSection(blocks, s.heading)
+    const text = found?.nodes.map(textOf).join(' ')
+    if (!found || !text) continue
+    const mine = partOwner({ part: s.kind.toLowerCase() }, found.nodes).owner === 'generator'
+    sections[s.kind] = { text, links: httpsLinks(found.nodes), ...(mine ? {} : { byPerson: true as const }) }
   }
   return { info, sections }
 }
@@ -566,7 +599,7 @@ export interface Counts {
   unchanged: number
   human: number
   added: number
-  /** Rows the layout no longer has, that the generator wrote and nobody has edited, and paragraphs it wrote before. */
+  /** Rows the layout no longer has, that the generator wrote and nobody has edited. */
   removed: number
   /** Rows moved to where the layout has them. */
   moved: number
@@ -588,7 +621,7 @@ export function count(changes: CellChange[]): Counts {
     else if (x.action === 'keep-human' || x.action === 'keep-edited') c.human++
     else if (x.action === 'add-row' || x.action === 'add-table') c.added++
     else if (x.action === 'add-part') c.sections++
-    else if (x.action === 'remove-row' || x.action === 'remove-text') c.removed++
+    else if (x.action === 'remove-row') c.removed++
     else if (x.action === 'move-row') c.moved++
     else if (x.action === 'keep-retired-human' || x.action === 'keep-retired-edited') c.retiredKept++
     else if (x.action === 'keep-unreachable') c.kept++
@@ -602,8 +635,7 @@ const WHAT: Record<Action, string> = {
   'keep-edited': 'kept: edited by a person since it was generated', 'keep-unreachable': 'kept as published: its source could not be read, or the agent gave no answer', 'add-row': 'row would be added',
   'add-table': 'table would be added', 'remove-row': 'row would be removed: no longer in the layout',
   'keep-retired-human': 'kept: not in the layout, and a person wrote it', 'keep-retired-edited': 'kept: not in the layout, and a person edited it', skipped: 'skipped',
-  'move-row': 'row would be moved to where the layout has it, and written afresh', 'add-part': 'section would be added',
-  'remove-text': 'paragraphs would be removed',
+  'move-row': 'row would be moved to where the layout has it', 'add-part': 'section would be added',
 }
 
 export function diffSummary(title: string, changes: CellChange[]): string {
@@ -615,9 +647,9 @@ export function diffSummary(title: string, changes: CellChange[]): string {
   for (const x of changes) {
     if (x.action === 'unchanged') continue
     out.push(`${x.table} ${x.key}${x.cell ? ` ${x.cell}` : ''}: ${WHAT[x.action]}${x.why ? ` (${x.why})` : ''}`)
-    if (x.action === 'update' || x.action === 'judgement' || x.action === 'move-row') out.push(`  - ${x.before}`, `  + ${x.after}`)
+    if (x.action === 'update' || x.action === 'judgement') out.push(`  - ${x.before}`, `  + ${x.after}`)
     if (x.action === 'add-row' || x.action === 'add-part') out.push(`  + ${x.after}`)
-    if (x.action === 'remove-row' || x.action === 'remove-text') out.push(`  - ${x.before}`)
+    if (x.action === 'remove-row') out.push(`  - ${x.before}`)
   }
   return out.join('\n') + '\n'
 }

@@ -35,7 +35,7 @@
 import { readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { parseArgs } from 'node:util'
-import { AGENT_INPUT_FILE, agentInput, agentRows, ANSWERS_FILE, answerItems, hasAgentWork, loadAnswers, type Published, type SectionAnswers } from './lib/qa/answers.ts'
+import { AGENT_INPUT_FILE, agentInput, agentRows, ANSWERS_FILE, answerItems, collectedName, hasAgentWork, loadAnswers, type Published, type SectionAnswers } from './lib/qa/answers.ts'
 import { cacheDir, releaseDir, releaseName, within } from './lib/qa/cache.ts'
 import { collect, evidenceFor, fileUnderRows, readers, scopeFeature } from './lib/qa/collect.ts'
 import { activeReleases, CONFIG_DIR, type Layout, loadRelease, type ReleaseConfig, releasePath, type ScopeKind } from './lib/qa/config.ts'
@@ -227,7 +227,7 @@ async function report(path: string, o: Options): Promise<'done' | 'skipped'> {
   const judgements: Judgements = o.judgement ? loadJudgements(judgementFile(dir), results.checklist) : {}
   sayRows(results, judgements, !!o.judgement)
   const rows = genRows(layout, results, judgements)
-  const parts = genParts(layout, answered.sections, new Date())
+  const parts = genParts(layout, answered.sections, new Date(), layout.header ? collectedName(dir) : null)
   const page = renderPage(cfg, layout, results, judgements, parts)
   writeFileSync(join(dir, 'report.html'), page)
 
