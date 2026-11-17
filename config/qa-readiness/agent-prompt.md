@@ -72,20 +72,21 @@ replaces it, so answer those first, even if only with a blank status.
   `parent in (<epics>)`), its `repos` with the GitHub name, Sonar key, the commit its
   service-wide rows were read at (`commits`), how that commit was picked (`revision`: its
   `status`, `from` and `note`), the feature's pull request (`pullRequest`: its number, link
-  and that commit, also given as `head`), the commit each Jenkins stage, CVE report and E2E
-  result was read at (`stageResults`: `earlierThanHead: true` when that is an earlier commit
-  than `head`) and, where set, the Jenkins build that ran the feature's E2E tests and their
-  tags and spec paths (`e2e`).
+  and that commit), the PR's head commit (`head`), the commit each Jenkins stage, CVE report
+  and E2E result was read at (`stageResults`, per candidate: its `sha`, the `head` it was read
+  against, and `earlierThanHead` true, false, or "unknown" when no commit is recorded) and,
+  where set, the Jenkins build that ran the feature's E2E tests and their tags and spec paths
+  (`e2e`).
 - `scope.measuredAt`, when set, names the feature's pull requests and their commits. Then all the
   evidence is from them, not master: SonarCloud's analysis of each PR, for each Jenkins stage the
-  PR's newest finished build in Cosmos that ran it, the GitHub checks and the source at the PR's
-  commit. Judge the PRs, and name them in comments ("pcs-api PR #3196"). A build that stopped
+  PR's newest finished build in Cosmos, of a commit still on the PR, that recorded its outcome,
+  the GitHub checks and the source at the PR's head. Judge the PRs, and name them in comments ("pcs-api PR #3196"). A build that stopped
   early runs none of the later stages, so a stage's result may come from a build of an earlier
   commit of the PR: the evidence's `note` and `sha` say which build and commit. Such a result
   counts as the PR's, but whenever a comment relies on one, say that it is from an earlier commit
   than the PR head ("Smoke and functional tests passed in pcs-frontend PR-2312 build 13 at
-  3d0d6bb, an earlier commit than the PR head 9cc1a08."). A PR build deploys to preview, not AAT, so an AAT
-  row has no PR evidence: say so, and don't answer it from master. A repo whose `revision` is
+  3d0d6bb, an earlier commit than the PR head 9cc1a08."). A PR build deploys to preview, not AAT,
+  so an AAT row has no PR evidence: say so, and don't answer it from master. A repo whose `revision` is
   unknown has no commit picked (its PR head has no finished Jenkins build, say): its rows have no
   evidence, so say why in their comments, from the revision's `note`.
 - `rows`: for each checklist row, its `key`, `question`, `guide` (what Yes, No and N/A mean for

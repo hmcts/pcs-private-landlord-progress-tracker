@@ -323,17 +323,30 @@ export function agentInput(cfg: ReleaseConfig, layout: Layout, ev: Evidence, pub
     const pr = prOfRepo(cfg, name)
     return pr ? [[name, pullRequest(name, pr)] as const] : []
   })
-  // The commit each stage result was read at, which for a PR may be an earlier commit than its head.
-  const stageResults = (name: string, head: string | undefined) => [...new Map(ev.items
-    .filter((i) => i.repo === name && i.sha && STAGE_RESULTS.has(i.rule) && i.source !== 'agent')
-    .map((i) => [`${i.source}:${i.rule}`, { rule: i.rule, source: i.source, status: i.status, sha: i.sha, ...(head && i.sha !== head ? { earlierThanHead: true } : {}) }] as const)).values()]
+  // The commit each stage result was read at, per candidate, against the head it was read for: the
+  // PR's head on GitHub when the reader recorded one, else the candidate's commit.
+  const headOf = (i: EvidenceItem, name: string): string | undefined => {
+    const recorded = str(i.data?.head)
+    if (recorded) return recorded
+    const c = i.candidate ? cfg.candidates.find((x) => x.name === i.candidate) : cfg.candidates.length === 1 ? cfg.candidates[0] : undefined
+    return c?.shas[name]
+  }
+  const stageResults = (name: string) => [...new Map(ev.items
+    .filter((i) => i.repo === name && STAGE_RESULTS.has(i.rule) && i.source !== 'agent')
+    .map((i) => {
+      const head = headOf(i, name)
+      const earlierThanHead = i.sha && head ? i.sha !== head : 'unknown'
+      return [`${i.candidate ?? ''}|${i.source}|${i.rule}`, { ...(i.candidate ? { candidate: i.candidate } : {}), rule: i.rule, source: i.source, status: i.status,
+        sha: i.sha, ...(head ? { head } : {}), earlierThanHead }] as const
+    })).values()]
   const repos = Object.fromEntries(Object.entries(cfg.repos).map(([name, rc]) => {
     const pull = pulls.find(([n]) => n === name)?.[1]
     const rev = revision(name)
-    const results = stageResults(name, pull?.commit)
+    const results = stageResults(name)
+    const head = results.find((r) => r.head && r.source !== 'github')?.head ?? pull?.commit
     return [name, {
       github: rc.github, ...(rc.sonar ? { sonar: rc.sonar } : {}), ...(rc.e2e ? { e2e: rc.e2e } : {}),
-      ...(pull ? { pullRequest: pull } : {}), ...(pull?.commit ? { head: pull.commit } : {}), ...(rev ? { revision: rev } : {}),
+      ...(pull ? { pullRequest: pull } : {}), ...(pull && head ? { head } : {}), ...(rev ? { revision: rev } : {}),
       ...(results.length ? { stageResults: results } : {}),
       commits: Object.fromEntries(cfg.candidates.filter((c) => c.shas[name]).map((c) => [c.name, c.shas[name]])),
     }]

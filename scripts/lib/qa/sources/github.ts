@@ -14,7 +14,7 @@
 
 import { gunzipSync } from 'node:zlib'
 import { type Candidate, prOfRepo, type ReleaseConfig } from '../config.ts'
-import { mapLimit, runCommand, SHA } from '../util.ts'
+import { mapLimit, runCommand, SHA, str } from '../util.ts'
 import { HttpError, item, type Item, reason, short } from './common.ts'
 
 const SOURCE = 'github'
@@ -123,37 +123,87 @@ const settled = (runs: CheckRun[], re: RegExp) => {
   return hits.length > 0 && hits.every((r) => r.status === 'completed' && !!r.conclusion && r.conclusion !== 'cancelled')
 }
 
+// ------------------------------------------------------------------ a PR's commits
+
+/** The most commits GitHub lists for a pull request. */
+export const PR_COMMITS_MAX = 250
+
+// One lookup per PR for the run: the Cosmos, E2E and GitHub readers share the api they are given.
+const prMemo = new WeakMap<GitHubApi, Map<string, Promise<unknown>>>()
+function perRun<T>(api: GitHubApi, key: string, read: () => Promise<T>): Promise<T> {
+  const memo = prMemo.get(api) ?? new Map<string, Promise<unknown>>()
+  prMemo.set(api, memo)
+  if (!memo.has(key)) memo.set(key, read())
+  return memo.get(key) as Promise<T>
+}
+
+/** The PR's head commit on GitHub, or null if it names none. */
+export function pullHead(api: GitHubApi, gh: string, pr: number): Promise<string | null> {
+  return perRun(api, `head|${gh}|${String(pr)}`, async () => {
+    const res = await api(`repos/${gh}/pulls/${String(pr)}`) as { head?: { sha?: unknown } }
+    const sha = str(res?.head?.sha)
+    return SHA.test(sha) ? sha : null
+  })
+}
+
+/** The PR's commits, oldest first: up to PR_COMMITS_MAX, all GitHub lists. */
+export function pullCommits(api: GitHubApi, gh: string, pr: number): Promise<string[]> {
+  return perRun(api, `commits|${gh}|${String(pr)}`, async () => {
+    const out: string[] = []
+    for (let page = 1; out.length < PR_COMMITS_MAX; page++) {
+      const listed = await api(`repos/${gh}/pulls/${String(pr)}/commits?per_page=100&page=${page}`)
+      const shas = (Array.isArray(listed) ? listed : []).map((x) => str((x as { sha?: unknown })?.sha)).filter((s) => SHA.test(s))
+      out.push(...shas)
+      if (shas.length < 100) break
+    }
+    return out.slice(0, PR_COMMITS_MAX)
+  })
+}
+
+/** What GitHub says of a PR's commits: its head, and whether a commit is on it; or why it couldn't be read. */
+export type PrCommits = { head: string; on: (sha: string) => boolean } | { error: string }
+
+export async function prCommits(api: GitHubApi, gh: string, pr: number): Promise<PrCommits> {
+  try {
+    const [head, listed] = await Promise.all([pullHead(api, gh, pr), pullCommits(api, gh, pr)])
+    if (!head) return { error: `GitHub names no head commit for PR #${String(pr)}` }
+    const on = new Set([...listed, head])
+    return { head, on: (sha) => on.has(sha) }
+  } catch (e) {
+    return { error: `the PR's commits could not be read from GitHub: ${reason(e)}` }
+  }
+}
+
 /**
  * The PR head's check items, with each rule the head has no check for read at the PR's newest
  * earlier commit with a finished one. deployed-aat is left: a PR build never deploys to AAT.
  */
 export async function withEarlierChecks(api: GitHubApi, gh: string, pr: number, repo: string, sha: string, c: Candidate, items: Item[],
   runsOf: (sha: string) => Promise<CheckRun[]>, now?: () => Date): Promise<Item[]> {
-  const open = items.filter((i) => i.status === 'unknown' && i.value === 'no check' && i.rule !== 'deployed-aat').map((i) => i.rule)
-  if (!open.length) return items
+  const open = new Set(items.filter((i) => i.status === 'unknown' && i.value === 'no check' && i.rule !== 'deployed-aat').map((i) => i.rule))
+  if (!open.size) return items
+  const noted = (note: string, unreachable = false) => items.map((i) => (open.has(i.rule) ? { ...i, note: `${i.note}; ${note}`, ...(unreachable ? { unreachable } : {}) } : i))
   let shas: string[]
   try {
-    const listed = await api(`repos/${gh}/pulls/${String(pr)}/commits?per_page=100`)
-    shas = (Array.isArray(listed) ? listed : []).map((x) => (x as { sha?: unknown })?.sha).filter((s): s is string => typeof s === 'string' && SHA.test(s))
-  } catch {
-    return items
+    shas = await pullCommits(api, gh, pr)
+  } catch (e) {
+    return noted(`the PR's commits could not be read from GitHub to look at earlier ones: ${reason(e)}`, true)
   }
   const at = shas.indexOf(sha)
-  const earlier = (at < 0 ? [] : shas.slice(0, at)).reverse().slice(0, LOOKBACK)
+  if (at < 0) return noted(`${short(sha)} is not among the ${shas.length} commits GitHub lists for PR #${String(pr)}, so earlier commits were not looked at`)
+  const earlier = shas.slice(0, at).reverse().slice(0, LOOKBACK)
   const found = new Map<string, Item>()
-  for (let n = 0; n < earlier.length && found.size < open.length; n += STATUS_BATCH) {
+  for (let n = 0; n < earlier.length && found.size < open.size; n += STATUS_BATCH) {
     const batch = earlier.slice(n, n + STATUS_BATCH)
     const runs = await mapLimit(batch, STATUS_BATCH, (s) => runsOf(s).catch(() => [] as CheckRun[]))
     batch.forEach((s, k) => {
-      for (const rule of open.filter((r) => !found.has(r) && settled(runs[k], PR_CHECK_RULES[r]))) {
+      for (const rule of [...open].filter((r) => !found.has(r) && settled(runs[k], PR_CHECK_RULES[r]))) {
         const hit = checkItems(repo, s, c, runs[k], now, pr).find((i) => i.rule === rule)!
-        const which = `at ${short(s)}, an earlier commit than the PR head ${short(sha)}`
-        found.set(rule, { ...hit, value: `${hit.value} (${which})`,
-          note: `the PR head ${short(sha)} has no matching GitHub check, so these are from ${short(s)}, the PR's latest earlier commit with finished ones` })
+        found.set(rule, { ...hit, note: `the PR head ${short(sha)} has no matching GitHub check, so these are from ${short(s)}, an earlier commit of the PR and its latest with finished ones` })
       }
     })
   }
-  return items.map((i) => found.get(i.rule) ?? i)
+  return items.map((i) => found.get(i.rule) ?? (open.has(i.rule) ? { ...i, note: `no matching GitHub check on ${short(sha)} or the ${earlier.length} commits of the PR before it` } : i))
 }
 
 // ------------------------------------------------------------------ ignored tests

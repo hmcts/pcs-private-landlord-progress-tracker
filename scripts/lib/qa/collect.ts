@@ -32,7 +32,7 @@ export interface Sources {
 export function readers(cfg: ReleaseConfig, s: Sources = {}): Record<string, () => Promise<Item[]>> {
   return {
     sonarcloud: sonarReader(cfg, s.http, s.now),
-    cosmos: cosmosReader(cfg, s.cosmos, s.now),
+    cosmos: cosmosReader(cfg, s.cosmos, s.now, s.githubApi),
     github: githubReader(cfg, s.githubApi, s.tarball, s.now),
     jira: jiraReader(cfg, s.twg ?? quietRunnerAsync, s.now),
     ria: riaReader(cfg, s.twg ?? quietRunnerAsync, s.now),
