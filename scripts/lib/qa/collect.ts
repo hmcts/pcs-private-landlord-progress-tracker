@@ -1,5 +1,5 @@
 // Runs every source reader and files their findings under the layout's rows. A reader that
-// fails outright leaves its rows without evidence, which the report shows as "To confirm".
+// fails outright leaves its rows without evidence, which the report shows as unknown.
 //
 // A feature has no candidate commits of its own. scopeFeature picks, per repo, the commit its
 // service-wide rows are read at (the latest default-branch commit with a finished Jenkins build,
@@ -86,7 +86,7 @@ export async function scopeFeature(cfg: ReleaseConfig, api: GitHubApi = defaultG
   return { cfg: { ...cfg, candidates: [{ name: SERVICE_WIDE, shas }] }, items: picked.flatMap((p) => p.items), unpicked }
 }
 
-/** Rules whose items name the checklist row they answer, in `data.row`. */
+/** Rules whose items name the row they answer, in `data.row` (`info:<key>` for an agent info row). */
 const ROW_TARGETED = new Set(['human', 'agent'])
 
 /**
@@ -99,7 +99,8 @@ export function fileUnderRows(layout: Layout, items: Item[]): EvidenceItem[] {
   for (const it of items) {
     if (ROW_TARGETED.has(it.rule)) {
       const row = str(it.data?.row)
-      if (layout.checklist.rows.some((r) => r.key === row && (it.rule === 'human' || r.rule === 'agent'))) out.push({ ...it, row })
+      const info = it.rule === 'agent' && row.startsWith('info:') && layout.info?.rows.some((r) => `info:${r.key}` === row && r.rule === 'agent')
+      if (info || layout.checklist.rows.some((r) => r.key === row && (it.rule === 'human' || r.rule === 'agent'))) out.push({ ...it, row })
       continue
     }
     for (const r of rows.filter((r) => r.rule === it.rule || r.evidence?.includes(it.rule))) out.push({ ...it, row: r.table === 'info' ? `info:${r.key}` : r.key })

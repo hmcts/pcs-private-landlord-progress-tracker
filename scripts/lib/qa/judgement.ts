@@ -32,13 +32,13 @@ export function validateJudgements(doc: unknown, checklist: RowResult[], name = 
     const w = `${name}.${key}`
     const row = checklist.find((r) => r.key === key)
     if (!row) errors.push(`${w}: the checklist has no row ${key}`)
-    else if (!row.needsJudgement && row.answer !== 'To confirm') errors.push(`${w}: row ${key} is answered from evidence, so it takes no judgement`)
+    else if (!row.needsJudgement && row.status !== 'unknown') errors.push(`${w}: row ${key} is answered from evidence, so it takes no judgement`)
     if (!isRec(j)) {
       errors.push(`${w}: expected { status, comment }`)
       continue
     }
     for (const k of Object.keys(j)) if (!FIELDS.includes(k)) errors.push(`${w}: unknown field "${k}"`)
-    if (!ANSWERS.includes(str(j.status))) errors.push(`${w}: "status" must be Yes, No or N/A (leave the row out to keep it To confirm)`)
+    if (!ANSWERS.includes(str(j.status))) errors.push(`${w}: "status" must be Yes, No or N/A (leave the row out to leave it unanswered)`)
     if (typeof j.comment !== 'string' || !j.comment.trim()) errors.push(`${w}: "comment" is required`)
     if (j.links !== undefined && !(Array.isArray(j.links) && j.links.every((l) =>
       isRec(l) && typeof l.text === 'string' && l.text.trim() && /^https:\/\/\S+$/.test(str(l.url))))) {

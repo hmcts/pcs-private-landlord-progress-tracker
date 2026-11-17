@@ -408,9 +408,12 @@ describe('Jira and the RIA for a feature', () => {
         { key: 'HDPI-3', status: { name: 'New', statusCategory: { key: 'new' } }, comment: { total: 0, comments: [] } }] } }
     })
     const items = await jiraReader(cfg, run, NOW)()
-    assert.ok(run.calls.every((a) => jqlOf(a).startsWith('(parent in (HDPI-10019)) AND ')))
+    assert.ok(run.calls.every((a) => jqlOf(a).startsWith('(parent in (HDPI-10019)) AND ') || jqlOf(a) === 'parent in (HDPI-10019)'))
     const done = items.find((i) => i.rule === 'stories-done')!
     assert.deepEqual([done.status, done.value], ['fail', '1 of 2 stories, tasks and bugs are done'])
+    const tickets = items.find((i) => i.rule === 'epic-tickets')!
+    assert.deepEqual([tickets.status, tickets.links.map((l) => l.text)], ['pass', ['HDPI-2', 'HDPI-3']], 'every child ticket, for the Jira Tickets row')
+    assert.ok(!(await jiraReader({ ...cfg, kind: 'release' }, run, NOW)()).some((i) => i.rule === 'epic-tickets'), 'a release lists none')
   })
 
   test('a Jira failure is unreachable', async () => {

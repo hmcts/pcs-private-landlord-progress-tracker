@@ -11,6 +11,11 @@
 // A row that is unknown only because a source couldn't be read (items marked unreachable) is
 // marked `keep`: publishing leaves its cells as the page has them, so a run that can't reach a
 // source (locally, Cosmos usually refuses access) never undoes one that could.
+//
+// A release's row that can't be answered says "To confirm". An agent row, and any row of a
+// feature, leaves its status blank instead, and its comment says what is missing. A layout with
+// sections reproduces the whole template (sections.ts), so its page carries nothing the template
+// doesn't: no note about the cells.
 
 import type { Layout, LayoutRow, ReleaseConfig } from './config.ts'
 import { type El, esc, find, fingerprint, type Node, parse, shortHash } from './html.ts'
@@ -18,6 +23,7 @@ import type { Judgement, Judgements } from './judgement.ts'
 import { day, short } from './sources/common.ts'
 import { browse } from './sources/jira.ts'
 import type { Answer, Evidence, EvidenceItem, Link, Status } from './types.ts'
+import type { GenPart } from './sections.ts'
 import { str } from './util.ts'
 
 export interface Line {
@@ -31,6 +37,7 @@ export interface RowResult {
   label: string
   rule: string
   status: Status
+  /** Null leaves the status blank. */
   answer: Answer | 'To confirm' | null
   needsJudgement: boolean
   lines: Line[]
@@ -77,11 +84,11 @@ function agentRow(row: LayoutRow, items: EvidenceItem[], evidence: Line[]): RowR
   const base = { table: 'checklist' as const, key: row.key, label: row.question ?? row.key, rule: row.rule, needsJudgement: false }
   const given = items.find((i) => i.source === 'agent' && i.rule === 'agent')
   if (!given) {
-    return { ...base, status: 'unknown', answer: 'To confirm', keep: true, lines: [{ text: 'To confirm: the agent has not answered this row.', links: [] }, ...evidence] }
+    return { ...base, status: 'unknown', answer: null, keep: true, lines: [{ text: 'No answer has been given for this row yet.', links: [] }, ...evidence] }
   }
   const lines = paragraphs(given.value)
   if (given.links.length) lines.push({ text: '', links: given.links })
-  return { ...base, status: given.status, answer: given.answer ?? 'To confirm', keep: false, lines }
+  return { ...base, status: given.status, answer: given.answer ?? null, keep: false, lines }
 }
 
 export function evaluateRow(row: LayoutRow, table: 'info' | 'checklist', cfg: ReleaseConfig, ev: Evidence): RowResult {
@@ -103,7 +110,7 @@ export function evaluateRow(row: LayoutRow, table: 'info' | 'checklist', cfg: Re
   if (table === 'checklist') {
     const good = row.good ?? 'Yes'
     const given = current.map((i) => i.answer).filter((a): a is Answer => !!a)
-    if (status === 'unknown') answer = 'To confirm'
+    if (status === 'unknown') answer = cfg.kind === 'feature' ? null : 'To confirm'
     else if (given.includes('Yes')) answer = 'Yes'
     else if (given.length && given.every((a) => a === 'N/A')) answer = 'N/A'
     else if (given.includes('No')) answer = 'No'
@@ -131,6 +138,10 @@ function infoLines(row: LayoutRow, cfg: ReleaseConfig, ev: Evidence): Line[] | n
       return [{ text: cfg.release, links: [] }]
     case 'epics':
       return [{ text: '', links: (cfg.epics ?? []).map(browse) }]
+    case 'epic-tickets': {
+      const it = ev.items.find((i) => i.row === `info:${row.key}` && i.status !== 'unknown')
+      return it ? [{ text: '', links: it.links }] : null
+    }
     case 'generated':
       return [{ text: day(ev.generatedAt), links: [] }]
     case 'dashboards':
@@ -152,26 +163,40 @@ export interface Results {
 
 /** Info rows that list each item's value as it is: one line per repo. */
 const LISTED: Record<string, string> = {
-  'service-revision': 'To confirm: the commit could not be picked.',
-  'e2e-build': 'To confirm: no E2E build was read.',
+  'service-revision': 'the commit could not be picked.',
+  'e2e-build': 'no E2E build was read.',
+}
+
+/** What an info cell says when its source couldn't tell: a release's says "To confirm", a feature's just why. */
+const missing = (cfg: ReleaseConfig, why: string): string => (cfg.kind === 'feature' ? `${why[0].toUpperCase()}${why.slice(1)}` : `To confirm: ${why}`)
+
+/** An agent info row: the agent's text, or, with none, what the page says (or nothing, for a row it lacks). */
+function agentInfo(res: RowResult, ev: Evidence): RowResult {
+  const given = ev.items.find((i) => i.row === `info:${res.key}` && i.source === 'agent' && i.rule === 'agent')
+  if (!given) return { ...res, status: 'unknown', keep: true, lines: [] }
+  const lines = paragraphs(given.value)
+  if (given.links.length) lines.push({ text: '', links: given.links })
+  return { ...res, status: 'pass', keep: false, lines }
 }
 
 export function evaluate(cfg: ReleaseConfig, layout: Layout, ev: Evidence): Results {
   const info = (layout.info?.rows ?? []).map((r) => {
     const res = evaluateRow(r, 'info', cfg, ev)
+    if (r.rule === 'agent') return agentInfo(res, ev)
     const fixed = infoLines(r, cfg, ev)
     if (fixed) return { ...res, status: 'pass' as Status, lines: fixed, keep: false }
     if (r.rule === 'outstanding-bugs') {
       const it = ev.items.find((i) => i.row === `info:${r.key}` && i.status !== 'unknown')
-      return { ...res, lines: it ? [{ text: it.value, links: it.links }] : [{ text: 'To confirm: Jira could not be read.', links: [] }] }
+      return { ...res, lines: it ? [{ text: it.value, links: it.links }] : [{ text: missing(cfg, 'Jira could not be read.'), links: [] }] }
     }
     if (r.rule in LISTED) {
       const its = ev.items.filter((i) => i.row === `info:${r.key}`)
       // One repo's source being unreachable keeps the whole cell, not just that repo's line.
       const keep = its.some((i) => i.unreachable)
-      const line = (i: EvidenceItem): Line => ({ links: i.links,
-        text: i.status === 'unknown' ? `${i.repo ? `${i.repo}: ` : ''}to confirm${i.note ? ` (${i.note})` : ''}.` : `${i.value}.` })
-      return { ...res, keep, lines: its.length ? its.map(line) : [{ text: LISTED[r.rule], links: [] }] }
+      const unknown = (i: EvidenceItem) => (cfg.kind === 'feature' ? `${i.repo ? `${i.repo}: ` : ''}${i.note ?? 'not known'}.`
+        : `${i.repo ? `${i.repo}: ` : ''}to confirm${i.note ? ` (${i.note})` : ''}.`)
+      const line = (i: EvidenceItem): Line => ({ links: i.links, text: i.status === 'unknown' ? unknown(i) : `${i.value}.` })
+      return { ...res, keep, lines: its.length ? its.map(line) : [{ text: missing(cfg, LISTED[r.rule]), links: [] }] }
     }
     return { ...res, lines: [] }
   })
@@ -203,6 +228,11 @@ export interface GenCell {
    * row has none, so its old question stays beside its old answer.
    */
   sync?: boolean
+  /**
+   * An agent row's cell: one on the page with no marker and nothing in it (as a row the generator
+   * once left for a person reads) holds nothing to lose, so it is written as if the generator's.
+   */
+  claimEmpty?: boolean
 }
 
 export interface GenRow {
@@ -221,7 +251,7 @@ export function anchor(name: string): string {
 }
 
 const width = (w?: number) => (w ? ` data-colwidth="${w}"` : '')
-const para = (l: Line) => {
+export const para = (l: Line): string => {
   const links = l.links.map((k) => `<a href="${esc(k.url)}">${esc(k.text)}</a>`).join(' · ')
   return `<p>${esc(l.text)}${l.text && links ? ' ' : ''}${links}</p>`
 }
@@ -262,7 +292,10 @@ function judgedCells(j: Judgement, cw: number[]): GenCell[] {
 export function genRows(layout: Layout, res: Results, judgements: Judgements = {}): GenRow[] {
   const out: GenRow[] = []
   const iw = layout.info?.widths ?? []
-  const kept = (c: GenCell, r: RowResult): GenCell => (r.keep ? { ...c, keep: true } : c)
+  const kept = (c: GenCell, r: RowResult): GenCell => {
+    const k = r.keep ? { ...c, keep: true } : c
+    return r.rule === 'agent' ? { ...k, claimEmpty: true } : k
+  }
   for (const r of res.info) {
     const owned = r.rule !== 'human'
     out.push({ table: 'info', key: r.key, cells: [plainCell(r.key, iw[0]),
@@ -273,7 +306,7 @@ export function genRows(layout: Layout, res: Results, judgements: Judgements = {
     const j = judgements[r.key]
     const question = plainCell(r.label, cw[1])
     out.push({ table: 'checklist', key: r.key, cells: [plainCell(r.key, cw[0]), r.rule === 'agent' && !r.keep ? { ...question, sync: true } : question,
-      ...(j ? judgedCells(j, cw) : [kept(ownedCell('checklist', r.key, 'status', [{ text: r.answer ?? 'To confirm', links: [] }], cw[2]), r),
+      ...(j ? judgedCells(j, cw) : [kept(ownedCell('checklist', r.key, 'status', [{ text: r.answer ?? '', links: [] }], cw[2]), r),
         kept(ownedCell('checklist', r.key, 'comments', r.lines, cw[3]), r)])] })
   }
   return out
@@ -281,21 +314,46 @@ export function genRows(layout: Layout, res: Results, judgements: Judgements = {
 
 export const rowHtml = (r: GenRow): string => `<tr>${r.cells.map((c) => c.html).join('')}</tr>`
 
-export function tableHtml(t: { heading: string; columns: string[]; widths?: number[] }, rows: GenRow[], level = 2): string {
-  const head = `<tr>${t.columns.map((c, n) => `<th${width(t.widths?.[n])}><p>${esc(c)}</p></th>`).join('')}</tr>`
-  return `<h${level}>${esc(t.heading)}</h${level}><table data-layout="center"><thead>${head}</thead><tbody>${rows.map(rowHtml).join('')}</tbody></table>`
+/** The cells of a table's header row: `th`, or `td` as the template's checklist has them. */
+export type HeadCell = 'th' | 'td'
+
+/** The header row of a table as render writes it. */
+export const headRow = (t: { columns: string[]; widths?: number[] }, cell: HeadCell = 'th'): string =>
+  `<tr>${t.columns.map((c, n) => `<${cell}${width(t.widths?.[n])}><p>${esc(c)}</p></${cell}>`).join('')}</tr>`
+
+export function tableHtml(t: { heading: string; columns: string[]; widths?: number[] }, rows: GenRow[], level = 2, cell: HeadCell = 'th'): string {
+  const body = rows.map(rowHtml).join('')
+  const table = cell === 'th' ? `<thead>${headRow(t)}</thead><tbody>${body}</tbody>` : `<tbody>${headRow(t, cell)}${body}</tbody>`
+  return `<h${level}>${esc(t.heading)}</h${level}><table data-layout="center">${table}</table>`
 }
 
-export function renderPage(cfg: ReleaseConfig, layout: Layout, res: Results, judgements: Judgements = {}): string {
+/** How a layout's table heads its columns: a layout with sections heads the checklist's as the template does. */
+export const headCell = (layout: Layout, table: 'info' | 'checklist'): HeadCell => (layout.sections && table === 'checklist' ? 'td' : 'th')
+
+/** The checklist's heading level, and the info table's: as the template has them. */
+export const LEVELS = { info: 2, checklist: 1 } as const
+
+export function renderPage(cfg: ReleaseConfig, layout: Layout, res: Results, judgements: Judgements = {}, parts: GenPart[] = []): string {
   const rows = genRows(layout, res, judgements)
-  const parts = [
+  const tables = [...(layout.info ? [tableHtml(layout.info, rows.filter((r) => r.table === 'info'), LEVELS.info)] : []),
+    tableHtml(layout.checklist, rows.filter((r) => r.table === 'checklist'), LEVELS.checklist, headCell(layout, 'checklist'))]
+  if (layout.sections) return renderParts(cfg, layout, parts, tables)
+  const page = [
     `<h1>${esc(titleOf(cfg, layout))}</h1>`,
     ...(layout.intro ?? []).map((p) => `<p>${esc(p)}</p>`),
     '<p><em>Cells written by the qa-report pipeline are regenerated each time it runs. Edit a cell to take it over: the pipeline then leaves it alone.</em></p>',
   ]
-  if (layout.info) parts.push(tableHtml(layout.info, rows.filter((r) => r.table === 'info')))
-  parts.push(tableHtml(layout.checklist, rows.filter((r) => r.table === 'checklist'), 1))
-  return parts.join('\n')
+  return [...page, ...tables].join('\n')
+}
+
+export const headingHtml = (h: { text: string; level: number }): string => `<h${h.level}>${esc(h.text)}</h${h.level}>`
+
+/** A whole page for a layout with sections, as the template lays it out. */
+export function renderParts(cfg: ReleaseConfig, layout: Layout, parts: GenPart[], tables: string[]): string {
+  const byPart = (p: string) => parts.find((x) => x.part === p)
+  const sections = parts.filter((p) => p.heading).flatMap((p) => [headingHtml(p.heading!), p.html])
+  return [byPart('header')?.html, `<h1>${esc(titleOf(cfg, layout))}</h1>`, byPart('intro')?.html, ...tables, ...sections]
+    .filter((x): x is string => !!x).join('\n')
 }
 
 /** The layout's title for this release or feature. */

@@ -33,8 +33,8 @@ describe('the feature layout', () => {
     assert.deepEqual(layout.checklist.rows.map((r) => [r.key, r.question, r.good]), release.checklist.rows.map((r) => [r.key, r.question, r.good]))
     assert.ok(layout.checklist.rows.every((r) => r.rule === 'agent' && r.guide))
     assert.deepEqual(layout.checklist.rows.find((r) => r.key === '15')!.evidence, ['ignored-tests', 'ignored-tests-feature'])
-    assert.deepEqual(layout.info!.rows.map((r) => r.key), ['Feature', 'Release Type', 'Epics', 'Test Environments', 'External Dependencies',
-      'External Risks', 'Outstanding Bugs', 'GIT', 'GIT Revision'])
+    assert.deepEqual(layout.info!.rows.map((r) => r.key), release.info!.rows.map((r) => r.key), 'the Release Information rows, in order')
+    assert.equal(layout.info!.heading, release.info!.heading)
   })
 
   test('evidence and guide are for agent rows only, and name rules the readers answer', () => {
@@ -55,18 +55,23 @@ describe('the feature layout', () => {
 
   test('evidence rules file items under the agent rows that ask for them, as well as the rows of their own rule', () => {
     const filed = fileUnderRows(layout, [fact({ rule: 'deployed-aat', status: 'pass' }), fact({ rule: 'outstanding-bugs', status: 'pass' })])
-    assert.deepEqual(filed.map((i) => i.row), ['14', '23', 'info:Outstanding Bugs', '22'])
+    assert.deepEqual(filed.map((i) => i.row), ['info:Test Environments', '14', '23', 'info:Outstanding Bugs', '22'])
     assert.deepEqual(fileUnderRows(release, [fact({ rule: 'agent', status: 'pass', data: { row: '5' } })]), [], 'an answer goes to agent rows only')
+    assert.deepEqual(fileUnderRows(layout, [fact({ rule: 'agent', status: 'pass', data: { row: 'info:Release Type' } }),
+      fact({ rule: 'agent', status: 'pass', data: { row: 'info:GIT' } })]).map((i) => i.row), ['info:Release Type'], 'and to agent info rows')
   })
 })
 
 describe('answers.json', () => {
-  test('takes Yes, No, N/A or To confirm, a comment, and https links; Yes and No need one', () => {
+  test('takes Yes, No, N/A or blank, a comment, and https links; Yes and No need one', () => {
     assert.deepEqual(validateAnswer({ answer: 'Yes', comment: 'c', links: [link] }, 'a'), [])
-    assert.deepEqual(validateAnswer({ answer: 'To confirm', comment: 'No record of a run.' }, 'a'), [])
+    assert.deepEqual(validateAnswer({ answer: '', comment: 'No record of a run.' }, 'a'), [])
     assert.deepEqual(validateAnswer({ answer: 'N/A', comment: 'No RIA.', links: [] }, 'a'), [])
     const bad = (a: unknown) => validateAnswer(a, 'a').join('\n')
-    assert.match(bad({ answer: 'Maybe', comment: 'c', links: [link] }), /"answer" must be Yes, No, N\/A or To confirm/)
+    for (const answer of ['Maybe', 'To confirm', null, undefined]) {
+      assert.match(bad({ answer, comment: 'c', links: [link] }), /"answer" must be Yes, No, N\/A or "" \(blank\)/, String(answer))
+    }
+    assert.match(bad({ answer: '', comment: '' }), /"comment" must be 1 to 1500/, 'a blank status still says what is missing')
     assert.match(bad({ answer: 'No', comment: 'c' }), /must cite at least one link/)
     assert.match(bad({ answer: 'Yes', comment: ' ', links: [link] }), /"comment" must be 1 to 1500/)
     assert.match(bad({ answer: 'Yes', comment: 'x'.repeat(LIMITS.comment + 1), links: [link] }), /"comment" must be 1 to 1500/)
@@ -89,7 +94,7 @@ describe('answers.json', () => {
   })
 
   test('is read from the cache directory by its fixed name, with rejections written beside it', () => {
-    assert.deepEqual(loadAnswers(dir, layout), { found: false, answers: {}, rejected: 0 })
+    assert.deepEqual(loadAnswers(dir, layout), { found: false, answers: {}, sections: {}, rejected: 0 })
     writeFileSync(join(dir, 'answers.json'), JSON.stringify({ '1': { answer: 'No', comment: 'Coverage is 61%.', links: [link] }, '2': { answer: 'Yes' } }))
     const res = loadAnswers(dir, layout)
     assert.deepEqual([res.found, Object.keys(res.answers), res.rejected], [true, ['1'], 1])
@@ -113,19 +118,21 @@ describe('answers.json', () => {
 describe('an agent row', () => {
   test('is decided by the answer alone, mapped through the row\'s good answer', () => {
     const e = answered({ '1': { answer: 'Yes', comment: 'Coverage is 91%.\n\nBoth repos.', links: [link] }, '10': { answer: 'Yes', comment: '2 open.', links: [link] },
-      '13': { answer: 'N/A', comment: 'No ZAP run is recorded.' }, '5': { answer: 'To confirm', comment: 'No cross-browser run found.' } }, [coverage])
+      '13': { answer: 'N/A', comment: 'No ZAP run is recorded.' }, '5': { answer: '', comment: 'No cross-browser run found.' } }, [coverage])
     const r1 = row(e, '1')
     assert.deepEqual([r1.status, r1.answer, r1.keep, r1.needsJudgement], ['pass', 'Yes', false, false], 'a failing mechanical check is not worst-of\'d in')
     assert.deepEqual(r1.lines, [{ text: 'Coverage is 91%.', links: [] }, { text: 'Both repos.', links: [] }, { text: '', links: [link] }])
     assert.deepEqual([row(e, '10').status, row(e, '10').answer], ['fail', 'Yes'], 'row 10 is good when No')
     assert.deepEqual([row(e, '13').status, row(e, '13').answer], ['pass', 'N/A'])
-    assert.deepEqual([row(e, '5').status, row(e, '5').answer, row(e, '5').keep], ['unknown', 'To confirm', false], 'To confirm is an answer, written')
+    assert.deepEqual([row(e, '5').status, row(e, '5').answer, row(e, '5').keep], ['unknown', null, false], 'a blank answer is an answer, written')
+    const five = genRows(layout, evaluate(cfg, layout, e)).find((r) => r.key === '5')!
+    assert.equal(textOf(parse(five.cells[2].html)), '', 'its status is left blank')
   })
 
   test('with no answer keeps what the page says, and shows the evidence if the row is added', () => {
     const r = row(ev([coverage]), '1')
-    assert.deepEqual([r.status, r.answer, r.keep], ['unknown', 'To confirm', true])
-    assert.equal(r.lines[0].text, 'To confirm: the agent has not answered this row.')
+    assert.deepEqual([r.status, r.answer, r.keep], ['unknown', null, true])
+    assert.equal(r.lines[0].text, 'No answer has been given for this row yet.')
     assert.match(r.lines[1].text, /61\.0%/)
   })
 })
@@ -187,7 +194,7 @@ describe('publishing agent rows', () => {
   test('the page\'s text goes to the agent, marked when a person wrote it, and left out when the question differs', () => {
     const rows = publishedRows(published, layout)
     assert.deepEqual(rows['1'], { status: 'Yes', comment: 'Coverage is 91%. pcs-api on SonarCloud', links: [link.url] })
-    assert.equal(rows['2'].status, 'To confirm')
+    assert.equal(rows['2'].status, '')
     assert.equal(publishedRows(published.replace('Coverage is 91%.', 'Checked by hand.'), layout)['1'].byPerson, true)
     assert.equal(publishedRows(published.replace('Is unit test coverage greater than 80% for all services?', 'Other?'), layout)['1'], undefined)
     // Whitespace and entities a page may have don't make it another question, as they don't to a merge.
@@ -201,7 +208,7 @@ describe('publishing agent rows', () => {
 describe('the agent input', () => {
   test('has the scope, and per agent row its question, guide, evidence and the page\'s text', () => {
     const e = ev([coverage, fact({ rule: 'e2e-feature', status: 'unknown', value: 'not checked', note: 'Cosmos 403', unreachable: true, repo: 'pcs-frontend' })])
-    const input = agentInput(cfg, layout, e, { '1': { status: 'Yes', comment: 'old', links: [] } }) as { scope: Record<string, any>; rows: Record<string, any>[]; pageRead: boolean }
+    const input = agentInput(cfg, layout, e, { rows: { '1': { status: 'Yes', comment: 'old', links: [] } }, info: {}, sections: {} }) as { scope: Record<string, any>; rows: Record<string, any>[]; pageRead: boolean }
     assert.deepEqual(input.scope.epics, ['HDPI-10019'])
     assert.equal(input.scope.repos['pcs-api'].commits[SERVICE_WIDE], SHA.api2)
     assert.deepEqual(input.scope.repos['pcs-frontend'].e2e.tags, ['@privateLandlord'])

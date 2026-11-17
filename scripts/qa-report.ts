@@ -35,17 +35,19 @@
 import { readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { parseArgs } from 'node:util'
-import { AGENT_INPUT_FILE, agentInput, agentRows, ANSWERS_FILE, answerItems, loadAnswers } from './lib/qa/answers.ts'
+import { AGENT_INPUT_FILE, agentInput, agentRows, ANSWERS_FILE, answerItems, hasAgentWork, loadAnswers, type Published, type SectionAnswers } from './lib/qa/answers.ts'
 import { cacheDir, releaseDir, releaseName, within } from './lib/qa/cache.ts'
 import { collect, evidenceFor, fileUnderRows, readers, scopeFeature } from './lib/qa/collect.ts'
 import { activeReleases, CONFIG_DIR, type Layout, loadRelease, type ReleaseConfig, releasePath, type ScopeKind } from './lib/qa/config.ts'
 import { logError, publicMessage, QaError } from './lib/qa/errors.ts'
 import { judgementFile, type Judgements, loadJudgements } from './lib/qa/judgement.ts'
-import { createPage, getPage, publishedRows, publishToPage, type PublishResult, releaseTitle } from './lib/qa/publish.ts'
+import { createPage, getPage, published, publishToPage, type PublishResult, releaseTitle } from './lib/qa/publish.ts'
 import { evaluate, genRows, renderPage, type Results } from './lib/qa/render.ts'
-import { pageId, quietRunner } from './lib/qa/twg.ts'
+import { genParts } from './lib/qa/sections.ts'
+import { accountName, pageId, quietRunner } from './lib/qa/twg.ts'
 import type { Item } from './lib/qa/sources/common.ts'
 import type { Evidence } from './lib/qa/types.ts'
+import { str } from './lib/qa/util.ts'
 
 const USAGE = 'usage: npm run qa-report -- --release <name> [--evidence] [--judgement] [--answers] [--publish] [--validate] [--create-under <pageId>]\n' +
   '       npm run qa-report -- --feature <name> [--evidence] [--judgement] [--answers] [--publish] [--validate] [--create-under <pageId>]\n' +
@@ -130,47 +132,53 @@ async function gather(cfg: ReleaseConfig, layout: Layout, dir: string, reuse: bo
 }
 
 /**
- * Writes agent-input.json for the layout's agent rows, with what the published page says now if
- * it can be read, and removes answers.json left from an earlier collection.
+ * Writes agent-input.json for the layout's agent rows and sections, with what the published page
+ * says now if it can be read and, for a layout with a "Created by" line, the name of the account
+ * twg runs as, and removes answers.json left from an earlier collection. The name is never printed.
  */
 function writeAgentInput(cfg: ReleaseConfig, layout: Layout, evidence: Evidence, dir: string): void {
   rmSync(join(dir, ANSWERS_FILE), { force: true })
   const rows = agentRows(layout)
-  if (!rows.length) {
+  if (!hasAgentWork(layout)) {
     say('agent input: the layout has no agent rows, so none was written')
     return
   }
-  let published = null
+  let page: Published | null = null
   if (cfg.report_page) {
     try {
-      published = publishedRows(getPage(quietRunner, pageId(cfg.report_page), false).html, layout)
+      page = published(getPage(quietRunner, pageId(cfg.report_page), false).html, layout)
     } catch (e) {
       logError(cacheDir(), cfg.release, e)
     }
   }
-  const input = agentInput(cfg, layout, evidence, published)
+  const name = layout.header ? accountName(quietRunner) : null
+  const input = agentInput(cfg, layout, evidence, page, name)
   writeFileSync(join(dir, AGENT_INPUT_FILE), JSON.stringify(input, null, 2) + '\n')
   const filed = evidence.items.filter((i) => rows.some((r) => r.key === i.row)).length
-  say(`agent input: ${rows.length} rows, ${filed} evidence items, ${published ? `the page's text for ${Object.keys(published).length} rows` : 'the page could not be read'}`)
+  const sections = layout.sections ? `, ${layout.sections.length} sections${layout.header ? `, ${name ? 'the' : 'no'} account name` : ''}` : ''
+  say(`agent input: ${rows.length} rows${sections}, ${filed} evidence items, ${page ? `the page's text for ${Object.keys(page.rows).length} rows` : 'the page could not be read'}`)
 }
 
-/** The evidence with the agent's answers from answers.json added. */
-function withAnswers(name: string, layout: Layout, evidence: Evidence, dir: string): Evidence {
-  if (!agentRows(layout).length) return evidence
+/** The evidence with the agent's answers from answers.json added, and its section answers. */
+function withAnswers(name: string, layout: Layout, evidence: Evidence, dir: string): { evidence: Evidence; sections: SectionAnswers } {
+  const none = { evidence, sections: {} }
+  if (!hasAgentWork(layout)) return none
   const loaded = loadAnswers(dir, layout)
   if (!loaded.found) {
     say(`agent: no ${ANSWERS_FILE}, so every agent row keeps the published answer`)
-    return evidence
+    return none
   }
   if (loaded.unreadable) {
     logError(cacheDir(), name, loaded.unreadable)
     say(`agent: ${ANSWERS_FILE} could not be read, so 0 answers were taken and every agent row keeps the published answer`)
-    return evidence
+    return none
   }
-  const items = answerItems(loaded.answers, layout)
+  const all = answerItems(loaded.answers, layout, undefined, loaded.sections)
+  const items = all.filter((i) => !str(i.data?.row).startsWith('info:'))
   const missing = agentRows(layout).length - items.length
-  say(`agent: ${tallyOf(items)}, ${missing} rows without an answer${loaded.rejected ? ` (${loaded.rejected} rejected: see answers-rejected.txt in the cache directory)` : ''}`)
-  return { ...evidence, items: [...evidence.items, ...fileUnderRows(layout, items)] }
+  const given = layout.sections ? `, ${Object.keys(loaded.sections).length} section answers` : ''
+  say(`agent: ${tallyOf(items)}, ${missing} rows without an answer${given}${loaded.rejected ? ` (${loaded.rejected} rejected: see answers-rejected.txt in the cache directory)` : ''}`)
+  return { evidence: { ...evidence, items: [...evidence.items, ...fileUnderRows(layout, all)] }, sections: loaded.sections }
 }
 
 function sayRows(results: Results, judgements: Judgements, judged: boolean): void {
@@ -188,7 +196,8 @@ function sayPublished(res: PublishResult): void {
   const c = res.counts
   const would = res.published ? '' : 'would be '
   const retired = c.retiredKept ? `${c.retiredKept} rows not in the layout kept as people wrote them, ` : ''
-  const tail = `${c.judged} judgement cells ${would}written, ${c.added} rows ${would}added, ${c.removed} rows ${would}removed, ${retired}${c.human} cells kept as people wrote them, ` +
+  const moved = `${c.moved ? `${c.moved} rows ${would}moved, ` : ''}${c.sections ? `${c.sections} sections ${would}added, ` : ''}`
+  const tail = `${c.judged} judgement cells ${would}written, ${c.added} rows ${would}added, ${c.removed} rows ${would}removed, ${moved}${retired}${c.human} cells kept as people wrote them, ` +
     `${c.kept} kept as published (source unreachable or no agent answer), ${c.skipped} skipped`
   say(res.published ? `${c.change} cells changed, ${tail}${res.retried ? ' (after re-reading the page)' : ''}`
     : `${c.change} cells would change, ${tail}`)
@@ -212,16 +221,18 @@ async function report(path: string, o: Options): Promise<'done' | 'skipped'> {
     writeAgentInput(cfg, layout, gathered.evidence, dir)
     return 'done'
   }
-  const evidence = o.answers ? withAnswers(cfg.release, layout, gathered.evidence, dir) : gathered.evidence
+  const answered = o.answers ? withAnswers(cfg.release, layout, gathered.evidence, dir) : { evidence: gathered.evidence, sections: {} }
+  const { evidence } = answered
   const results = evaluate(cfg, layout, evidence)
   const judgements: Judgements = o.judgement ? loadJudgements(judgementFile(dir), results.checklist) : {}
   sayRows(results, judgements, !!o.judgement)
   const rows = genRows(layout, results, judgements)
-  const page = renderPage(cfg, layout, results, judgements)
+  const parts = genParts(layout, answered.sections, new Date())
+  const page = renderPage(cfg, layout, results, judgements, parts)
   writeFileSync(join(dir, 'report.html'), page)
 
   if (cfg.report_page) {
-    const res = publishToPage(quietRunner, pageId(cfg.report_page), layout, rows, dir, { publish: o.publish, validate: o.validate })
+    const res = publishToPage(quietRunner, pageId(cfg.report_page), layout, rows, dir, { publish: o.publish, validate: o.validate }, parts)
     if (res.unpublishedEdits) {
       say(`${process.env.GITHUB_ACTIONS ? '::warning::' : ''}page has unpublished edits; skipped`)
       return 'skipped'

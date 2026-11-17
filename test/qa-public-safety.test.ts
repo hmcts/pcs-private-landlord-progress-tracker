@@ -147,7 +147,10 @@ describe('the CLI, with the agent\'s input and answers', () => {
   after(() => {
     for (const d of [out, fixtures]) rmSync(d, { recursive: true, force: true })
   })
-  const AGENT_CANARY = ['Canary agent comment about HDPI-99999', 'https://canary.internal.example/agent/evidence', 'canary-agent-link-text', 'canary-row-key']
+  const AGENT_CANARY = ['Canary agent comment about HDPI-99999', 'https://canary.internal.example/agent/evidence', 'canary-agent-link-text', 'canary-row-key',
+    'Canary QA summary sentence', 'Canary risk wording', 'Canary Signer Name', 'Canary external dependency']
+  // The name of the account twg runs as: collected into agent-input.json, never printed.
+  const NAME = 'Canary Account Holder'
 
   test('collect-only and answers print only counts; the input, answers and rejections stay in the cache', () => {
     mkdirSync(fixtures, { recursive: true })
@@ -164,22 +167,30 @@ describe('the CLI, with the agent\'s input and answers', () => {
       candidates: [{ name: 'service-wide', shas: { 'pcs-api': sha } }], items: fileUnderRows(layout, items) }))
     writeFileSync(join(out, 'answers.json'), '{}')
 
-    const env = { ...process.env }
+    // A twg that answers only "who am I", with the canary name, so the collect step reads it without a real sign-in.
+    const bin = resolve(fixtures, 'bin')
+    mkdirSync(bin, { recursive: true })
+    writeFileSync(join(bin, 'twg'), ['#!/bin/sh', 'if [ "$1 $2 $3" = "confluence space me" ]; then',
+      `  echo '${JSON.stringify({ data: { currentUser: { displayName: NAME } } })}'`, '  exit 0', 'fi', 'exit 1', ''].join('\n'), { mode: 0o755 })
+    const env: NodeJS.ProcessEnv = { ...process.env, PATH: `${bin}:${process.env.PATH}` }
     for (const k of ['QA_CACHE_DIR', 'RUNNER_TEMP', 'COSMOS_PIPELINE_METRICS_KEY']) delete env[k]
     const cli = (...args: string[]) => spawnSync(process.execPath, ['--no-warnings', 'scripts/qa-report.ts', '--config', config, ...args], { encoding: 'utf8', env })
     const quiet = (r: ReturnType<typeof cli>) => {
       assert.equal(r.status, 0, r.stderr)
       const printed = r.stdout + r.stderr
-      for (const c of [...CANARY, ...AGENT_CANARY, sha.slice(0, 7)]) assert.ok(!printed.includes(c), `printed ${c}`)
+      for (const c of [...CANARY, ...AGENT_CANARY, NAME, sha.slice(0, 7)]) assert.ok(!printed.includes(c), `printed ${c}`)
       assert.doesNotMatch(printed, /https?:\/\//)
       return r.stdout
     }
 
     const collected = quiet(cli('--evidence', '--collect-only'))
-    assert.match(collected, /^agent input: 23 rows, 3 evidence items, the page could not be read$/m)
+    assert.match(collected, /^agent input: 23 rows, 6 sections, the account name, 3 evidence items, the page could not be read$/m)
     assert.ok(!existsSync(join(out, 'answers.json')), 'an earlier answers.json is removed')
     const input = JSON.parse(readFileSync(join(out, 'agent-input.json'), 'utf8'))
     assert.equal(input.rows.length, 23)
+    assert.equal(input.createdBy, NAME)
+    assert.deepEqual(input.info.map((r: { key: string }) => r.key), ['Release Type', 'Test Environments', 'External Dependencies', 'External Risks'])
+    assert.equal(input.sections.length, 6)
     assert.equal(input.rows[0].evidence[0].links[0].url, CANARY[3])
     assert.ok(!existsSync(join(out, 'report.html')), 'collect-only renders nothing')
 
@@ -187,27 +198,42 @@ describe('the CLI, with the agent\'s input and answers', () => {
     writeFileSync(join(out, 'answers.json'), JSON.stringify({
       '1': { answer: 'Yes', comment: AGENT_CANARY[0], links: link },
       '21': { answer: 'No', comment: AGENT_CANARY[0], links: link },
-      '9': { answer: 'To confirm', comment: AGENT_CANARY[0], links: [] },
+      '9': { answer: '', comment: AGENT_CANARY[0], links: [] },
       '13': { answer: 'N/A', comment: AGENT_CANARY[0], links: [{ text: AGENT_CANARY[2], url: 'http://canary.internal.example/insecure' }] },
       '2': { answer: 'Yes', comment: AGENT_CANARY[0] },
       [AGENT_CANARY[3]]: { answer: 'Yes', comment: AGENT_CANARY[0], links: link },
+      sections: {
+        createdBy: NAME,
+        info: { 'External Dependencies': { text: AGENT_CANARY[7], links: link } },
+        qaSummary: AGENT_CANARY[4],
+        recommendation: { approved: false, reason: AGENT_CANARY[0] },
+        risks: [{ risk: AGENT_CANARY[5], mitigation: '', links: link }],
+        signOff: Object.fromEntries(['QA Manager', 'TCOE QA lead', 'Product Owner', 'Delivery Manager', 'Technical Lead']
+          .map((role, n) => [role, { name: n ? '' : AGENT_CANARY[6], status: n ? '' : '✅ Approved', links: [] }])),
+        testingSummary: { 'Smoke Testing': 'To confirm' },
+        [AGENT_CANARY[3]]: AGENT_CANARY[0],
+      },
     }))
     // --answers alone reuses the evidence the answers were written against; it never collects afresh.
     const answered = quiet(cli('--answers'))
     assert.match(answered, /^evidence: 3 items from a file$/m)
-    assert.match(answered, /^agent: 3 items, 1 pass, 1 fail, 1 unknown, 20 rows without an answer \(3 rejected: see answers-rejected\.txt in the cache directory\)$/m)
+    assert.match(answered, /^agent: 3 items, 1 pass, 1 fail, 1 unknown, 20 rows without an answer, 6 section answers \(5 rejected: see answers-rejected\.txt in the cache directory\)$/m)
     assert.match(answered, /^row 1   pass$/m)
     assert.match(answered, /^row 21  fail$/m)
     assert.match(answered, /^row 9   unknown$/m)
     assert.match(answered, /^row 2   unknown \(no agent answer: keeps the published answer\)$/m)
     const report = readFileSync(join(out, 'report.html'), 'utf8')
     assert.ok(report.includes(AGENT_CANARY[0]) && report.includes(AGENT_CANARY[1]), 'the report itself does carry the answers')
-    assert.ok(readFileSync(join(out, 'answers-rejected.txt'), 'utf8').includes(AGENT_CANARY[3]))
+    for (const c of [NAME, ...AGENT_CANARY.slice(4)]) assert.ok(report.includes(c), `the report carries the sections and "Created by": ${c}`)
+    assert.match(report, /❌ QA NOT APPROVED FOR RELEASE/)
+    const rejected = readFileSync(join(out, 'answers-rejected.txt'), 'utf8')
+    assert.ok(rejected.includes(AGENT_CANARY[3]))
+    assert.match(rejected, /answers\.sections\.testingSummary\.Smoke Testing: must be/)
 
     for (const d of ['src', 'data', '_site', 'build', 'config', 'scripts', 'test'].filter((x) => existsSync(x))) {
       for (const f of files(d)) {
         const text = readFileSync(f, 'utf8')
-        for (const c of AGENT_CANARY) assert.ok(!text.includes(c) || f.endsWith('qa-public-safety.test.ts'), `${c} in ${f}`)
+        for (const c of [...AGENT_CANARY, NAME]) assert.ok(!text.includes(c) || f.endsWith('qa-public-safety.test.ts'), `${c} in ${f}`)
       }
     }
   })

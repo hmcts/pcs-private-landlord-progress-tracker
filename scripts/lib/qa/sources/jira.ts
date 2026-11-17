@@ -1,9 +1,10 @@
 // Jira, read through twg as the roadmap is (scripts/lib/roadmap-runner.ts, but awaitable, so the
 // other sources carry on while twg runs; twg itself still runs one call at a time): outstanding
 // bugs by priority, "Test Complete" style comments on the scope's stories, tasks and bugs, how
-// many of them are done, and the status of each ticket backing a human-answered row. The scope
-// is the release's jql, or for a feature the child tickets of its epics (see config.ts). The report is internal, so this doesn't
-// apply the public site's not-public filter, and nothing it reads may reach the site.
+// many of them are done, the status of each ticket backing a human-answered row, and a feature's
+// tickets to link. The scope is the release's jql, or for a feature the child tickets of its
+// epics (see config.ts). The report is internal, so this doesn't apply the public site's
+// not-public filter, and nothing it reads may reach the site.
 
 import type { ReleaseConfig } from '../config.ts'
 import { type AsyncTwgRunner, jiraKey, quietRunnerAsync } from '../twg.ts'
@@ -158,6 +159,17 @@ async function workItems(cfg: ReleaseConfig, run: AsyncTwgRunner, now: Now): Pro
   }
 }
 
+/** A feature's epics' child tickets, every type and status, for the info table to link. */
+async function ticketItems(cfg: ReleaseConfig, run: AsyncTwgRunner, now: Now): Promise<Item[]> {
+  if (cfg.kind !== 'feature') return []
+  try {
+    const keys = (await query(cfg.jql, 'key', run)).map((i) => i.key).sort((a, b) => a.localeCompare(b, 'en', { numeric: true }))
+    return [item({ source: SOURCE, rule: 'epic-tickets', status: 'pass', value: `${keys.length} tickets`, links: keys.map(browse), data: { keys } }, now)]
+  } catch (e) {
+    return [item({ source: SOURCE, rule: 'epic-tickets', status: 'unknown', value: 'not checked', note: `Jira could not be read: ${reason(e)}`, unreachable: true }, now)]
+  }
+}
+
 /** The human_rows tickets by key, and why any couldn't be read. */
 async function humanTickets(keys: string[], run: AsyncTwgRunner): Promise<{ byKey: Map<string, JiraIssue>; failed: Map<string, string> }> {
   const byKey = new Map<string, JiraIssue>()
@@ -198,7 +210,7 @@ async function humanItems(cfg: ReleaseConfig, run: AsyncTwgRunner, now: Now): Pr
 
 export function jiraReader(cfg: ReleaseConfig, run: AsyncTwgRunner = quietRunnerAsync, now?: () => Date): () => Promise<Item[]> {
   return async () => {
-    const [bugs, work, human] = await Promise.all([bugItems(cfg, run, now), workItems(cfg, run, now), humanItems(cfg, run, now)])
-    return [...bugs, ...work, ...human]
+    const [bugs, work, human, tickets] = await Promise.all([bugItems(cfg, run, now), workItems(cfg, run, now), humanItems(cfg, run, now), ticketItems(cfg, run, now)])
+    return [...bugs, ...work, ...human, ...tickets]
   }
 }

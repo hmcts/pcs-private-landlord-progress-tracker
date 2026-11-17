@@ -168,19 +168,25 @@ export function nearest(e: El, tag: string): El | null {
   return null
 }
 
-const isHeading = (e: El) => /^h[1-6]$/.test(e.tag)
+export const isHeading = (e: El): boolean => /^h[1-6]$/.test(e.tag)
 
-/** The table under the heading whose text matches, before any other heading, or null. */
-export function tableAfterHeading(root: El, heading: RegExp): El | null {
+/** The first heading whose text matches, and the table under it before any other heading, if there is one. */
+export function headingAndTable(root: El, heading: RegExp): { heading: El; table: El | null } | null {
   const all = [...walk(root)]
   const h = all.findIndex((e) => isHeading(e) && heading.test(textOf(e)))
   if (h < 0) return null
   for (const e of all.slice(h + 1)) {
-    if (isHeading(e)) return null
-    if (e.tag === 'table') return e
+    if (isHeading(e)) break
+    if (e.tag === 'table') return { heading: all[h], table: e }
   }
-  return null
+  return { heading: all[h], table: null }
 }
+
+/** The table under the heading whose text matches, before any other heading, or null. */
+export const tableAfterHeading = (root: El, heading: RegExp): El | null => headingAndTable(root, heading)?.table ?? null
+
+/** The top-level elements of a page, in order. */
+export const blocksOf = (root: El): El[] => root.children.filter((c): c is El => c.type === 'el')
 
 export const shortHash = (s: string): string => createHash('sha256').update(s).digest('hex').slice(0, 8)
 
