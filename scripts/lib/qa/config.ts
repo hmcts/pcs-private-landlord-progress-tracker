@@ -341,6 +341,9 @@ function validateE2e(e2e: unknown, w: string): string[] {
   return errors
 }
 
+/** The pull request a feature's repo is read at, if it is; a release's repos never are. */
+export const prOfRepo = (cfg: ReleaseConfig, repo: string): number | undefined => (cfg.kind === 'feature' ? cfg.repos[repo]?.pr : undefined)
+
 /** A PR number as the config gives it, or null when it isn't a positive integer. */
 export function prOf(v: unknown): number | null {
   const n = typeof v === 'number' || typeof v === 'string' ? Number(v) : Number.NaN

@@ -23,8 +23,6 @@ import type { E2eConfig, ReleaseConfig, RepoConfig } from '../config.ts'
 import { mapLimit, SHA, str } from '../util.ts'
 import { item, type Item, reason, short } from './common.ts'
 import { type Build, BRANCH_DAYS, branchBuilds, completedBuild, type CosmosQuery, defaultCosmosQuery, latestBuild, type StageEvent } from './cosmos.ts'
-
-export { isJob, isRepoJob } from './cosmos.ts'
 import { BRANCH_STATUS, defaultGitHubApi, defaultTarball, type GitHubApi, type GitHubTarball, ignoredItem, type Scan, scanTarball } from './github.ts'
 
 const SOURCE = 'e2e'
@@ -125,8 +123,22 @@ export interface Head {
   number?: number | null
 }
 
+// One lookup per repo and branch for the run: scopeFeature and the E2E reader share the api they are given.
+const headMemo = new WeakMap<GitHubApi, Map<string, Promise<Head | null>>>()
+
 /** The head commit of the branch (a PR's head, for PR-<n>) and its Jenkins status. */
-export async function fromGitHub(api: GitHubApi, gh: string, branch: string): Promise<Head | null> {
+export function fromGitHub(api: GitHubApi, gh: string, branch: string): Promise<Head | null> {
+  const memo = headMemo.get(api) ?? new Map<string, Promise<Head | null>>()
+  headMemo.set(api, memo)
+  const key = `${gh}|${branch}`
+  const hit = memo.get(key)
+  if (hit) return hit
+  const read = readHead(api, gh, branch)
+  memo.set(key, read)
+  return read
+}
+
+async function readHead(api: GitHubApi, gh: string, branch: string): Promise<Head | null> {
   const pr = prNumber(branch)
   const res = await api(pr === null ? `repos/${gh}/commits/${encodeURIComponent(branch)}` : `repos/${gh}/pulls/${String(pr)}`) as
     { sha?: unknown; head?: { sha?: unknown } }

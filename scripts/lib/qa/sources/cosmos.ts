@@ -24,7 +24,7 @@
 // feature's E2E rows read the builds of the branch its config names the same way (e2e.ts).
 // Every repo of every candidate gets an item for each rule it answers, unknown if need be.
 
-import type { Candidate, ReleaseConfig, RepoConfig } from '../config.ts'
+import { type Candidate, prOfRepo, type ReleaseConfig, type RepoConfig } from '../config.ts'
 import { str } from '../util.ts'
 import { day, item, type Item, reason, short } from './common.ts'
 import { codebaseType, type CodebaseType, type CveDoc, repoFromGitUrl, summariseCve } from './cve.ts'
@@ -49,6 +49,8 @@ export interface StageEvent {
   current_build_duration?: number
   current_build_scheduled_time?: string
   git_commit?: string
+  /** When Cosmos stored the event, in seconds. */
+  _ts?: number
 }
 
 /** Runs one Cosmos SQL query against a container in one database. Injected in tests. */
@@ -258,7 +260,7 @@ function cveItems(repo: string, sha: string, c: Candidate, builds: Build[], repo
 }
 
 const STAGE_FIELDS = ['job_name', 'branch_name', 'build_number', 'build_tag', 'build_url', 'current_step_name',
-  'current_build_current_result', 'current_build_duration', 'current_build_scheduled_time', 'git_commit']
+  'current_build_current_result', 'current_build_duration', 'current_build_scheduled_time', 'git_commit', '_ts']
 
 const STAGE_QUERY = `SELECT ${STAGE_FIELDS.map((f) => `c.${f}`).join(', ')} FROM c ` +
   'WHERE c.git_commit = @sha AND c.product = @p AND c.component = @c'
@@ -289,8 +291,26 @@ export function isRepoJob(jobName: string, github: string, branch: string, job?:
   return parts.length === 3 && !parts[0].endsWith('_Nightly') && parts[1] === repo && (parts[2] === branch || parts[2] === encodeURIComponent(branch))
 }
 
+type BranchRepo = Pick<RepoConfig, 'github' | 'cosmos_product' | 'cosmos_component'>
+
+// One query per repo, branch and job for the run: scopeFeature, cosmosReader and the E2E reader
+// all read a PR's builds, and share the query they are given.
+const branchMemo = new WeakMap<CosmosQuery, Map<string, Promise<StageEvent[][]>>>()
+
 /** The repo's builds of a branch in Cosmos, as stage events grouped by build: one build (@n), or those of the last BRANCH_DAYS. */
-export async function branchBuilds(query: CosmosQuery, rc: Pick<RepoConfig, 'github' | 'cosmos_product' | 'cosmos_component'>, branch: string, job: string | undefined, wanted: number | null,
+export function branchBuilds(query: CosmosQuery, rc: BranchRepo, branch: string, job: string | undefined, wanted: number | null,
+  now: () => Date): Promise<StageEvent[][]> {
+  const memo = branchMemo.get(query) ?? new Map<string, Promise<StageEvent[][]>>()
+  branchMemo.set(query, memo)
+  const key = JSON.stringify([rc.github, rc.cosmos_product, rc.cosmos_component, branch, job ?? null, wanted])
+  const hit = memo.get(key)
+  if (hit) return hit
+  const read = readBranchBuilds(query, rc, branch, job, wanted, now)
+  memo.set(key, read)
+  return read
+}
+
+async function readBranchBuilds(query: CosmosQuery, rc: BranchRepo, branch: string, job: string | undefined, wanted: number | null,
   now: () => Date): Promise<StageEvent[][]> {
   const bound = wanted === null ? { name: '@since', value: Math.floor(now().getTime() / 1000) - BRANCH_DAYS * 86_400 } : { name: '@n', value: String(wanted) }
   const events = await everywhere(query, 'pipeline-metrics', branchQuery(wanted !== null), [{ name: '@b', value: branch },
@@ -307,8 +327,21 @@ export function prBuild(groups: StageEvent[][], sha: string): Build | null {
   return builds.find((b) => b.sha === sha) ?? builds[0] ?? null
 }
 
-/** The finished builds among the groups, newest first. */
-const finished = (groups: StageEvent[][]): Build[] => groups.map(completedBuild).filter((b): b is Build => !!b).sort((a, b) => b.number - a.number)
+const eventTime = (e: StageEvent) => e._ts ?? (Date.parse(e.current_build_scheduled_time ?? '') / 1000 || 0)
+
+/**
+ * The builds of the job with the newest event, when the groups span several (a repo's PR job
+ * moved folder, say). Build numbers are only comparable within a job.
+ */
+export function newestJob(groups: StageEvent[][]): StageEvent[][] {
+  const latest = new Map<string, number>()
+  for (const e of groups.flat()) latest.set(e.job_name, Math.max(latest.get(e.job_name) ?? 0, eventTime(e)))
+  const [job] = [...latest].sort((a, b) => b[1] - a[1])[0] ?? []
+  return groups.filter((g) => g[0].job_name === job)
+}
+
+/** The finished builds of the newest job among the groups, newest first. */
+const finished = (groups: StageEvent[][]): Build[] => newestJob(groups).map(completedBuild).filter((b): b is Build => !!b).sort((a, b) => b.number - a.number)
 
 /** The newest finished build among the groups, or null. */
 export const latestBuild = (groups: StageEvent[][]): Build | null => finished(groups)[0] ?? null
@@ -331,7 +364,7 @@ export function cosmosReader(cfg: ReleaseConfig, query: CosmosQuery = defaultCos
           out.push(...unknown(down, true))
           continue
         }
-        const pr = cfg.kind === 'feature' ? rc.pr : undefined
+        const pr = prOfRepo(cfg, repo)
         let builds: Build[]
         try {
           if (pr) {
@@ -346,9 +379,13 @@ export function cosmosReader(cfg: ReleaseConfig, query: CosmosQuery = defaultCos
           out.push(...unknown(down, true))
           continue
         }
-        const other = builds.find((b) => b.sha && b.sha !== sha)
-        const stages = stageItems(repo, sha, c, builds, now, pr)
-        out.push(...(other ? stages.map((i) => ({ ...i, note: [i.note, `${labelOf(other)} ran ${short(other.sha)}, not ${short(sha)}`].filter(Boolean).join('; ') })) : stages))
+        // A PR build of another commit says nothing about the candidate's.
+        const other = pr ? builds.find((b) => b.sha !== sha) : undefined
+        if (other) {
+          out.push(...unknown(`${labelOf(other)}, the PR's latest finished Jenkins build, ran ${other.sha ? short(other.sha) : 'no recorded commit'}, not ${short(sha)}`))
+          continue
+        }
+        out.push(...stageItems(repo, sha, c, builds, now, pr))
 
         const withCve = builds.filter((b) => b.tag)
         let docs: CveDoc[] = []

@@ -160,9 +160,10 @@ mechanical rows they answer the rows themselves.
   failed, going by its `continuous-integration/jenkins/branch` status. A full SHA pins it. With
   `pr` instead, the commit is that of the PR job's latest finished Jenkins build (Cosmos
   `pipeline-metrics`, branch `PR-<n>`), else, when Cosmos has none or can't be read, the PR's
-  head commit on GitHub with its `continuous-integration/jenkins/pr-head` status; the finding says
-  which. Then every reader measures the PR: SonarCloud's analysis of the pull request (by
-  `pullRequest`; with only new-code coverage, that, said as "coverage of new code"), the PR
+  head commit on GitHub, if its `continuous-integration/jenkins/pr-head` status says the build
+  finished (success or failure); the finding says which. A head whose build is pending, errored or
+  has no status isn't picked: the GIT Revision cell still names it, but the repo's rows are unknown. Then every reader measures the PR: SonarCloud's analysis of the pull request (by
+  `pullRequest`; with only new-code coverage, the row is unknown and gives that figure), the PR
   job's latest finished build for the stage rows and CVE reports, where functional stages run on
   preview and no AAT stage runs, and the GitHub checks and source at the commit. `e2e.jenkins.branch`
   must then be `PR-<pr>`. The header's "GIT Revision" row is `<repo> = <sha7>` per repo,

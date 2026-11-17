@@ -10,10 +10,11 @@ import { loadLayout, loadRelease, prOf, type ReleaseConfig, validateRelease } fr
 import { evaluate, genRows } from '../scripts/lib/qa/render.ts'
 import { HttpError, type Item } from '../scripts/lib/qa/sources/common.ts'
 import { type CosmosQuery, cosmosReader, type CveDoc, isRepoJob, type StageEvent } from '../scripts/lib/qa/sources/cosmos.ts'
+import { e2eReader } from '../scripts/lib/qa/sources/e2e.ts'
 import { checkItems } from '../scripts/lib/qa/sources/github.ts'
 import { sonarReader } from '../scripts/lib/qa/sources/sonar.ts'
 import type { Evidence } from '../scripts/lib/qa/types.ts'
-import { NOW } from './qa-helpers.ts'
+import { NOW, tarball } from './qa-helpers.ts'
 
 const { cfg: loaded, layout } = loadRelease('config/qa-readiness/private-landlord-make-a-claim.yaml')
 const API_HEAD = 'cfa90c771bb471c0334d83fdd193b5c1f1616adc'
@@ -84,8 +85,8 @@ function cosmos(events: StageEvent[] | Error, cve: CveDoc[] = []) {
   return Object.assign(query, { calls })
 }
 
-/** GitHub with the PRs' heads and the Jenkins pr-head status on them. */
-function github(fail?: Error) {
+/** GitHub with the PRs' heads and the Jenkins pr-head status on them: success on pcs-api's, and `fe` (null for none) on pcs-frontend's. */
+function github(fail?: Error, fe: string | null = 'error') {
   const calls: string[] = []
   const api = async (path: string) => {
     calls.push(path)
@@ -94,7 +95,8 @@ function github(fail?: Error) {
     if (path === 'repos/hmcts/pcs-frontend/pulls/2312') return { head: { sha: FE_HEAD } }
     const [repo, job, sha] = path.includes(API_HEAD) ? ['pcs-api', 'PR-3196/22', API_HEAD] : ['pcs-frontend', 'PR-2312/14', FE_HEAD]
     if (path === `repos/hmcts/${repo}/commits/${sha}/status?per_page=100`) {
-      return { statuses: [{ context: 'continuous-integration/jenkins/pr-head', state: repo === 'pcs-api' ? 'success' : 'error',
+      const state = repo === 'pcs-api' ? 'success' : fe
+      return { statuses: state === null ? [] : [{ context: 'continuous-integration/jenkins/pr-head', state,
         target_url: `https://build.hmcts.net/job/HMCTS_j_to_z/job/${repo}/job/${job}/display/redirect` }] }
     }
     throw new HttpError(404, 'HTTP 404')
@@ -129,20 +131,34 @@ describe('the revision of a repo with pr', () => {
     assert.deepEqual(gh.calls, [], 'GitHub is not needed')
   })
 
-  test('falls back to the PR head on GitHub, with its Jenkins status, when Cosmos can\'t be read or has nothing', async () => {
+  test('falls back to the PR head on GitHub when Cosmos can\'t be read or has nothing, if its Jenkins build finished', async () => {
     for (const q of [cosmos(Object.assign(new Error('Forbidden'), { code: 403 })), cosmos([])]) {
-      const res = await scopeFeature(loaded, github(), NOW, q)
+      const res = await scopeFeature(loaded, github(undefined, 'failure'), NOW, q)
       assert.deepEqual(res.cfg.candidates[0].shas, { 'pcs-api': API_HEAD, 'pcs-frontend': FE_HEAD })
       const r = revisions(res.items)
-      assert.equal(r['pcs-frontend'].value, 'pcs-frontend = 9cc1a08')
-      assert.equal(r['pcs-frontend'].status, 'pass')
-      assert.deepEqual([r['pcs-frontend'].data?.from, r['pcs-frontend'].data?.state, r['pcs-frontend'].data?.number], ['github', 'error', 14])
-      assert.match(r['pcs-frontend'].note!, /^the PR's head commit, from GitHub, where its Jenkins status \(PR-2312 #14\) is error: Cosmos/)
+      assert.deepEqual([r['pcs-frontend'].value, r['pcs-frontend'].status], ['pcs-frontend = 9cc1a08', 'pass'])
+      assert.deepEqual([r['pcs-frontend'].data?.from, r['pcs-frontend'].data?.state, r['pcs-frontend'].data?.number], ['github', 'failure', 14])
+      assert.match(r['pcs-frontend'].note!, /^the PR's head commit, from GitHub, where its Jenkins status \(PR-2312 #14\) is failure: Cosmos/)
     }
     const denied = revisions((await scopeFeature(loaded, github(), NOW, cosmos(Object.assign(new Error('x'), { code: 403 })))).items)
     assert.match(denied['pcs-api'].note!, /Cosmos pipeline-metrics could not be read: access denied \(403\)$/)
     const none = revisions((await scopeFeature(loaded, github(), NOW, cosmos([]))).items)
     assert.match(none['pcs-api'].note!, /Cosmos records no finished build of PR-3196 in the last 60 days$/)
+  })
+
+  test('never picks a PR head whose Jenkins build is pending, errored or has no status', async () => {
+    for (const state of ['pending', 'error', null]) {
+      for (const [q, down] of [[cosmos([]), false], [cosmos(Object.assign(new Error('x'), { code: 403 })), true]] as const) {
+        const res = await scopeFeature(loaded, github(undefined, state), NOW, q)
+        assert.deepEqual(res.cfg.candidates[0].shas, { 'pcs-api': API_HEAD }, String(state))
+        assert.deepEqual(res.unpicked, ['pcs-frontend'])
+        const fe = res.items.filter((i) => i.repo === 'pcs-frontend')
+        assert.ok(fe.length > 1 && fe.every((i) => i.status === 'unknown' && !!i.unreachable === down), 'unreachable only while Cosmos may have a finished build')
+        const rev = revisions(res.items)['pcs-frontend']
+        assert.equal(rev.value, 'pcs-frontend = 9cc1a08', 'the head is still named')
+        assert.match(rev.note!, new RegExp(`^the PR's head commit 9cc1a08 has no finished Jenkins build: ${state ? `its Jenkins status \\(PR-2312 #14\\) is ${state}` : 'it has no Jenkins status'}; `))
+      }
+    }
   })
 
   test('when neither can be read, the repo is unpicked and its rules unknown and unreachable', async () => {
@@ -233,15 +249,17 @@ describe('SonarCloud at the PR', () => {
     assert.ok(get.urls.every((u) => !/project_analyses|search_history/.test(u)))
   })
 
-  test('with only new-code figures, judges by them and says so', async () => {
+  test('with only new-code coverage, leaves the row unknown for the agent, with the figure', async () => {
     const newOnly = { component: { ...FE_MEASURES.component, measures: FE_MEASURES.component.measures.filter((m) => m.metric.startsWith('new_')) } }
     const fe = await sonarOf(sonar({ measures: newOnly }))
-    assert.deepEqual([fe['sonar-coverage'].status, fe['sonar-coverage'].value], ['pass', '95.7% coverage of new code'])
-    assert.match(fe['sonar-coverage'].note!, /has no overall coverage figure, only the new code's/)
-    assert.equal(fe['sonar-coverage'].data?.newCode, true)
+    assert.deepEqual([fe['sonar-coverage'].status, fe['sonar-coverage'].value], ['unknown', '95.7% coverage of new code (no overall figure for the PR)'])
+    assert.ok(!fe['sonar-coverage'].unreachable)
+    assert.equal(fe['sonar-coverage'].data?.newCoverage, 95.67567567567568)
     assert.equal(fe['sonar-security'].value, '0 vulnerabilities, 0 security hotspots in new code')
     const low = { component: { measures: [{ metric: 'new_coverage', periods: [{ index: 1, value: '61.25' }] }] } }
-    assert.deepEqual([(await sonarOf(sonar({ measures: low })))['sonar-coverage'].status], ['fail'])
+    assert.equal((await sonarOf(sonar({ measures: low })))['sonar-coverage'].status, 'unknown', 'neither passed nor failed on new code')
+    const low2 = { component: { measures: [{ metric: 'coverage', value: '61.2' }, { metric: 'new_coverage', periods: [{ index: 1, value: '99' }] }] } }
+    assert.deepEqual([(await sonarOf(sonar({ measures: low2 })))['sonar-coverage'].status], ['fail'], 'the overall figure decides when there is one')
   })
 
   test('takes the latest PR analysis when it is of another commit, and says which it covers', async () => {
@@ -251,14 +269,25 @@ describe('SonarCloud at the PR', () => {
     assert.equal(fe['sonar-coverage'].note, 'the latest analysis of PR #2312 on 16 Nov 2026, which covers ab8b356, not 9cc1a08')
   })
 
-  test('a PR SonarCloud has no analysis of is unknown, not unreachable; SonarCloud down is unreachable', async () => {
+  test('a 404 from the list, measures or gate is unknown and absent; network, auth and 5xx errors are unreachable', async () => {
     const api = await sonarReader(picked, sonar(), NOW)()
     assert.ok(api.filter((i) => i.repo === 'pcs-api').every((i) => i.status === 'unknown' && !i.unreachable && i.note === 'SonarCloud keeps no analysis of PR #3196'))
     const gone = await sonarOf(sonar({ missing: true }))
-    assert.equal(gone['sonar-coverage'].status, 'unknown')
-    assert.ok(!gone['sonar-coverage'].unreachable)
-    const down = await sonarReader(picked, async () => { throw new HttpError(503, 'HTTP 503') }, NOW)()
-    assert.ok(down.every((i) => i.status === 'unknown' && i.unreachable))
+    for (const rule of ['sonar-coverage', 'sonar-security', 'sonar-quality-gate']) {
+      assert.deepEqual([gone[rule].status, gone[rule].unreachable], ['unknown', undefined], rule)
+      assert.match(gone[rule].note!, /^SonarCloud has no (measures|quality gate) for the analysis \(404\)$/)
+    }
+    const fails = (e: unknown) => async () => { throw e }
+    const noList = await sonarReader(picked, fails(new HttpError(404, 'HTTP 404')), NOW)()
+    assert.ok(noList.every((i) => i.status === 'unknown' && !i.unreachable && i.note === 'SonarCloud has no such project (404)'))
+    for (const e of [new HttpError(503, 'HTTP 503'), new HttpError(401, 'HTTP 401'), new HttpError(403, 'HTTP 403'), new TypeError('fetch failed')]) {
+      assert.ok((await sonarReader(picked, fails(e), NOW)()).every((i) => i.status === 'unknown' && i.unreachable), e.message)
+    }
+    // A 5xx on the measures alone leaves the gate readable.
+    const flaky = sonar()
+    const measures5xx = Object.assign(async (url: string) => (url.includes('/measures/') ? fails(new HttpError(502, 'HTTP 502'))() : flaky(url)), { urls: [] })
+    const fe = await sonarOf(measures5xx)
+    assert.deepEqual([fe['sonar-coverage'].unreachable, fe['sonar-quality-gate'].status], [true, 'pass'])
   })
 
   test('the gate fails on an ERROR condition', async () => {
@@ -295,13 +324,42 @@ describe('Cosmos at the PR', () => {
     assert.ok(cve.some((c) => (c.params['@tags'] as string[]).includes(tag)))
   })
 
-  test('a PR build of another commit is used, and says which commit it ran; no build is said so', async () => {
-    const q = cosmos(prEvents(FE_JOB, 'PR-2312', 13, OLDER, PR_STEPS, 'Pipeline Succeeded'))
+  test('a PR build of another commit says nothing about the candidate\'s: its rules are unknown, naming the commit it ran', async () => {
+    const q = cosmos([...prEvents(FE_JOB, 'PR-2312', 13, OLDER, PR_STEPS, 'Pipeline Succeeded')],
+      [NODE_REPORT('jenkins-HMCTS_j_to_z-pcs-frontend-PR-2312-13', 'PR-2312')])
     const items = await cosmosReader(picked, q, NOW)()
-    const fe = items.find((i) => i.repo === 'pcs-frontend' && i.rule === 'functional')!
-    assert.match(fe.note!, /PR-2312 #13 ran ab8b356, not 9cc1a08/)
+    const fe = items.filter((i) => i.repo === 'pcs-frontend')
+    assert.deepEqual(fe.map((i) => i.rule).sort(), ['deployed-aat', 'functional', 'integration-contract', 'yarn-audit'])
+    for (const i of fe) {
+      assert.equal(i.status, 'unknown', i.rule)
+      assert.equal(i.note, "PR-2312 #13, the PR's latest finished Jenkins build, ran ab8b356, not 9cc1a08")
+    }
     const api = items.find((i) => i.repo === 'pcs-api' && i.rule === 'functional')!
     assert.deepEqual([api.status, api.note], ['unknown', 'no finished Jenkins build of PR-3196 is recorded in the last 60 days'])
+  })
+
+  test('never compares build numbers across jobs: the job with the newest event is read', async () => {
+    // The PR job moved folder: the old job's build numbers are higher, but its builds older.
+    const old = prEvents('Old_folder/pcs-frontend/PR-2312', 'PR-2312', 90, OLDER, PR_STEPS, 'Pipeline Failed', 'FAILURE').map((e) => ({ ...e, _ts: 1_763_200_000 }))
+    const moved = prEvents('HMCTS_j_to_z/pcs-frontend/PR-2312', 'PR-2312', 2, FE_HEAD, PR_STEPS, 'Pipeline Succeeded').map((e) => ({ ...e, _ts: 1_763_300_000 }))
+    const noE2e = { ...picked, repos: { ...picked.repos, 'pcs-frontend': { ...picked.repos['pcs-frontend'], e2e: undefined } } }
+    const items = await cosmosReader(noE2e, cosmos([...old, ...moved]), NOW)()
+    const fe = items.find((i) => i.repo === 'pcs-frontend' && i.rule === 'functional')!
+    assert.deepEqual([fe.status, fe.value.startsWith('PR-2312 #2 ')], ['pass', true])
+    const res = await scopeFeature({ ...noE2e, repos: { 'pcs-frontend': noE2e.repos['pcs-frontend'] } }, github(), NOW, cosmos([...moved, ...old]))
+    assert.deepEqual([res.cfg.candidates[0].shas['pcs-frontend'], revisions(res.items)['pcs-frontend'].data?.number], [FE_HEAD, 2])
+  })
+
+  test('one run reads a PR\'s builds and head once, shared by scopeFeature, cosmosReader and the E2E reader', async () => {
+    const q = cosmos(prEvents(FE_JOB, 'PR-2312', 14, FE_HEAD, PR_STEPS, 'Pipeline Succeeded'))
+    const gh = github(undefined, 'success')
+    const res = await scopeFeature(loaded, gh, NOW, q)
+    await cosmosReader(res.cfg, q, NOW)()
+    await e2eReader(res.cfg, q, gh, async () => tarball({}), NOW)()
+    const branchReads = (b: string) => q.calls.filter((c) => c.container === 'pipeline-metrics' && c.params['@b'] === b).length
+    assert.deepEqual([branchReads('PR-2312'), branchReads('PR-3196')], [2, 2], 'one query per database')
+    assert.equal(gh.calls.filter((p) => p === 'repos/hmcts/pcs-api/pulls/3196').length, 1)
+    assert.equal(gh.calls.filter((p) => p.startsWith(`repos/hmcts/pcs-api/commits/${API_HEAD}/status`)).length, 1)
   })
 
   test('a release still reads master and nightly builds of the commit, and filters CVE reports to master and main', async () => {
@@ -343,12 +401,24 @@ describe('the GIT Revision row', () => {
       `<p><a href="https://github.com/hmcts/pcs-frontend/commit/${FE_HEAD}">pcs-frontend = 9cc1a08</a></p></td>`), cell.html)
   })
 
-  test('the agent is told the evidence is from the PRs', () => {
-    const input = agentInput(picked, layout, ev, null) as { scope: { measuredAt: string; repos: Record<string, { pullRequest: unknown }> } }
-    assert.equal(input.scope.measuredAt, 'The evidence is from the feature\'s pull requests, not master: hmcts/pcs-api#3196 at cfa90c7, hmcts/pcs-frontend#2312 at 9cc1a08.')
-    assert.deepEqual(input.scope.repos['pcs-api'].pullRequest, { number: 3196, url: 'https://github.com/hmcts/pcs-api/pull/3196', commit: API_HEAD,
-      commitFrom: 'the PR\'s latest finished Jenkins build' })
-    assert.deepEqual(input.scope.repos['pcs-frontend'].pullRequest, { number: 2312, url: 'https://github.com/hmcts/pcs-frontend/pull/2312', commit: FE_HEAD,
-      commitFrom: 'the PR\'s head on GitHub' })
+  test('a head that was not picked is still the bare link, but the row is not a pass', () => {
+    const unpicked = { ...revisionItems[1], status: 'unknown' as const, note: 'the PR\'s head commit 9cc1a08 has no finished Jenkins build' }
+    const e = { ...ev, candidates: [{ name: SERVICE_WIDE, shas: { 'pcs-api': API_HEAD } }], unpicked: ['pcs-frontend'],
+      items: fileUnderRows(layout, [revisionItems[0], unpicked]) }
+    const row = evaluate(picked, layout, e).info.find((r) => r.key === 'GIT Revision')!
+    assert.deepEqual(row.lines, revisionItems.map((i) => ({ text: '', links: i.links })))
+    assert.equal(row.status, 'unknown')
   })
+
+  test('the agent is told the evidence is from the PRs, and how each commit was picked', () => {
+    type Input = { scope: { measuredAt: string; repos: Record<string, { pullRequest: unknown; revision: unknown }> } }
+    const input = agentInput(picked, layout, ev, null) as Input
+    assert.equal(input.scope.measuredAt, 'The evidence is from the feature\'s pull requests, not master: hmcts/pcs-api#3196 at cfa90c7, hmcts/pcs-frontend#2312 at 9cc1a08.')
+    assert.deepEqual(input.scope.repos['pcs-api'].pullRequest, { number: 3196, repo: 'hmcts/pcs-api', url: 'https://github.com/hmcts/pcs-api/pull/3196', commit: API_HEAD })
+    assert.deepEqual(input.scope.repos['pcs-api'].revision, { status: 'pass', sha: API_HEAD, from: 'cosmos', note: 'from Cosmos' })
+    assert.deepEqual(input.scope.repos['pcs-frontend'].revision, { status: 'pass', sha: FE_HEAD, from: 'github', note: 'from GitHub' })
+    const one = { ...picked, candidates: [{ name: SERVICE_WIDE, shas: { 'pcs-api': API_HEAD } }] }
+    assert.match((agentInput(one, layout, ev, null) as Input).scope.measuredAt, /hmcts\/pcs-frontend#2312, with no commit picked\.$/)
+  })
+
 })

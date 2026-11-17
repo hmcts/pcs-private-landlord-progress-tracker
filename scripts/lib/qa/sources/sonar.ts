@@ -7,7 +7,7 @@
 // Every repo of every candidate gets an item for each rule, so a repo that can't be read is
 // never left out of a row's verdict.
 
-import type { Candidate, ReleaseConfig } from '../config.ts'
+import { type Candidate, prOfRepo, type ReleaseConfig } from '../config.ts'
 import { mapLimit, SHA, str } from '../util.ts'
 import { day, HttpError, type HttpJson, httpJson, item, type Item, reason, short } from './common.ts'
 
@@ -66,7 +66,7 @@ export function sonarReader(cfg: ReleaseConfig, get: HttpJson = httpJson, now?: 
     const pairs = cfg.candidates.flatMap((c) => Object.entries(c.shas).map(([repo, sha]) => [c, repo, sha] as const))
     return (await mapLimit([...pairs], SONAR_CONCURRENCY, async ([c, repo, sha]) => {
       const project = cfg.repos[repo]?.sonar
-      const pr = cfg.kind === 'feature' ? cfg.repos[repo]?.pr : undefined
+      const pr = prOfRepo(cfg, repo)
       if (project && pr) return onePr(repo, project, pr, sha, c, threshold, get, now)
       if (project) return one(repo, project, sha, c, threshold, get, find, now)
       return SONAR_RULES.map((rule) => item({ source: SOURCE, sha, repo, candidate: c.name, rule, status: 'unknown', value: 'not checked',
@@ -84,7 +84,7 @@ async function one(repo: string, project: string, sha: string, c: Candidate, thr
   try {
     analysis = await find(project, sha)
   } catch (e) {
-    return unknown(`SonarCloud could not be read: ${reason(e)}`, true)
+    return unknown(failedNote(e, 'SonarCloud', 'such project'), unreachable(e))
   }
   if (!analysis) return unknown(`SonarCloud keeps no analysis of ${short(sha)}`)
 
@@ -99,8 +99,21 @@ type Ctx = { base: ItemBase; links: { text: string; url: string }[]; at: string 
 const pct = (v: string) => `${Number(v).toFixed(1)}%`
 
 /**
- * Coverage and security items from an analysis's measures. A PR analysis that has only the
- * new-code figures (new_coverage, new_vulnerabilities) is judged by those, and says so.
+ * Whether an error means SonarCloud couldn't be read (the network, sign-in, rate limit or a 5xx),
+ * rather than that what was asked for isn't there (a 404, or any other 4xx).
+ */
+export function unreachable(e: unknown): boolean {
+  if (!(e instanceof HttpError)) return true
+  return e.status === 401 || e.status === 403 || e.status === 429 || e.status >= 500
+}
+
+/** The note for an error: a 404 is something SonarCloud doesn't have; anything else, why it couldn't be read. */
+const failedNote = (e: unknown, unread: string, absent: string) => (e instanceof HttpError && e.status === 404 ? `SonarCloud has no ${absent} (404)` : `${unread} could not be read: ${reason(e)}`)
+
+/**
+ * Coverage and security items from an analysis's measures. A PR analysis with only new-code
+ * coverage is left unknown, its figure given for the agent to judge; with only new-code
+ * vulnerability counts, it is judged by those, and says so.
  */
 async function measureItems(read: () => Promise<Record<string, string>>, ctx: Ctx & { threshold: number }, now?: () => Date): Promise<Item[]> {
   const { base, links, at, threshold } = ctx
@@ -109,16 +122,16 @@ async function measureItems(read: () => Promise<Record<string, string>>, ctx: Ct
     m = await read()
   } catch (e) {
     return ['sonar-coverage', 'sonar-security'].map((rule) => item({ ...base, rule, status: 'unknown', value: 'not checked', links,
-      note: `measures could not be read: ${reason(e)}`, unreachable: true }, now))
+      note: failedNote(e, 'measures', 'measures for the analysis'), unreachable: unreachable(e) }, now))
   }
   const out: Item[] = []
-  const covKey = 'coverage' in m ? 'coverage' : 'new_coverage' in m ? 'new_coverage' : null
-  if (covKey) {
-    const cov = Number(m[covKey])
-    const newCode = covKey === 'new_coverage'
-    out.push(item({ ...base, rule: 'sonar-coverage', status: cov >= threshold ? 'pass' : 'fail', links,
-      value: newCode ? `${pct(m[covKey])} coverage of new code` : `${m[covKey]}%`,
-      note: newCode ? `${at} has no overall coverage figure, only the new code's` : at, data: { coverage: cov, threshold, ...(newCode ? { newCode } : {}) } }, now))
+  if ('coverage' in m) {
+    const cov = Number(m.coverage)
+    out.push(item({ ...base, rule: 'sonar-coverage', status: cov >= threshold ? 'pass' : 'fail', value: `${m.coverage}%`, links,
+      note: at, data: { coverage: cov, threshold } }, now))
+  } else if ('new_coverage' in m) {
+    out.push(item({ ...base, rule: 'sonar-coverage', status: 'unknown', links, value: `${pct(m.new_coverage)} coverage of new code (no overall figure for the PR)`,
+      note: at, data: { newCoverage: Number(m.new_coverage), threshold } }, now))
   } else {
     out.push(item({ ...base, rule: 'sonar-coverage', status: 'unknown', value: 'no coverage', links, note: `${at} has no coverage figure` }, now))
   }
@@ -150,7 +163,7 @@ async function gateItem(params: string, ctx: Ctx, get: HttpJson, now?: () => Dat
       value: s === 'OK' ? 'passed' : s === 'ERROR' ? 'failed' : s, links, note: at, data: failed.length ? { failed } : undefined }, now)
   } catch (e) {
     return item({ ...base, rule: 'sonar-quality-gate', status: 'unknown', value: 'not checked', links,
-      note: `quality gate could not be read: ${reason(e)}`, unreachable: true }, now)
+      note: failedNote(e, 'quality gate', 'quality gate for the analysis'), unreachable: unreachable(e) }, now)
   }
 }
 
@@ -192,7 +205,7 @@ async function onePr(repo: string, project: string, pr: number, sha: string, c: 
   try {
     analysis = await prAnalysis(project, pr, get)
   } catch (e) {
-    return unknown(`SonarCloud could not be read: ${reason(e)}`, true)
+    return unknown(failedNote(e, 'SonarCloud', 'such project'), unreachable(e))
   }
   if (!analysis) return unknown(`SonarCloud keeps no analysis of PR #${String(pr)}`)
   const covers = SHA.test(analysis.sha) ? short(analysis.sha) : 'an unrecorded commit'
@@ -200,14 +213,5 @@ async function onePr(repo: string, project: string, pr: number, sha: string, c: 
   const at = analysis.sha === sha ? `analysis of PR #${String(pr)} at ${short(sha)}${when}`
     : `the latest analysis of PR #${String(pr)}${when}, which covers ${covers}, not ${short(sha)}`
   const ctx = { base, links, at }
-  const measures = measureItems(async () => {
-    try {
-      return await prMeasures(project, pr, get)
-    } catch (e) {
-      // A PR SonarCloud no longer has: its analysis is gone, not unreadable.
-      if (e instanceof HttpError && e.status === 404) return {}
-      throw e
-    }
-  }, { ...ctx, threshold }, now)
-  return [...await measures, await gateItem(`projectKey=${encodeURIComponent(project)}&pullRequest=${String(pr)}`, ctx, get, now)]
+  return [...await measureItems(() => prMeasures(project, pr, get), { ...ctx, threshold }, now), await gateItem(`projectKey=${encodeURIComponent(project)}&pullRequest=${String(pr)}`, ctx, get, now)]
 }

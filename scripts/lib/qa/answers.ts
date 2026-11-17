@@ -20,7 +20,7 @@
 
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { type Layout, type LayoutRow, type ReleaseConfig, SECTION_KINDS } from './config.ts'
+import { type Layout, type LayoutRow, prOfRepo, type ReleaseConfig, SECTION_KINDS } from './config.ts'
 import { QaError } from './errors.ts'
 import type { PublishedPart, PublishedRow } from './publish.ts'
 import { item, type Item, short } from './sources/common.ts'
@@ -305,23 +305,32 @@ export interface Published {
  * name is kept there too, for the pipeline's "Created by" line (collectedName).
  */
 export function agentInput(cfg: ReleaseConfig, layout: Layout, ev: Evidence, published: Published | null, createdBy: string | null = null): Record<string, unknown> {
-  const pulls = cfg.kind === 'feature' ? Object.entries(cfg.repos).filter(([, rc]) => rc.pr) : []
+  // How each repo's service-wide commit was picked, or why none was, for the agent to mention where it matters.
+  const revision = (name: string) => {
+    const it = ev.items.find((i) => i.rule === 'service-revision' && i.repo === name)
+    const from = str(it?.data?.from)
+    return it ? { status: it.status, ...(it.sha ? { sha: it.sha } : {}), ...(from ? { from } : {}), ...(it.note ? { note: it.note } : {}) } : null
+  }
   const pullRequest = (name: string, pr: number) => {
     const sha = cfg.candidates[0]?.shas[name]
-    const from = ev.items.find((i) => i.rule === 'service-revision' && i.repo === name && i.status === 'pass')?.data?.from
-    return { number: pr, url: `https://github.com/${cfg.repos[name].github}/pull/${String(pr)}`, ...(sha ? { commit: sha } : {}),
-      ...(from === 'cosmos' || from === 'github' ? { commitFrom: from === 'cosmos' ? "the PR's latest finished Jenkins build" : "the PR's head on GitHub" } : {}) }
+    return { number: pr, repo: cfg.repos[name].github, url: `https://github.com/${cfg.repos[name].github}/pull/${String(pr)}`, ...(sha ? { commit: sha } : {}) }
   }
-  const repos = Object.fromEntries(Object.entries(cfg.repos).map(([name, rc]) => [name, {
-    github: rc.github, ...(rc.sonar ? { sonar: rc.sonar } : {}), ...(rc.e2e ? { e2e: rc.e2e } : {}),
-    ...(cfg.kind === 'feature' && rc.pr ? { pullRequest: pullRequest(name, rc.pr) } : {}),
-    commits: Object.fromEntries(cfg.candidates.filter((c) => c.shas[name]).map((c) => [c.name, c.shas[name]])),
-  }]))
+  const pulls = Object.keys(cfg.repos).flatMap((name) => {
+    const pr = prOfRepo(cfg, name)
+    return pr ? [[name, pullRequest(name, pr)] as const] : []
+  })
+  const repos = Object.fromEntries(Object.entries(cfg.repos).map(([name, rc]) => {
+    const pull = pulls.find(([n]) => n === name)?.[1]
+    const rev = revision(name)
+    return [name, {
+      github: rc.github, ...(rc.sonar ? { sonar: rc.sonar } : {}), ...(rc.e2e ? { e2e: rc.e2e } : {}),
+      ...(pull ? { pullRequest: pull } : {}), ...(rev ? { revision: rev } : {}),
+      commits: Object.fromEntries(cfg.candidates.filter((c) => c.shas[name]).map((c) => [c.name, c.shas[name]])),
+    }]
+  }))
   // Said once, so the agent judges the feature's PRs, not master.
-  const measuredAt = pulls.length ? { measuredAt: `The evidence is from the feature's pull requests, not master: ${pulls.map(([name, rc]) => {
-    const sha = cfg.candidates[0]?.shas[name]
-    return `${rc.github}#${String(rc.pr)}${sha ? ` at ${short(sha)}` : ''}`
-  }).join(', ')}.` } : {}
+  const measuredAt = pulls.length ? { measuredAt: `The evidence is from the feature's pull requests, not master: ${pulls.map(([, p]) =>
+    `${p.repo}#${String(p.number)}${p.commit ? ` at ${short(p.commit)}` : ', with no commit picked'}`).join(', ')}.` } : {}
   const compact = (i: EvidenceItem) => ({ rule: i.rule, status: i.status, value: i.value, ...(i.note ? { note: i.note } : {}),
     ...(i.answer ? { answer: i.answer } : {}), ...(i.unreachable ? { unreachable: true } : {}), links: i.links,
     ...(i.sha ? { sha: i.sha } : {}), ...(i.repo ? { repo: i.repo } : {}) })

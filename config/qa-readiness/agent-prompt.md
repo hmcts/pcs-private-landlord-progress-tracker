@@ -70,14 +70,17 @@ replaces it, so answer those first, even if only with a blank status.
 
 - `scope`: the feature, its `epics` (its Jira scope is their child tickets,
   `parent in (<epics>)`), its `repos` with the GitHub name, Sonar key, the commit its
-  service-wide rows were read at (`commits`), the feature's pull request (`pullRequest`:
-  its number, link and that commit) and, where set, the Jenkins build that ran the feature's
+  service-wide rows were read at (`commits`), how that commit was picked (`revision`: its
+  `status`, `from` and `note`), the feature's pull request (`pullRequest`: its number, link
+  and that commit) and, where set, the Jenkins build that ran the feature's
   E2E tests and their tags and spec paths (`e2e`).
 - `scope.measuredAt`, when set, names the feature's pull requests and their commits. Then all the
   evidence is from them, not master: SonarCloud's analysis of each PR, the PR's latest finished
   Jenkins build in Cosmos, the GitHub checks and the source at the PR's commit. Judge the PRs, and
   name them in comments ("pcs-api PR #3196"). A PR build deploys to preview, not AAT, so an AAT
-  row has no PR evidence: say so, and don't answer it from master.
+  row has no PR evidence: say so, and don't answer it from master. A repo whose `revision` is
+  unknown has no commit picked (its PR head has no finished Jenkins build, say): its rows have no
+  evidence, so say why in their comments, from the revision's `note`.
 - `rows`: for each checklist row, its `key`, `question`, `guide` (what Yes, No and N/A mean for
   it, and what evidence to look for), `evidence` (what the pipeline's own checks found:
   `status` pass, fail or unknown, `value`, `note`, `links`, and `unreachable: true` when the

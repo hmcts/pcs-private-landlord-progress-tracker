@@ -10,7 +10,7 @@
 // Uses GITHUB_TOKEN when set (CI), else `gh api` when it's installed, else anonymous requests.
 
 import { gunzipSync } from 'node:zlib'
-import type { Candidate, ReleaseConfig } from '../config.ts'
+import { type Candidate, prOfRepo, type ReleaseConfig } from '../config.ts'
 import { mapLimit, runCommand, SHA } from '../util.ts'
 import { HttpError, item, type Item, reason, short } from './common.ts'
 
@@ -270,7 +270,7 @@ export function githubReader(cfg: ReleaseConfig, api: GitHubApi = defaultGitHubA
     }
     const one = async ([c, repo, sha]: [Candidate, string, string]): Promise<Item[]> => {
       const gh = cfg.repos[repo].github
-      const pr = cfg.kind === 'feature' ? cfg.repos[repo].pr : undefined
+      const pr = prOfRepo(cfg, repo)
       const k = `${gh}@${sha}`
       const unknown = (rule: string, note: string) => item({ source: SOURCE, sha, repo, candidate: c.name, rule, status: 'unknown', value: 'not checked', note, unreachable: true }, now)
       const checks = once(runs, k, () => checkRuns(api, gh, sha)).then((r) => checkItems(repo, sha, c, r, now, pr),
