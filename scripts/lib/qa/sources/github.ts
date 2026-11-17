@@ -3,7 +3,10 @@
 // - check runs and statuses on the commit. Jenkins reports each stage as a check run, and
 //   GitHub Actions runs pcs-api's integration tests, so these answer the build rows when Cosmos
 //   can't, and add the GitHub Actions results when it can. A feature's repo read at its PR is
-//   judged by the PR build's checks, whose functional tests run on preview.
+//   judged by the PR build's checks, whose functional tests run on preview. A build stopped early
+//   reports none of the later stages, so a rule with no check on the PR head is read at the PR's
+//   newest earlier commit with a finished one (at most LOOKBACK back), as cosmos.ts reads the
+//   PR's builds, and its finding says it is from an earlier commit.
 // - the ignored or pending tests scan: the commit's source tarball, read in memory, searched for
 //   JUnit's @Disabled and @Ignore, and the skip, pending and fix-me markers of the Node test runners.
 //
@@ -112,6 +115,45 @@ export function checkItems(repo: string, sha: string, c: Candidate, runs: CheckR
       note: pending && !fail ? 'some checks had not finished' : undefined }, now))
   }
   return out
+}
+
+/** A rule's matching runs are all finished, and none was cancelled by a newer push. */
+const settled = (runs: CheckRun[], re: RegExp) => {
+  const hits = latestRuns(runs).filter((r) => re.test(r.name) && r.conclusion !== 'skipped' && r.conclusion !== 'neutral')
+  return hits.length > 0 && hits.every((r) => r.status === 'completed' && !!r.conclusion && r.conclusion !== 'cancelled')
+}
+
+/**
+ * The PR head's check items, with each rule the head has no check for read at the PR's newest
+ * earlier commit with a finished one. deployed-aat is left: a PR build never deploys to AAT.
+ */
+export async function withEarlierChecks(api: GitHubApi, gh: string, pr: number, repo: string, sha: string, c: Candidate, items: Item[],
+  runsOf: (sha: string) => Promise<CheckRun[]>, now?: () => Date): Promise<Item[]> {
+  const open = items.filter((i) => i.status === 'unknown' && i.value === 'no check' && i.rule !== 'deployed-aat').map((i) => i.rule)
+  if (!open.length) return items
+  let shas: string[]
+  try {
+    const listed = await api(`repos/${gh}/pulls/${String(pr)}/commits?per_page=100`)
+    shas = (Array.isArray(listed) ? listed : []).map((x) => (x as { sha?: unknown })?.sha).filter((s): s is string => typeof s === 'string' && SHA.test(s))
+  } catch {
+    return items
+  }
+  const at = shas.indexOf(sha)
+  const earlier = (at < 0 ? [] : shas.slice(0, at)).reverse().slice(0, LOOKBACK)
+  const found = new Map<string, Item>()
+  for (let n = 0; n < earlier.length && found.size < open.length; n += STATUS_BATCH) {
+    const batch = earlier.slice(n, n + STATUS_BATCH)
+    const runs = await mapLimit(batch, STATUS_BATCH, (s) => runsOf(s).catch(() => [] as CheckRun[]))
+    batch.forEach((s, k) => {
+      for (const rule of open.filter((r) => !found.has(r) && settled(runs[k], PR_CHECK_RULES[r]))) {
+        const hit = checkItems(repo, s, c, runs[k], now, pr).find((i) => i.rule === rule)!
+        const which = `at ${short(s)}, an earlier commit than the PR head ${short(sha)}`
+        found.set(rule, { ...hit, value: `${hit.value} (${which})`,
+          note: `the PR head ${short(sha)} has no matching GitHub check, so these are from ${short(s)}, the PR's latest earlier commit with finished ones` })
+      }
+    })
+  }
+  return items.map((i) => found.get(i.rule) ?? i)
 }
 
 // ------------------------------------------------------------------ ignored tests
@@ -273,8 +315,10 @@ export function githubReader(cfg: ReleaseConfig, api: GitHubApi = defaultGitHubA
       const pr = prOfRepo(cfg, repo)
       const k = `${gh}@${sha}`
       const unknown = (rule: string, note: string) => item({ source: SOURCE, sha, repo, candidate: c.name, rule, status: 'unknown', value: 'not checked', note, unreachable: true }, now)
-      const checks = once(runs, k, () => checkRuns(api, gh, sha)).then((r) => checkItems(repo, sha, c, r, now, pr),
+      const runsOf = (s: string) => once(runs, `${gh}@${s}`, () => checkRuns(api, gh, s))
+      const checks = runsOf(sha).then((r) => checkItems(repo, sha, c, r, now, pr),
         (e) => Object.keys(CHECK_RULES).map((rule) => unknown(rule, `GitHub checks could not be read: ${reason(e)}`)))
+        .then((items) => (pr ? withEarlierChecks(api, gh, pr, repo, sha, c, items, runsOf, now) : items))
       const ignored = once(scans, k, async () => scanTarball(await tarball(gh, sha), cfg.repos[repo].test_paths)).then(
         (scan) => ignoredItem(repo, gh, sha, c, scan, now), (e) => unknown('ignored-tests', `the source at ${short(sha)} could not be read: ${reason(e)}`))
       return [...await checks, await ignored]

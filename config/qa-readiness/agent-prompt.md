@@ -72,12 +72,19 @@ replaces it, so answer those first, even if only with a blank status.
   `parent in (<epics>)`), its `repos` with the GitHub name, Sonar key, the commit its
   service-wide rows were read at (`commits`), how that commit was picked (`revision`: its
   `status`, `from` and `note`), the feature's pull request (`pullRequest`: its number, link
-  and that commit) and, where set, the Jenkins build that ran the feature's
-  E2E tests and their tags and spec paths (`e2e`).
+  and that commit, also given as `head`), the commit each Jenkins stage, CVE report and E2E
+  result was read at (`stageResults`: `earlierThanHead: true` when that is an earlier commit
+  than `head`) and, where set, the Jenkins build that ran the feature's E2E tests and their
+  tags and spec paths (`e2e`).
 - `scope.measuredAt`, when set, names the feature's pull requests and their commits. Then all the
-  evidence is from them, not master: SonarCloud's analysis of each PR, the PR's latest finished
-  Jenkins build in Cosmos, the GitHub checks and the source at the PR's commit. Judge the PRs, and
-  name them in comments ("pcs-api PR #3196"). A PR build deploys to preview, not AAT, so an AAT
+  evidence is from them, not master: SonarCloud's analysis of each PR, for each Jenkins stage the
+  PR's newest finished build in Cosmos that ran it, the GitHub checks and the source at the PR's
+  commit. Judge the PRs, and name them in comments ("pcs-api PR #3196"). A build that stopped
+  early runs none of the later stages, so a stage's result may come from a build of an earlier
+  commit of the PR: the evidence's `note` and `sha` say which build and commit. Such a result
+  counts as the PR's, but whenever a comment relies on one, say that it is from an earlier commit
+  than the PR head ("Smoke and functional tests passed in pcs-frontend PR-2312 build 13 at
+  3d0d6bb, an earlier commit than the PR head 9cc1a08."). A PR build deploys to preview, not AAT, so an AAT
   row has no PR evidence: say so, and don't answer it from master. A repo whose `revision` is
   unknown has no commit picked (its PR head has no finished Jenkins build, say): its rows have no
   evidence, so say why in their comments, from the revision's `note`.
@@ -141,14 +148,16 @@ tickets. Keep to what the template has:
   records the value, leave the row out rather than guess.
 - **Testing Summary**: for each test activity, exactly `✅ Completed` if the evidence shows it
   done for the feature, `NA` if it doesn't apply to the feature (PCQ, Your support and
-  Liberata usually don't), else `""`.
+  Liberata usually don't), else `""`. A stage that passed in a build of an earlier commit of the
+  PR counts: `✅ Completed`.
 - **Defect Summary**: the count of outstanding bugs for each severity, from the Outstanding Bugs
   evidence, and one sentence under the table, as the template's "No outstanding defects
   prevent this release from progressing to Production."
 - **Risks**: each risk to the feature's release with its mitigation, linking the ticket or page
   that records it. One row with risk "None" and a blank mitigation if none is recorded.
 - **QA Summary**: one or two short paragraphs on what testing was completed and what is still
-  outstanding, as the template's.
+  outstanding, as the template's. Say which results come from an earlier commit than the PR
+  head, naming the build and commit.
 - **QA Recommendation**: `approved` true only when every checklist row a release would need is
   Yes or N/A with evidence and nothing outstanding prevents release; otherwise false. The
   `reason` is one paragraph in the template's style. The pipeline writes the bold

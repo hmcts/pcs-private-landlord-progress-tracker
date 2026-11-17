@@ -11,7 +11,7 @@ import { evaluate, genRows } from '../scripts/lib/qa/render.ts'
 import { HttpError, type Item } from '../scripts/lib/qa/sources/common.ts'
 import { type CosmosQuery, cosmosReader, type CveDoc, isRepoJob, type StageEvent } from '../scripts/lib/qa/sources/cosmos.ts'
 import { e2eReader } from '../scripts/lib/qa/sources/e2e.ts'
-import { checkItems } from '../scripts/lib/qa/sources/github.ts'
+import { checkItems, githubReader } from '../scripts/lib/qa/sources/github.ts'
 import { sonarReader } from '../scripts/lib/qa/sources/sonar.ts'
 import type { Evidence } from '../scripts/lib/qa/types.ts'
 import { NOW, tarball } from './qa-helpers.ts'
@@ -20,6 +20,7 @@ const { cfg: loaded, layout } = loadRelease('config/qa-readiness/private-landlor
 const API_HEAD = 'cfa90c771bb471c0334d83fdd193b5c1f1616adc'
 const FE_HEAD = '9cc1a083edfe4fd1fb60a8b78e0355fdbf52a2d8'
 const OLDER = 'ab8b356c39471cb7420f88de91aa501dd2f0b223'
+const EARLIER = '3d0d6bb55bafc801c36fdc697a82a9421a8f9b2a'
 const picked: ReleaseConfig = { ...loaded, candidates: [{ name: SERVICE_WIDE, shas: { 'pcs-api': API_HEAD, 'pcs-frontend': FE_HEAD } }] }
 
 const DOC = {
@@ -324,18 +325,45 @@ describe('Cosmos at the PR', () => {
     assert.ok(cve.some((c) => (c.params['@tags'] as string[]).includes(tag)))
   })
 
-  test('a PR build of another commit says nothing about the candidate\'s: its rules are unknown, naming the commit it ran', async () => {
-    const q = cosmos([...prEvents(FE_JOB, 'PR-2312', 13, OLDER, PR_STEPS, 'Pipeline Succeeded')],
-      [NODE_REPORT('jenkins-HMCTS_j_to_z-pcs-frontend-PR-2312-13', 'PR-2312')])
+  test('a stage the PR head\'s build never reached is read at the newest finished build that ran it, of an earlier commit', async () => {
+    // pcs-frontend PR #2312: #14 at the head stopped early; #13, a commit before, passed smoke and functional.
+    const q = cosmos([...prEvents(FE_JOB, 'PR-2312', 13, EARLIER, PR_STEPS, 'Pipeline Succeeded'),
+      ...prEvents(FE_JOB, 'PR-2312', 14, FE_HEAD, ['checkout', 'build'], 'Pipeline Failed', 'FAILURE')],
+    [NODE_REPORT('jenkins-HMCTS_j_to_z-pcs-frontend-PR-2312-13', 'PR-2312')])
     const items = await cosmosReader(picked, q, NOW)()
-    const fe = items.filter((i) => i.repo === 'pcs-frontend')
-    assert.deepEqual(fe.map((i) => i.rule).sort(), ['deployed-aat', 'functional', 'integration-contract', 'yarn-audit'])
-    for (const i of fe) {
-      assert.equal(i.status, 'unknown', i.rule)
-      assert.equal(i.note, "PR-2312 #13, the PR's latest finished Jenkins build, ran ab8b356, not 9cc1a08")
-    }
+    const fe = Object.fromEntries(items.filter((i) => i.repo === 'pcs-frontend').map((i) => [i.rule, i]))
+    const at = 'PR-2312 #13 at 3d0d6bb, an earlier commit than the PR head 9cc1a08'
+    assert.deepEqual([fe.functional.status, fe.functional.sha], ['pass', EARLIER])
+    assert.equal(fe.functional.value, 'PR-2312 #13 (16 Nov 2026) at 3d0d6bb, an earlier commit than the PR head 9cc1a08: smoketest:preview passed, functionalTest:preview passed')
+    assert.equal(fe.functional.note, `${at}, is the PR's latest finished build to run this stage`)
+    assert.deepEqual(fe.functional.links, [{ text: 'pcs-frontend PR-2312 #13', url: 'https://build.hmcts.net/job/13/' }])
+    assert.deepEqual([fe['integration-contract'].status, fe['integration-contract'].sha], ['pass', EARLIER])
+    assert.deepEqual([fe['yarn-audit'].status, fe['yarn-audit'].sha, fe['yarn-audit'].note], ['pass', EARLIER, `${at}, is the PR's latest finished build to record this report`])
+    assert.equal(fe['yarn-audit'].value, `yarn audit: 0 open, 0 suppressed (${at})`)
+    assert.deepEqual([fe['deployed-aat'].status, fe['deployed-aat'].note], ['unknown', 'PR builds deploy to preview, not AAT'])
+  })
+
+  test('a stage no finished build of the PR ran is unknown, and so is every rule of a PR with no finished build', async () => {
+    const q = cosmos([...prEvents(FE_JOB, 'PR-2312', 13, EARLIER, ['checkout', 'build', 'smoketest:preview'], 'Pipeline Succeeded'),
+      ...prEvents(FE_JOB, 'PR-2312', 14, FE_HEAD, ['checkout', 'build'], 'Pipeline Failed', 'FAILURE')])
+    const items = await cosmosReader(picked, q, NOW)()
+    const fe = Object.fromEntries(items.filter((i) => i.repo === 'pcs-frontend').map((i) => [i.rule, i]))
+    assert.deepEqual([fe['integration-contract'].status, fe['integration-contract'].sha, fe['integration-contract'].note],
+      ['unknown', FE_HEAD, 'no finished Jenkins build of PR-2312 in the last 60 days ran a matching stage'])
+    assert.deepEqual([fe.functional.status, fe.functional.sha], ['pass', EARLIER])
+    assert.deepEqual([fe['yarn-audit'].status, fe['yarn-audit'].note], ['unknown', 'no yarn audit report is recorded for the finished Jenkins builds of PR-2312'])
     const api = items.find((i) => i.repo === 'pcs-api' && i.rule === 'functional')!
     assert.deepEqual([api.status, api.note], ['unknown', 'no finished Jenkins build of PR-3196 is recorded in the last 60 days'])
+  })
+
+  test('the PR head\'s build decides a stage it ran, even when an earlier build passed it', async () => {
+    const q = cosmos([...prEvents(FE_JOB, 'PR-2312', 13, EARLIER, PR_STEPS, 'Pipeline Succeeded'),
+      ...prEvents(FE_JOB, 'PR-2312', 14, FE_HEAD, [...PR_STEPS.slice(0, 7), 'functionalTest:preview'], 'Pipeline Failed', 'SUCCESS')
+        .map((e) => (e.current_step_name === 'Pipeline Failed' ? { ...e, current_build_current_result: 'FAILURE' } : e))])
+    const items = await cosmosReader(picked, q, NOW)()
+    const fe = items.find((i) => i.repo === 'pcs-frontend' && i.rule === 'functional')!
+    assert.deepEqual([fe.status, fe.sha, fe.note], ['fail', FE_HEAD, undefined])
+    assert.match(fe.value, /^PR-2312 #14 \(16 Nov 2026\): smoketest:preview passed, functionalTest:preview failed$/)
   })
 
   test('never compares build numbers across jobs: the job with the newest event is read', async () => {
@@ -382,6 +410,33 @@ describe('GitHub checks at the PR', () => {
     const master = Object.fromEntries(checkItems('pcs-api', API_HEAD, c, runs, NOW).map((i) => [i.rule, i]))
     assert.equal(master.functional.status, 'unknown', 'a master candidate needs AAT')
   })
+
+  test('a rule with no check on the PR head is read at the PR\'s newest earlier commit with finished ones', async () => {
+    // pcs-frontend PR #2312: 9cc1a08's build reported no stages; 3d0d6bb's passed smoke and functional on preview.
+    const older = 'b'.repeat(40)
+    const byCommit: Record<string, unknown[]> = {
+      [FE_HEAD]: [run(10, 'CodeQL')],
+      [EARLIER]: [run(5, 'Tests / Functional Test - preview'), run(6, 'Tests / Smoke Test - AKS preview')],
+      [older]: [run(1, 'Tests / Functional Test - preview'), { ...run(2, 'Integration tests'), conclusion: 'cancelled' }],
+    }
+    const calls: string[] = []
+    const api = async (path: string) => {
+      calls.push(path)
+      if (path === 'repos/hmcts/pcs-frontend/pulls/2312/commits?per_page=100') return [{ sha: older }, { sha: EARLIER }, { sha: FE_HEAD }]
+      const sha = Object.keys(byCommit).find((s) => path.startsWith(`repos/hmcts/pcs-frontend/commits/${s}/check-runs`))
+      if (sha) return { total_count: byCommit[sha].length, check_runs: byCommit[sha] }
+      if (path.startsWith('repos/hmcts/pcs-api/')) return { total_count: 0, check_runs: [] }
+      throw new HttpError(404, 'HTTP 404')
+    }
+    const items = await githubReader(picked, api, async () => tarball({}), NOW)()
+    const fe = Object.fromEntries(items.filter((i) => i.repo === 'pcs-frontend').map((i) => [i.rule, i]))
+    assert.deepEqual([fe.functional.status, fe.functional.sha], ['pass', EARLIER])
+    assert.equal(fe.functional.value, 'Tests / Functional Test - preview: success; Tests / Smoke Test - AKS preview: success (at 3d0d6bb, an earlier commit than the PR head 9cc1a08)')
+    assert.equal(fe.functional.note, 'the PR head 9cc1a08 has no matching GitHub check, so these are from 3d0d6bb, the PR\'s latest earlier commit with finished ones')
+    assert.deepEqual([fe['integration-contract'].status, fe['integration-contract'].sha], ['unknown', FE_HEAD], 'a cancelled check is not a finished one')
+    assert.deepEqual([fe['deployed-aat'].status, fe['deployed-aat'].sha], ['unknown', FE_HEAD])
+    assert.equal(calls.filter((p) => p.includes('/check-runs')).length, 3 + 1, 'each commit once, and pcs-api\'s head')
+  })
 })
 
 describe('the GIT Revision row', () => {
@@ -419,6 +474,16 @@ describe('the GIT Revision row', () => {
     assert.deepEqual(input.scope.repos['pcs-frontend'].revision, { status: 'pass', sha: FE_HEAD, from: 'github', note: 'from GitHub' })
     const one = { ...picked, candidates: [{ name: SERVICE_WIDE, shas: { 'pcs-api': API_HEAD } }] }
     assert.match((agentInput(one, layout, ev, null) as Input).scope.measuredAt, /hmcts\/pcs-frontend#2312, with no commit picked\.$/)
+  })
+
+  test('the agent is given each repo\'s head and the commit each stage result came from', () => {
+    const stage = (rule: string, source: string, sha: string) => ({ rule, source, repo: 'pcs-frontend', status: 'pass' as const, sha, value: 'v', links: [], fetchedAt: NOW().toISOString() })
+    const items = [stage('functional', 'cosmos', EARLIER), stage('e2e-feature', 'e2e', EARLIER), stage('yarn-audit', 'cosmos', FE_HEAD), stage('sonar-coverage', 'sonarcloud', FE_HEAD)]
+    const e = { ...ev, items: [...ev.items, ...fileUnderRows(layout, items)] }
+    type Repo = { head?: string; stageResults?: { rule: string; source: string; sha: string; earlierThanHead?: true }[] }
+    const fe = (agentInput(picked, layout, e, null) as { scope: { repos: Record<string, Repo> } }).scope.repos['pcs-frontend']
+    assert.equal(fe.head, FE_HEAD)
+    assert.deepEqual(fe.stageResults!.map((r) => [r.rule, r.sha, !!r.earlierThanHead]).sort(), [['e2e-feature', EARLIER, true], ['functional', EARLIER, true], ['yarn-audit', FE_HEAD, false]])
   })
 
 })

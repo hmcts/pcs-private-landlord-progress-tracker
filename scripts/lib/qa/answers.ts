@@ -24,6 +24,7 @@ import { type Layout, type LayoutRow, prOfRepo, type ReleaseConfig, SECTION_KIND
 import { QaError } from './errors.ts'
 import type { PublishedPart, PublishedRow } from './publish.ts'
 import { item, type Item, short } from './sources/common.ts'
+import { CVE_RULE, PR_STAGE_RULES } from './sources/cosmos.ts'
 import type { Answer, Evidence, EvidenceItem, Link, Status } from './types.ts'
 import { isRec, str } from './util.ts'
 
@@ -291,6 +292,9 @@ function statusOf(a: AgentAnswerValue, row: LayoutRow): Status {
   return a === (row.good ?? 'Yes') ? 'pass' : 'fail'
 }
 
+/** The rules whose result comes from a Jenkins stage or a check of a build. */
+const STAGE_RESULTS = new Set([...Object.keys(PR_STAGE_RULES), ...Object.values(CVE_RULE), 'e2e-feature'])
+
 /** What the page says now, for the agent to keep wording that still holds. */
 export interface Published {
   rows: Record<string, PublishedRow>
@@ -319,12 +323,18 @@ export function agentInput(cfg: ReleaseConfig, layout: Layout, ev: Evidence, pub
     const pr = prOfRepo(cfg, name)
     return pr ? [[name, pullRequest(name, pr)] as const] : []
   })
+  // The commit each stage result was read at, which for a PR may be an earlier commit than its head.
+  const stageResults = (name: string, head: string | undefined) => [...new Map(ev.items
+    .filter((i) => i.repo === name && i.sha && STAGE_RESULTS.has(i.rule) && i.source !== 'agent')
+    .map((i) => [`${i.source}:${i.rule}`, { rule: i.rule, source: i.source, status: i.status, sha: i.sha, ...(head && i.sha !== head ? { earlierThanHead: true } : {}) }] as const)).values()]
   const repos = Object.fromEntries(Object.entries(cfg.repos).map(([name, rc]) => {
     const pull = pulls.find(([n]) => n === name)?.[1]
     const rev = revision(name)
+    const results = stageResults(name, pull?.commit)
     return [name, {
       github: rc.github, ...(rc.sonar ? { sonar: rc.sonar } : {}), ...(rc.e2e ? { e2e: rc.e2e } : {}),
-      ...(pull ? { pullRequest: pull } : {}), ...(rev ? { revision: rev } : {}),
+      ...(pull ? { pullRequest: pull } : {}), ...(pull?.commit ? { head: pull.commit } : {}), ...(rev ? { revision: rev } : {}),
+      ...(results.length ? { stageResults: results } : {}),
       commits: Object.fromEntries(cfg.candidates.filter((c) => c.shas[name]).map((c) => [c.name, c.shas[name]])),
     }]
   }))
