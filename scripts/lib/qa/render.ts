@@ -195,7 +195,8 @@ export function evaluate(cfg: ReleaseConfig, layout: Layout, ev: Evidence): Resu
       const keep = its.some((i) => i.unreachable)
       const unknown = (i: EvidenceItem) => (cfg.kind === 'feature' ? `${i.repo ? `${i.repo}: ` : ''}${i.note ?? 'not known'}.`
         : `${i.repo ? `${i.repo}: ` : ''}to confirm${i.note ? ` (${i.note})` : ''}.`)
-      const line = (i: EvidenceItem): Line => ({ links: i.links, text: i.status === 'unknown' ? unknown(i) : `${i.value}.` })
+      // A picked revision is its link alone, "<repo> = <sha7>", as the template writes it.
+      const line = (i: EvidenceItem): Line => ({ links: i.links, text: i.status === 'unknown' ? unknown(i) : r.rule === 'service-revision' ? '' : `${i.value}.` })
       return { ...res, keep, lines: its.length ? its.map(line) : [{ text: missing(cfg, LISTED[r.rule]), links: [] }] }
     }
     return { ...res, lines: [] }

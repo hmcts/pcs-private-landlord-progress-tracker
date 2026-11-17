@@ -1,7 +1,7 @@
 # The QA readiness report for the Private Landlord "make a possession claim online" feature
 # (epic HDPI-10019, CUI Private Landlord - Make a possession claim online). Its report is page 382468869.
 # The fields are explained in README.md, "QA readiness report". This file is public: put only
-# repo names, commit SHAs, Sonar keys, Jira keys, page ids, Jenkins job names, E2E tags and spec
+# repo names, commit SHAs, PR numbers, Sonar keys, Jira keys, page ids, Jenkins job names, E2E tags and spec
 # paths in it.
 
 feature: private-landlord-make-a-claim
@@ -18,15 +18,15 @@ repos:
     cosmos_product: pcs
     cosmos_component: api
     builder: gradle
-    commit: master
+    pr: 3196
   pcs-frontend:
     github: hmcts/pcs-frontend
     sonar: pcs-frontend
     cosmos_product: pcs
     cosmos_component: frontend
     builder: yarn
-    commit: master
-    # hmcts/pcs-frontend#2312 runs these with the enable_private_landlord_test label.
+    pr: 2312
+    # The PR runs these with the enable_private_landlord_test label.
     e2e:
       jenkins: { job: HMCTS_j_to_z/pcs-frontend, branch: PR-2312, build: last-completed }
       label: enable_private_landlord_test

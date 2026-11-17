@@ -79,6 +79,9 @@ describe('feature config', () => {
 })
 
 describe('the service-wide commit', () => {
+  // The committed config reads both repos at their PRs (qa-feature-pr.test.ts); these read master.
+  const atMaster: ReleaseConfig = { ...loaded, repos: Object.fromEntries(Object.entries(loaded.repos).map(([r, rc]) => [r, { ...rc, pr: undefined, commit: 'master' }])) }
+  const noCosmos: CosmosQuery = async () => assert.fail('Cosmos is read only for a repo with pr')
   const sha = (n: number) => n.toString(16).padStart(40, 'a')
   const api = (statuses: Record<string, string | null>, fail = false) => async (path: string) => {
     if (fail) throw Object.assign(new Error('boom'), { status: 502 })
@@ -95,22 +98,24 @@ describe('the service-wide commit', () => {
   })
 
   test('becomes the one service-wide candidate; a pinned SHA is used as it is', async () => {
-    const c = { ...loaded, repos: { 'pcs-api': { ...loaded.repos['pcs-api'], commit: undefined }, 'pcs-frontend': { ...loaded.repos['pcs-frontend'], commit: SHA.fe1 } } }
+    const c = { ...atMaster, repos: { 'pcs-api': { ...atMaster.repos['pcs-api'], commit: undefined }, 'pcs-frontend': { ...atMaster.repos['pcs-frontend'], commit: SHA.fe1 } } }
     const calls: string[] = []
     const res = await scopeFeature(c, async (p) => {
       calls.push(p)
       return api({ 1: 'success', 2: 'success', 3: 'success' })(p)
-    }, NOW)
+    }, NOW, noCosmos)
     assert.deepEqual(res.cfg.candidates, [{ name: SERVICE_WIDE, shas: { 'pcs-api': sha(1), 'pcs-frontend': SHA.fe1 } }])
     assert.ok(calls.some((p) => p.includes('commits?sha=main')), 'the default branch, when commit is unset')
     assert.ok(res.items.every((i) => i.rule === 'service-revision' && i.status === 'pass'))
+    assert.deepEqual(res.items.map((i) => [i.value, i.note]), [[`pcs-api = ${sha(1).slice(0, 7)}`, 'the latest main commit with a finished Jenkins build (11 Nov 2026)'],
+      ['pcs-frontend = a25f612', 'pinned in the config']])
   })
 
   test('when GitHub can\'t be read, every service-wide rule of the repo is unknown and unreachable', async () => {
-    const res = await scopeFeature(loaded, api({}, true), NOW)
+    const res = await scopeFeature(atMaster, api({}, true), NOW, noCosmos)
     assert.deepEqual(res.cfg.candidates[0].shas, {})
     assert.deepEqual(res.unpicked, ['pcs-api', 'pcs-frontend'])
-    for (const [repo, rc] of Object.entries(loaded.repos)) {
+    for (const [repo, rc] of Object.entries(atMaster.repos)) {
       for (const rule of [...serviceRules(rc), 'service-revision']) {
         assert.ok(res.items.some((i) => i.repo === repo && i.rule === rule && i.status === 'unknown' && i.unreachable && !i.candidate), `${repo} ${rule}`)
       }
@@ -118,7 +123,7 @@ describe('the service-wide commit', () => {
   })
 
   test('when no commit has a finished build, the rules are unknown but not unreachable', async () => {
-    const res = await scopeFeature(loaded, api({ 1: 'pending', 2: 'pending', 3: 'pending' }), NOW)
+    const res = await scopeFeature(atMaster, api({ 1: 'pending', 2: 'pending', 3: 'pending' }), NOW, noCosmos)
     assert.ok(res.items.every((i) => i.status === 'unknown' && !i.unreachable))
   })
 

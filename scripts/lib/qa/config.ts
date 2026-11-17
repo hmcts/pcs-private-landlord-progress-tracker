@@ -7,8 +7,9 @@
 //
 //   release: R1.3A     the release's candidate commits (candidates) and its tickets (jql)
 //   feature: <name>    one or more epics; each repo's service-wide rows are read at the latest
-//                      finished build of its default branch (or a pinned commit), and the
-//                      feature's E2E rows from a Jenkins build, usually a PR's (repos.*.e2e)
+//                      finished build of its default branch (or a pinned commit), or of the
+//                      feature's pull request (repos.*.pr), and the feature's E2E rows from a
+//                      Jenkins build, usually a PR's (repos.*.e2e)
 //
 // A feature is loaded as a release-shaped config: `release` holds its name, `jql` its epics'
 // child tickets, and `candidates` is empty until collection resolves each repo's commit
@@ -34,6 +35,11 @@ export interface RepoConfig {
   test_paths?: string // regex over repo-relative paths; the default suits Gradle and Node layouts
   /** Features only: the commit for service-wide rows, a branch (its latest finished Jenkins build) or a full SHA. */
   commit?: string
+  /**
+   * Features only: the feature's pull request, instead of `commit`. Every row is read at it: the
+   * commit of its latest finished Jenkins build, its SonarCloud analysis and its Jenkins job.
+   */
+  pr?: number
   /** Features only: where the feature's E2E tests ran, and which of them are the feature's. */
   e2e?: E2eConfig
 }
@@ -288,7 +294,7 @@ const FEATURE_FIELDS: FieldRule[] = [
   { key: 'feature', required: true, ok: (v) => nonEmpty(v) && RELEASE_NAME.test(v) && !v.includes('..'), message: `is required, and ${NAME_MESSAGE}` },
   { key: 'epics', required: true, ok: (v) => Array.isArray(v) && v.length > 0 && v.every((k) => JIRA_KEY.test(str(k))), message: 'must be a list of Jira epic keys' },
   { key: 'jql', ok: () => false, message: "is not used by a feature: its Jira scope is its epics' child tickets" },
-  { key: 'candidates', ok: () => false, message: "is not used by a feature: each repo's commit is its `commit`" },
+  { key: 'candidates', ok: () => false, message: "is not used by a feature: each repo's commit is its `commit` or `pr`" },
   ...COMMON_RULES,
 ]
 
@@ -335,6 +341,22 @@ function validateE2e(e2e: unknown, w: string): string[] {
   return errors
 }
 
+/** A PR number as the config gives it, or null when it isn't a positive integer. */
+export function prOf(v: unknown): number | null {
+  const n = typeof v === 'number' || typeof v === 'string' ? Number(v) : Number.NaN
+  return Number.isSafeInteger(n) && n > 0 && String(n) === String(v) ? n : null
+}
+
+/** `pr` replaces `commit`, and the E2E build, when there is one, is the same PR's. */
+function validatePr(v: Rec, w: string): string[] {
+  const pr = prOf(v.pr)
+  if (pr === null) return [`${w}: "pr" must be a pull request number`]
+  const errors = v.commit === undefined ? [] : [`${w}: set "commit" or "pr", not both`]
+  const e2e = isRec(v.e2e) && isRec(v.e2e.jenkins) ? v.e2e.jenkins : null
+  if (e2e && e2e.branch !== `PR-${pr}`) errors.push(`${w}.e2e.jenkins: "branch" must be PR-${pr}, the repo's "pr"`)
+  return errors
+}
+
 function validateRepos(repos: Rec, name: string, kind: ScopeKind): string[] {
   return Object.entries(repos).flatMap(([r, v]) => {
     const w = `${name}.repos.${r}`
@@ -342,10 +364,11 @@ function validateRepos(repos: Rec, name: string, kind: ScopeKind): string[] {
     const pair = (v.cosmos_product === undefined) !== (v.cosmos_component === undefined)
     const errors = [...checkFields(v, REPO_RULES, w), ...(pair ? [`${w}: set both "cosmos_product" and "cosmos_component", or neither`] : [])]
     if (kind === 'release') {
-      for (const k of ['commit', 'e2e']) if (v[k] !== undefined) errors.push(`${w}: "${k}" is for feature configs; a release's commits are its candidates`)
+      for (const k of ['commit', 'pr', 'e2e']) if (v[k] !== undefined) errors.push(`${w}: "${k}" is for feature configs; a release's commits are its candidates`)
       return errors
     }
     if (v.commit !== undefined && !shaOrBranch(v.commit)) errors.push(`${w}: "commit" must be a branch name or a full 40-character commit SHA`)
+    if (v.pr !== undefined) errors.push(...validatePr(v, w))
     if (v.e2e !== undefined) errors.push(...validateE2e(v.e2e, `${w}.e2e`))
     return errors
   })
@@ -428,7 +451,8 @@ function normalise(doc: Rec): ReleaseConfig {
   if (kindOf(doc) === 'release') return { ...doc, kind: 'release' } as unknown as ReleaseConfig
   const { feature, ...rest } = doc
   const epics = (doc.epics as string[]).map(jiraKey)
-  return { ...rest, kind: 'feature', release: str(feature), epics, jql: epicsJql(epics), candidates: [] } as unknown as ReleaseConfig
+  const repos = Object.fromEntries(Object.entries(doc.repos as Rec).map(([r, rc]) => [r, isRec(rc) && rc.pr !== undefined ? { ...rc, pr: prOf(rc.pr) } : rc]))
+  return { ...rest, repos, kind: 'feature', release: str(feature), epics, jql: epicsJql(epics), candidates: [] } as unknown as ReleaseConfig
 }
 
 function readYaml(path: string): unknown {

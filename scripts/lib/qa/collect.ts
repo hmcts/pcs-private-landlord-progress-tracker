@@ -3,13 +3,14 @@
 //
 // A feature has no candidate commits of its own. scopeFeature picks, per repo, the commit its
 // service-wide rows are read at (the latest default-branch commit with a finished Jenkins build,
-// or the config's pinned SHA) and makes that the one candidate, "service-wide", so the
-// per-commit readers work as they do for a release. The E2E rows come from the E2E reader (e2e.ts).
+// the config's pinned SHA, or for a repo with `pr`, the commit of the PR's latest finished
+// Jenkins build) and makes that the one candidate, "service-wide", so the per-commit readers work
+// as they do for a release. The E2E rows come from the E2E reader (e2e.ts).
 
 import type { Layout, ReleaseConfig, RepoConfig } from './config.ts'
-import { type CosmosQuery, cosmosReader, cveRulesFor, STAGE_RULES } from './sources/cosmos.ts'
+import { BRANCH_DAYS, branchBuilds, type CosmosQuery, cosmosReader, cveRulesFor, defaultCosmosQuery, latestBuild, STAGE_RULES } from './sources/cosmos.ts'
 import { CHECK_RULES, defaultGitHubApi, type GitHubApi, type GitHubTarball, githubReader, latestFinished, LOOKBACK } from './sources/github.ts'
-import { e2eReader } from './sources/e2e.ts'
+import { e2eReader, fromGitHub } from './sources/e2e.ts'
 import { jiraReader } from './sources/jira.ts'
 import { riaReader } from './sources/ria.ts'
 import { day, type HttpJson, item, type Item, reason, short } from './sources/common.ts'
@@ -49,28 +50,65 @@ export function serviceRules(rc: RepoConfig): string[] {
   return [...new Set([...SONAR_RULES, ...Object.keys(STAGE_RULES), ...Object.keys(CHECK_RULES), 'ignored-tests', ...cveRulesFor(rc)])]
 }
 
+type Picked = { sha?: string; items: Item[] }
+
+/**
+ * A repo's commit at its pull request: the commit of the PR job's latest finished Jenkins build
+ * (Cosmos pipeline-metrics, branch PR-<n>), else, when Cosmos has none or can't be read, the PR's
+ * head commit from GitHub, with the Jenkins status on it. data.from says which.
+ */
+async function prCommit(rc: RepoConfig, pr: number, api: GitHubApi, cosmos: CosmosQuery, now: () => Date,
+  picked: (sha: string, note: string, data: Record<string, unknown>) => Picked, missing: (note: string, unreachable: boolean) => Picked): Promise<Picked> {
+  const branch = `PR-${String(pr)}`
+  const url = `https://github.com/${rc.github}/pull/${String(pr)}`
+  let why = 'no Jenkins product and component are configured for the repo'
+  if (rc.cosmos_product) {
+    try {
+      const b = latestBuild(await branchBuilds(cosmos, rc, branch, rc.e2e?.jenkins.job, null, now))
+      if (b && SHA.test(b.sha)) {
+        return picked(b.sha, `the commit of ${branch} #${b.number}, the PR's latest finished Jenkins build (${b.outcome.toLowerCase()}${b.started ? `, ${day(b.started)}` : ''}), from Cosmos`,
+          { from: 'cosmos', pr, url, branch, number: b.number, outcome: b.outcome, ...(b.url.startsWith('https://') ? { build: b.url } : {}) })
+      }
+      why = b ? `Cosmos recorded no commit for ${branch} #${b.number}` : `Cosmos records no finished build of ${branch} in the last ${BRANCH_DAYS} days`
+    } catch (e) {
+      why = `Cosmos pipeline-metrics could not be read: ${reason(e)}`
+    }
+  }
+  try {
+    const head = await fromGitHub(api, rc.github, branch)
+    if (!head) return missing(`${why}, and GitHub has no head commit for ${branch}`, false)
+    const build = head.number ? `${branch} #${head.number}` : branch
+    const status = head.state ? `its Jenkins status (${build}) is ${head.state}` : 'it has no Jenkins status'
+    return picked(head.sha, `the PR's head commit, from GitHub, where ${status}: ${why}`,
+      { from: 'github', pr, url, branch, number: head.number ?? null, state: head.state ?? null, ...(head.url ? { build: head.url } : {}) })
+  } catch (e) {
+    return missing(`${why}, and GitHub could not be read: ${reason(e)}`, true)
+  }
+}
+
 /**
  * A feature config with its service-wide commits: one candidate, "service-wide", with a commit
  * per repo, and the evidence of how each was picked. A repo whose commit can't be picked is left
  * out of the candidate, listed in `unpicked`, and its service-wide rules answered unknown here
  * instead.
  */
-export async function scopeFeature(cfg: ReleaseConfig, api: GitHubApi = defaultGitHubApi(), now?: () => Date): Promise<{ cfg: ReleaseConfig; items: Item[]; unpicked: string[] }> {
+export async function scopeFeature(cfg: ReleaseConfig, api: GitHubApi = defaultGitHubApi(), now?: () => Date,
+  cosmos: CosmosQuery = defaultCosmosQuery()): Promise<{ cfg: ReleaseConfig; items: Item[]; unpicked: string[] }> {
   if (cfg.kind !== 'feature') return { cfg, items: [], unpicked: [] }
-  const pick = async ([repo, rc]: [string, RepoConfig]): Promise<{ sha?: string; items: Item[] }> => {
+  const pick = async ([repo, rc]: [string, RepoConfig]): Promise<Picked> => {
     const base = { source: 'github', repo, rule: 'service-revision' }
-    const link = (sha: string) => [{ text: `${repo} ${short(sha)}`, url: `https://github.com/${rc.github}/commit/${sha}` }]
-    const missing = (note: string, unreachable: boolean) => ({ items: [item({ ...base, status: 'unknown', value: `${repo}: not known`, note, unreachable }, now),
+    // The GIT Revision cell, as the template writes it: "<repo> = <sha7>", linked to the commit.
+    const picked = (sha: string, note: string, data?: Record<string, unknown>): Picked => ({ sha, items: [item({ ...base, status: 'pass', sha,
+      value: `${repo} = ${short(sha)}`, links: [{ text: `${repo} = ${short(sha)}`, url: `https://github.com/${rc.github}/commit/${sha}` }], note, data }, now)] })
+    const missing = (note: string, unreachable: boolean): Picked => ({ items: [item({ ...base, status: 'unknown', value: `${repo}: not known`, note, unreachable }, now),
       ...serviceRules(rc).map((rule) => item({ source: 'github', repo, rule, status: 'unknown', value: 'not checked', note, unreachable }, now))] })
-    if (rc.commit && SHA.test(rc.commit)) {
-      return { sha: rc.commit, items: [item({ ...base, status: 'pass', sha: rc.commit, value: `${repo}: ${short(rc.commit)}, pinned in the config`, links: link(rc.commit) }, now)] }
-    }
+    if (rc.pr) return prCommit(rc, rc.pr, api, cosmos, now ?? (() => new Date()), picked, missing)
+    if (rc.commit && SHA.test(rc.commit)) return picked(rc.commit, 'pinned in the config')
     try {
       const branch = rc.commit ?? (str((await api(`repos/${rc.github}`) as Record<string, unknown>).default_branch) || 'master')
       const hit = await latestFinished(api, rc.github, branch)
       if (!hit) return missing(`none of the last ${LOOKBACK} ${branch} commits has a finished Jenkins build`, false)
-      return { sha: hit.sha, items: [item({ ...base, status: 'pass', sha: hit.sha, links: link(hit.sha), data: { branch },
-        value: `${repo}: ${short(hit.sha)}, the latest ${branch} commit with a finished Jenkins build${hit.date ? ` (${day(hit.date)})` : ''}` }, now)] }
+      return picked(hit.sha, `the latest ${branch} commit with a finished Jenkins build${hit.date ? ` (${day(hit.date)})` : ''}`, { branch })
     } catch (e) {
       return missing(`GitHub could not be read to pick the commit: ${reason(e)}`, true)
     }
