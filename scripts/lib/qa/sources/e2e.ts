@@ -6,9 +6,12 @@
 //   failed). The E2E row is the outcome of the build's E2E stages: cnp-jenkins-library's
 //   functionalTest:<env> (a PR build's default, where pcs-frontend's Playwright suite runs),
 //   fullFunctionalTest:<env> (the enable_full_functional_tests label, and nightly) and
-//   E2eTest:<env> (the enable_e2e_test label, and nightly), all :preview on a PR. A build that
-//   finished without one fails the row. Cosmos keeps no per-test results, so the row says which
-//   stages passed, not which tests.
+//   E2eTest:<env> (the enable_e2e_test label, and nightly), all :preview on a PR. With no build
+//   number configured, the row is read at the newest finished build of a commit still on the PR
+//   (GitHub's list of its commits) that recorded an outcome for one of them, else the newest of
+//   a commit on it, which fails the row. That may be a build of an earlier commit than the PR's
+//   head on GitHub, and the row then says so.
+//   Cosmos keeps no per-test results, so the row says which stages passed, not which tests.
 // - When Cosmos has no finished build of the branch, or can't be read: the Jenkins status on the
 //   head commit of the PR (continuous-integration/jenkins/pr-head) or branch, which is the whole
 //   build's result only. Its target URL names the build, so a configured build number is checked
@@ -17,13 +20,15 @@
 //
 // What a stage ran depends on the PR's labels, so a pass stands only when the PR carries the
 // config's e2e.label. The scan for ignored or pending tests (github.ts) is run again over the
-// feature's specs only, at the commit the build ran.
+// feature's specs only, at the head on GitHub: the code being released.
 
 import type { E2eConfig, ReleaseConfig, RepoConfig } from '../config.ts'
 import { mapLimit, SHA, str } from '../util.ts'
 import { item, type Item, reason, short } from './common.ts'
-import { type Build, BRANCH_DAYS, branchBuilds, completedBuild, type CosmosQuery, defaultCosmosQuery, latestBuild, type StageEvent } from './cosmos.ts'
-import { BRANCH_STATUS, defaultGitHubApi, defaultTarball, type GitHubApi, type GitHubTarball, ignoredItem, type Scan, scanTarball } from './github.ts'
+import { againstHead, type Build, BRANCH_DAYS, branchBuilds, completedBuild, type CosmosQuery, defaultCosmosQuery, finishedBuilds, newestWithOutcome,
+  type StageEvent } from './cosmos.ts'
+import { BRANCH_STATUS, defaultGitHubApi, defaultTarball, type GitHubApi, type GitHubTarball, ignoredItem, prCommits, type PrCommits, pullHead,
+  type Scan, scanTarball } from './github.ts'
 
 const SOURCE = 'e2e'
 export const E2E_RULES = ['e2e-feature', 'e2e-build', 'ignored-tests-feature']
@@ -90,7 +95,7 @@ export function buildNumberOf(url: string, branch: string): number | null {
 }
 
 type CosmosFind =
-  | { kind: 'found'; build: Build }
+  | { kind: 'found'; build: Build; builds?: Build[] }
   | { kind: 'pending'; number: number }
   | { kind: 'missing' | 'unset' | 'down'; note: string }
 
@@ -110,8 +115,33 @@ async function fromCosmos(query: CosmosQuery, rc: RepoConfig, e2e: E2eConfig, wa
     const build = completedBuild(ev)
     return build ? { kind: 'found', build } : { kind: 'pending', number: wanted }
   }
-  const build = latestBuild(groups)
-  return build ? { kind: 'found', build } : { kind: 'missing', note: `Cosmos records no finished build of ${branch} in the last ${BRANCH_DAYS} days` }
+  const builds = finishedBuilds(groups)
+  if (!builds.length) return { kind: 'missing', note: `Cosmos records no finished build of ${branch} in the last ${BRANCH_DAYS} days` }
+  return { kind: 'found', build: builds[0], builds }
+}
+
+const headName = (branch: string) => (prNumber(branch) === null ? `the ${branch} head` : 'the PR head')
+
+/** The branch's head on GitHub, and which commits are on it (every one, for a branch that isn't a PR); or why it couldn't be read. */
+async function branchHead(api: GitHubApi, gh: string, branch: string): Promise<PrCommits> {
+  const pr = prNumber(branch)
+  if (pr !== null) return prCommits(api, gh, pr)
+  try {
+    const head = await fromGitHub(api, gh, branch)
+    return head ? { head: head.sha, on: () => true } : { error: `GitHub has no head commit for ${branch}` }
+  } catch (e) {
+    return { error: `GitHub could not be read for the ${branch} head: ${reason(e)}` }
+  }
+}
+
+/**
+ * The build the E2E row is read at, of the latest finished builds: the newest of a commit on the
+ * branch with a recorded E2E outcome, else the newest of one on it. While GitHub can't say which
+ * commits are on it, only builds of the latest finished build's commit. Null when none is on it.
+ */
+function e2eBuild(builds: Build[], head: PrCommits): Build | null {
+  const on = 'error' in head ? builds.filter((b) => b.sha === builds[0].sha) : builds.filter((b) => head.on(b.sha))
+  return newestWithOutcome(on, E2E_STAGE) ?? on[0] ?? null
 }
 
 export interface Head {
@@ -140,9 +170,7 @@ export function fromGitHub(api: GitHubApi, gh: string, branch: string): Promise<
 
 async function readHead(api: GitHubApi, gh: string, branch: string): Promise<Head | null> {
   const pr = prNumber(branch)
-  const res = await api(pr === null ? `repos/${gh}/commits/${encodeURIComponent(branch)}` : `repos/${gh}/pulls/${String(pr)}`) as
-    { sha?: unknown; head?: { sha?: unknown } }
-  const sha = str(pr === null ? res?.sha : res?.head?.sha)
+  const sha = pr === null ? str((await api(`repos/${gh}/commits/${encodeURIComponent(branch)}`) as { sha?: unknown })?.sha) : await pullHead(api, gh, pr) ?? ''
   if (!SHA.test(sha)) return null
   const st = await api(`repos/${gh}/commits/${sha}/status?per_page=100`) as { statuses?: { context?: unknown; state?: unknown; target_url?: unknown }[] }
   const context = pr === null ? BRANCH_STATUS : PR_STATUS
@@ -195,16 +223,18 @@ function gate(status: Verdict['status'], labels: Labels, wholeBuild: boolean): V
 const outcomeOf = (s: 'pass' | 'fail' | undefined) => (s === 'pass' ? 'passed' : s === 'fail' ? 'failed' : 'outcome not recorded')
 
 /** The E2E row from a finished build's stages. */
-async function stageItem(repo: string, branch: string, b: Build, links: Item['links'], labels: () => Promise<Labels>, now?: () => Date): Promise<Item> {
+async function stageItem(repo: string, branch: string, b: Build, earlier: string[], head: string | null, links: Item['links'], labels: () => Promise<Labels>,
+  now?: () => Date): Promise<Item> {
   const label = `${branch} #${b.number}`
   const sha = SHA.test(b.sha) ? b.sha : null
   const base = { source: SOURCE, rule: 'e2e-feature', repo, sha, links }
   const names = b.ran.filter((n) => E2E_STAGE.test(n))
-  const data = { from: 'cosmos', branch, number: b.number, outcome: b.outcome, stages: Object.fromEntries(names.map((n) => [n, b.stages.get(n) ?? 'unknown'])) }
+  const data = { from: 'cosmos', branch, number: b.number, outcome: b.outcome, ...(head ? { head } : {}),
+    stages: Object.fromEntries(names.map((n) => [n, b.stages.get(n) ?? 'unknown'])) }
   if (!names.length) {
     const why = b.outcome === 'FAILURE' && b.suspects.length ? `the build failed at ${b.suspects.join(' or ')} first` : 'the E2E labels were not set'
     return item({ ...base, status: 'fail', value: `${label}: no E2E stage ran`, data,
-      note: `${label} finished without running an E2E or functional stage: ${why}` }, now)
+      note: [...earlier, `${label} finished without running an E2E or functional stage: ${why}`].join('; ') }, now)
   }
   const results = names.map((n) => [n, b.stages.get(n)] as const)
   const failed = results.filter(([, s]) => s === 'fail')
@@ -215,6 +245,7 @@ async function stageItem(repo: string, branch: string, b: Build, links: Item['li
   const l = stages === 'pass' ? await labels() : null
   const v: Verdict = l ? gate(stages, l, false) : { status: stages }
   if (l) notes.unshift(l.note)
+  notes.unshift(...earlier)
   return item({ ...base, ...v, value: `${label}: ${results.map(([n, s]) => `${n} ${outcomeOf(s)}`).join(', ')}`, note: notes.join('; '), data }, now)
 }
 
@@ -253,9 +284,9 @@ function kept(it: Item, now?: () => Date): Item {
     data: { ...it.data, fallback: { status: it.status, value: it.value } } }, now)
 }
 
-/** The feature's spec files at the E2E build's commit, and the ignored-tests finding for them. */
+/** The feature's spec files at the branch's head, the code being released, and the ignored-tests finding for them; `of` says what the commit is. */
 async function scopedScan(repo: string, rc: RepoConfig, e2e: E2eConfig, sha: string | null, tarball: GitHubTarball,
-  noSha: { note: string; unreachable: boolean }, now?: () => Date): Promise<Item> {
+  noSha: { note: string; unreachable: boolean }, of: string, now?: () => Date): Promise<Item> {
   const rule = 'ignored-tests-feature'
   const base = { source: 'github', rule, repo, sha, status: 'unknown' as const, value: 'not checked' }
   if (!sha) return item({ ...base, ...noSha }, now)
@@ -266,7 +297,7 @@ async function scopedScan(repo: string, rc: RepoConfig, e2e: E2eConfig, sha: str
     return item({ ...base, note: `the source at ${short(sha)} could not be read: ${reason(e)}`, unreachable: true }, now)
   }
   if (!scan.files) return item({ ...base, note: `no spec file at ${short(sha)} matches the feature's tags or paths` }, now)
-  return ignoredItem(repo, rc.github, sha, null, scan, now, rule)
+  return { ...ignoredItem(repo, rc.github, sha, null, scan, now, rule), note: `scanned at ${short(sha)}, ${of}` }
 }
 
 /** The commit a finished build ran: Cosmos's, or for the latest build, the head commit if its status is for that build. */
@@ -292,17 +323,16 @@ async function one(repo: string, rc: RepoConfig, e2e: E2eConfig, d: Deps): Promi
     item({ source: rule === 'ignored-tests-feature' ? 'github' : SOURCE, rule, repo, status: 'unknown', value: 'not checked', note, unreachable }, d.now))
   let read: Promise<Labels> | undefined
   const labels = () => (read ??= labelsOf(d.api, rc.github, e2e))
-  const found = await fromCosmos(d.cosmos, rc, e2e, wanted, now)
-
-  if (found.kind === 'found') {
-    const b = found.build
-    const label = `${branch} #${b.number}`
-    const links = b.url.startsWith('https://') ? [{ text: `${repo} ${label}`, url: b.url }] : []
-    const commit = await buildCommit(b, wanted, d.api, rc, branch)
-    return [await stageItem(repo, branch, b, links, labels, d.now),
-      header({ sha: commit.sha, status: 'pass', links, value: `${repo}: ${label}${commit.sha ? ` at ${short(commit.sha)}` : ''}, ${b.outcome.toLowerCase()}`,
-        note: commit.note || undefined, data: { from: 'cosmos', branch, number: b.number, outcome: b.outcome, sha: commit.sha } }),
-      await scopedScan(repo, rc, e2e, commit.sha, d.tarball, commit, d.now)]
+  const cosmos = await fromCosmos(d.cosmos, rc, e2e, wanted, now)
+  let found: Exclude<CosmosFind, { kind: 'found' }>
+  if (cosmos.kind === 'found') {
+    const tip = await branchHead(d.api, rc.github, branch)
+    const builds = cosmos.builds ?? [cosmos.build]
+    const b = cosmos.builds ? e2eBuild(cosmos.builds, tip) : cosmos.build
+    if (b) return foundItems(repo, rc, e2e, d, b, builds, !!cosmos.builds, tip, wanted, labels)
+    found = { kind: 'missing', note: `Cosmos records no finished build of ${branch} of a commit still on it` }
+  } else {
+    found = cosmos
   }
   if (found.kind === 'pending') return unknown(`${branch} #${found.number} has not finished, or was aborted`, false)
 
@@ -321,8 +351,32 @@ async function one(repo: string, rc: RepoConfig, e2e: E2eConfig, d: Deps): Promi
   const items = [await statusItem(repo, branch, head, wanted, found, labels, d.now),
     header({ sha: head.sha, status: 'pass', links, value: `${repo}: ${build}, ${at} ${short(head.sha)}${head.state ? `, Jenkins status ${head.state}` : ''}`,
       data: { from: 'github', branch, sha: head.sha, number: head.number ?? null, state: head.state ?? null } }),
-    await scopedScan(repo, rc, e2e, head.sha, d.tarball, { note: '', unreachable: false }, d.now)]
+    await scopedScan(repo, rc, e2e, head.sha, d.tarball, { note: '', unreachable: false }, `the ${at}`, d.now)]
   return found.kind === 'down' ? items.map((i) => kept(i, d.now)) : items
+}
+
+/**
+ * The E2E items from a finished build in Cosmos, `b`, of `builds` (the branch's latest finished
+ * builds, newest first, when `many`; else the configured build alone), placed against the head.
+ */
+async function foundItems(repo: string, rc: RepoConfig, e2e: E2eConfig, d: Deps, b: Build, builds: Build[], many: boolean, head: PrCommits,
+  wanted: number | null, labels: () => Promise<Labels>): Promise<Item[]> {
+  const { branch } = e2e.jenkins
+  const header = (a: Omit<Parameters<typeof item>[0], 'source' | 'rule' | 'repo'>) => item({ source: SOURCE, rule: 'e2e-build', repo, ...a }, d.now)
+  const label = `${branch} #${b.number}`
+  const links = b.url.startsWith('https://') ? [{ text: `${repo} ${label}`, url: b.url }] : []
+  const commit = await buildCommit(b, wanted, d.api, rc, branch)
+  // Said once per item: how the build stands against the head, or why that couldn't be told.
+  const earlier = 'error' in head
+    ? (many ? [`builds of other commits than ${short(builds[0].sha)} were not used: ${head.error}`] : [])
+    : [againstHead(b, { head: head.head, headBuilt: !many || builds.some((x) => x.sha === head.head) }, headName(branch))].filter(Boolean)
+  const at = 'error' in head ? null : head.head
+  const scanOf = `${headName(branch)}${at && commit.sha && commit.sha !== at ? `; the E2E result is from ${label} at ${short(commit.sha)}` : ''}`
+  return [await stageItem(repo, branch, b, earlier, at, links, labels, d.now),
+    header({ sha: commit.sha, status: 'pass', links, value: `${repo}: ${label}${commit.sha ? ` at ${short(commit.sha)}` : ''}, ${b.outcome.toLowerCase()}`,
+      note: [...earlier, ...(commit.note ? [commit.note] : [])].join('; ') || undefined,
+      data: { from: 'cosmos', branch, number: b.number, outcome: b.outcome, sha: commit.sha, ...(at ? { head: at } : {}) } }),
+    await scopedScan(repo, rc, e2e, at, d.tarball, { note: 'error' in head ? head.error : '', unreachable: true }, scanOf, d.now)]
 }
 
 export function e2eReader(cfg: ReleaseConfig, cosmos: CosmosQuery = defaultCosmosQuery(), api: GitHubApi = defaultGitHubApi(),

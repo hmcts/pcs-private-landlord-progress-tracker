@@ -3,7 +3,10 @@
 // - check runs and statuses on the commit. Jenkins reports each stage as a check run, and
 //   GitHub Actions runs pcs-api's integration tests, so these answer the build rows when Cosmos
 //   can't, and add the GitHub Actions results when it can. A feature's repo read at its PR is
-//   judged by the PR build's checks, whose functional tests run on preview.
+//   judged by the PR build's checks, whose functional tests run on preview. A build stopped early
+//   reports none of the later stages, so a rule with no check on the PR head is read at the PR's
+//   newest earlier commit with a finished one (at most LOOKBACK back), as cosmos.ts reads the
+//   PR's builds, and its finding says it is from an earlier commit.
 // - the ignored or pending tests scan: the commit's source tarball, read in memory, searched for
 //   JUnit's @Disabled and @Ignore, and the skip, pending and fix-me markers of the Node test runners.
 //
@@ -11,7 +14,7 @@
 
 import { gunzipSync } from 'node:zlib'
 import { type Candidate, prOfRepo, type ReleaseConfig } from '../config.ts'
-import { mapLimit, runCommand, SHA } from '../util.ts'
+import { mapLimit, runCommand, SHA, str } from '../util.ts'
 import { HttpError, item, type Item, reason, short } from './common.ts'
 
 const SOURCE = 'github'
@@ -112,6 +115,95 @@ export function checkItems(repo: string, sha: string, c: Candidate, runs: CheckR
       note: pending && !fail ? 'some checks had not finished' : undefined }, now))
   }
   return out
+}
+
+/** A rule's matching runs are all finished, and none was cancelled by a newer push. */
+const settled = (runs: CheckRun[], re: RegExp) => {
+  const hits = latestRuns(runs).filter((r) => re.test(r.name) && r.conclusion !== 'skipped' && r.conclusion !== 'neutral')
+  return hits.length > 0 && hits.every((r) => r.status === 'completed' && !!r.conclusion && r.conclusion !== 'cancelled')
+}
+
+// ------------------------------------------------------------------ a PR's commits
+
+/** The most commits GitHub lists for a pull request. */
+export const PR_COMMITS_MAX = 250
+
+// One lookup per PR for the run: the Cosmos, E2E and GitHub readers share the api they are given.
+const prMemo = new WeakMap<GitHubApi, Map<string, Promise<unknown>>>()
+function perRun<T>(api: GitHubApi, key: string, read: () => Promise<T>): Promise<T> {
+  const memo = prMemo.get(api) ?? new Map<string, Promise<unknown>>()
+  prMemo.set(api, memo)
+  if (!memo.has(key)) memo.set(key, read())
+  return memo.get(key) as Promise<T>
+}
+
+/** The PR's head commit on GitHub, or null if it names none. */
+export function pullHead(api: GitHubApi, gh: string, pr: number): Promise<string | null> {
+  return perRun(api, `head|${gh}|${String(pr)}`, async () => {
+    const res = await api(`repos/${gh}/pulls/${String(pr)}`) as { head?: { sha?: unknown } }
+    const sha = str(res?.head?.sha)
+    return SHA.test(sha) ? sha : null
+  })
+}
+
+/** The PR's commits, oldest first: up to PR_COMMITS_MAX, all GitHub lists. */
+export function pullCommits(api: GitHubApi, gh: string, pr: number): Promise<string[]> {
+  return perRun(api, `commits|${gh}|${String(pr)}`, async () => {
+    const out: string[] = []
+    for (let page = 1; out.length < PR_COMMITS_MAX; page++) {
+      const listed = await api(`repos/${gh}/pulls/${String(pr)}/commits?per_page=100&page=${page}`)
+      const shas = (Array.isArray(listed) ? listed : []).map((x) => str((x as { sha?: unknown })?.sha)).filter((s) => SHA.test(s))
+      out.push(...shas)
+      if (shas.length < 100) break
+    }
+    return out.slice(0, PR_COMMITS_MAX)
+  })
+}
+
+/** What GitHub says of a PR's commits: its head, and whether a commit is on it; or why it couldn't be read. */
+export type PrCommits = { head: string; on: (sha: string) => boolean } | { error: string }
+
+export async function prCommits(api: GitHubApi, gh: string, pr: number): Promise<PrCommits> {
+  try {
+    const [head, listed] = await Promise.all([pullHead(api, gh, pr), pullCommits(api, gh, pr)])
+    if (!head) return { error: `GitHub names no head commit for PR #${String(pr)}` }
+    const on = new Set([...listed, head])
+    return { head, on: (sha) => on.has(sha) }
+  } catch (e) {
+    return { error: `the PR's commits could not be read from GitHub: ${reason(e)}` }
+  }
+}
+
+/**
+ * The PR head's check items, with each rule the head has no check for read at the PR's newest
+ * earlier commit with a finished one. deployed-aat is left: a PR build never deploys to AAT.
+ */
+export async function withEarlierChecks(api: GitHubApi, gh: string, pr: number, repo: string, sha: string, c: Candidate, items: Item[],
+  runsOf: (sha: string) => Promise<CheckRun[]>, now?: () => Date): Promise<Item[]> {
+  const open = new Set(items.filter((i) => i.status === 'unknown' && i.value === 'no check' && i.rule !== 'deployed-aat').map((i) => i.rule))
+  if (!open.size) return items
+  const noted = (note: string, unreachable = false) => items.map((i) => (open.has(i.rule) ? { ...i, note: `${i.note}; ${note}`, ...(unreachable ? { unreachable } : {}) } : i))
+  let shas: string[]
+  try {
+    shas = await pullCommits(api, gh, pr)
+  } catch (e) {
+    return noted(`the PR's commits could not be read from GitHub to look at earlier ones: ${reason(e)}`, true)
+  }
+  const at = shas.indexOf(sha)
+  if (at < 0) return noted(`${short(sha)} is not among the ${shas.length} commits GitHub lists for PR #${String(pr)}, so earlier commits were not looked at`)
+  const earlier = shas.slice(0, at).reverse().slice(0, LOOKBACK)
+  const found = new Map<string, Item>()
+  for (let n = 0; n < earlier.length && found.size < open.size; n += STATUS_BATCH) {
+    const batch = earlier.slice(n, n + STATUS_BATCH)
+    const runs = await mapLimit(batch, STATUS_BATCH, (s) => runsOf(s).catch(() => [] as CheckRun[]))
+    batch.forEach((s, k) => {
+      for (const rule of [...open].filter((r) => !found.has(r) && settled(runs[k], PR_CHECK_RULES[r]))) {
+        const hit = checkItems(repo, s, c, runs[k], now, pr).find((i) => i.rule === rule)!
+        found.set(rule, { ...hit, note: `the PR head ${short(sha)} has no matching GitHub check, so these are from ${short(s)}, an earlier commit of the PR and its latest with finished ones` })
+      }
+    })
+  }
+  return items.map((i) => found.get(i.rule) ?? (open.has(i.rule) ? { ...i, note: `no matching GitHub check on ${short(sha)} or the ${earlier.length} commits of the PR before it` } : i))
 }
 
 // ------------------------------------------------------------------ ignored tests
@@ -273,8 +365,10 @@ export function githubReader(cfg: ReleaseConfig, api: GitHubApi = defaultGitHubA
       const pr = prOfRepo(cfg, repo)
       const k = `${gh}@${sha}`
       const unknown = (rule: string, note: string) => item({ source: SOURCE, sha, repo, candidate: c.name, rule, status: 'unknown', value: 'not checked', note, unreachable: true }, now)
-      const checks = once(runs, k, () => checkRuns(api, gh, sha)).then((r) => checkItems(repo, sha, c, r, now, pr),
+      const runsOf = (s: string) => once(runs, `${gh}@${s}`, () => checkRuns(api, gh, s))
+      const checks = runsOf(sha).then((r) => checkItems(repo, sha, c, r, now, pr),
         (e) => Object.keys(CHECK_RULES).map((rule) => unknown(rule, `GitHub checks could not be read: ${reason(e)}`)))
+        .then((items) => (pr ? withEarlierChecks(api, gh, pr, repo, sha, c, items, runsOf, now) : items))
       const ignored = once(scans, k, async () => scanTarball(await tarball(gh, sha), cfg.repos[repo].test_paths)).then(
         (scan) => ignoredItem(repo, gh, sha, c, scan, now), (e) => unknown('ignored-tests', `the source at ${short(sha)} could not be read: ${reason(e)}`))
       return [...await checks, await ignored]

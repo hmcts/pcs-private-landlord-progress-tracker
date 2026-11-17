@@ -18,15 +18,22 @@
 //     type, the newer (_ts) wins.
 //
 // Only builds of the candidate commit count: master builds, and nightly builds that ran on it.
-// A feature's repo with `pr` is read at its PR job's latest finished build (branch PR-<n>)
-// instead: a PR build deploys to preview, not AAT (sectionDeployToAKS in cnp-jenkins-library), so
-// its functional stages are :preview ones and it has no AAT stage to answer deployed-aat. A
-// feature's E2E rows read the builds of the branch its config names the same way (e2e.ts).
+// A feature's repo with `pr` is read at its PR job's finished builds (branch PR-<n>) instead: only
+// those of commits still on the PR (GitHub's list of its commits; a force-push drops the rest),
+// each rule at the newest of them that recorded an outcome for one of its stages, and each CVE
+// report type at the newest of the last few that recorded one. A build stopped early runs none of
+// the later stages, so their results may come from a build of an earlier commit than the PR's
+// head on GitHub; the finding's note then says so once, and its sha is that commit. While GitHub
+// can't be read, only builds of the candidate commit are used. A PR build deploys to preview,
+// not AAT (sectionDeployToAKS in cnp-jenkins-library), so its functional stages are :preview ones
+// and it has no AAT stage to answer deployed-aat. A feature's E2E rows read the builds of the
+// branch its config names the same way (e2e.ts).
 // Every repo of every candidate gets an item for each rule it answers, unknown if need be.
 
 import { type Candidate, prOfRepo, type ReleaseConfig, type RepoConfig } from '../config.ts'
 import { str } from '../util.ts'
 import { day, item, type Item, reason, short } from './common.ts'
+import { defaultGitHubApi, type GitHubApi, prCommits } from './github.ts'
 import { codebaseType, type CodebaseType, type CveDoc, repoFromGitUrl, summariseCve } from './cve.ts'
 
 export type { CveDoc } from './cve.ts'
@@ -169,12 +176,38 @@ export const PR_STAGE_RULES: Record<string, RegExp> = {
 /** What a build is called in a finding: "master #12", or a PR's "PR-2312 #14". */
 const labelOf = (b: Build) => `${b.kind === 'branch' ? b.branch : b.kind} #${b.number}`
 
+/** How a PR's builds are read: only those of commits still on the PR, against its head on GitHub. */
+export interface PrRead {
+  number: number
+  /** The PR's head commit on GitHub, or the candidate's when GitHub can't be read. */
+  head: string
+  /** Whether a finished build ran the head. */
+  headBuilt: boolean
+  /** Whether the PR has any finished build in Cosmos. */
+  any: boolean
+  /** Why builds of other commits than the candidate's weren't used: GitHub couldn't say which are on the PR. */
+  unverified?: string
+}
+
+/**
+ * How a PR build stands against the PR head, said once in its finding's note: '' for a build of
+ * the head, else "PR-2312 #13 at 3d0d6bb, an earlier commit than the PR head 9cc1a08".
+ */
+export function againstHead(b: Build, pr: Pick<PrRead, 'head' | 'headBuilt'>, of = 'the PR head'): string {
+  if (b.sha === pr.head) return ''
+  const at = b.sha ? `at ${short(b.sha)}, an earlier commit than` : 'with no recorded commit, not'
+  return `${labelOf(b)} ${at} ${of} ${short(pr.head)}${pr.headBuilt ? '' : `; the head ${short(pr.head)} has no finished build yet`}`
+}
+
+/** The newest of the builds with a recorded outcome for a stage `re` matches. */
+export const newestWithOutcome = (builds: Build[], re: RegExp): Build | undefined => builds.find((b) => [...b.stages.keys()].some((n) => re.test(n)))
+
 /** The latest build of each job, master jobs first. */
 const latestPerJob = (builds: Build[]) => [...new Map(builds.map((b) => [b.job, b] as const).reverse()).values()].sort((a, b) =>
   a.kind === b.kind ? a.job.localeCompare(b.job) : a.kind === 'master' ? -1 : 1)
 
 function stageItem(rule: string, re: RegExp, picked: Build[], repo: string, sha: string, base: Omit<Parameters<typeof item>[0], 'rule' | 'status' | 'value'>,
-  now?: () => Date, pr?: number): Item {
+  now?: () => Date, pr?: PrRead): Item {
   const hits: string[] = []
   const links = []
   const unsure: string[] = []
@@ -191,25 +224,39 @@ function stageItem(rule: string, re: RegExp, picked: Build[], repo: string, sha:
       st.map(([name, s]) => `${name} ${s === 'pass' ? 'passed' : 'failed'}`).join(', '))
     if (b.url) links.push({ text: `${repo} ${labelOf(b)}`, url: b.url })
   }
+  // A PR's rule is read at one build, which may be of an earlier commit.
+  const [own] = pr ? picked : []
+  const at = own ? { sha: own.sha || null } : {}
   if (!pass && !fail && pr) {
-    const none = `no finished Jenkins build of PR-${String(pr)} is recorded in the last ${BRANCH_DAYS} days`
-    const aat = rule === 'deployed-aat' && picked.length ? 'PR builds deploy to preview, not AAT' : null
-    return item({ ...base, rule, status: 'unknown', value: 'not run',
-      note: aat ?? (picked.length ? `no matching stage ran in ${picked.map(labelOf).join(', ')}` : none) }, now)
+    const branch = `PR-${String(pr.number)}`
+    if (rule === 'deployed-aat' && pr.any) return item({ ...base, rule, status: 'unknown', value: 'not run', note: 'PR builds deploy to preview, not AAT' }, now)
+    if (!pr.any) return item({ ...base, rule, status: 'unknown', value: 'not run', note: `no finished Jenkins build of ${branch} is recorded in the last ${BRANCH_DAYS} days` }, now)
+    const none = `no finished Jenkins build of ${branch} ${pr.unverified ? `at ${short(sha)}` : 'of a commit on the PR'} in the last ${BRANCH_DAYS} days recorded a matching stage's outcome`
+    return item({ ...base, rule, status: 'unknown', value: 'not run', unreachable: !!pr.unverified,
+      note: pr.unverified ? `${none}, and builds of other commits were not used: ${pr.unverified}` : none }, now)
   }
   if (!pass && !fail) {
     return item({ ...base, rule, status: 'unknown', value: 'not run',
       note: picked.length ? `no matching stage ran in the Jenkins builds of ${short(sha)}` : `no master or nightly Jenkins build of ${short(sha)} is recorded` }, now)
   }
-  return item({ ...base, rule, status: fail ? 'fail' : 'pass', value: hits.join('; '), links, note: unsure.join('; ') || undefined,
-    data: { builds: picked.map((b) => ({ job: b.job, number: b.number, outcome: b.outcome })) } }, now)
+  const earlier = own && pr ? againstHead(own, pr) : ''
+  const notes = [...(earlier ? [earlier] : []), ...unsure]
+  return item({ ...base, ...at, rule, status: fail ? 'fail' : 'pass', value: hits.join('; '), links, note: notes.join('; ') || undefined,
+    data: { builds: picked.map((b) => ({ job: b.job, number: b.number, outcome: b.outcome, ...(pr ? { sha: b.sha || null } : {}) })), ...(pr ? { head: pr.head } : {}) } }, now)
 }
 
-/** The stage rules' items; for a repo read at its PR, `pr` is its number and `builds` the PR build. */
-export function stageItems(repo: string, sha: string, c: Candidate, builds: Build[], now?: () => Date, pr?: number): Item[] {
-  const picked = latestPerJob(builds)
+/**
+ * The stage rules' items. For a repo read at its PR, `builds` are the PR's finished builds of
+ * commits on it, newest first: each rule is read at the newest that recorded an outcome for one
+ * of its stages.
+ */
+export function stageItems(repo: string, sha: string, c: Candidate, builds: Build[], now?: () => Date, pr?: PrRead): Item[] {
   const base = { source: SOURCE, sha, repo, candidate: c.name }
-  return Object.entries(pr ? PR_STAGE_RULES : STAGE_RULES).map(([rule, re]) => stageItem(rule, re, picked, repo, sha, base, now, pr))
+  if (!pr) return Object.entries(STAGE_RULES).map(([rule, re]) => stageItem(rule, re, latestPerJob(builds), repo, sha, base, now))
+  return Object.entries(PR_STAGE_RULES).map(([rule, re]) => {
+    const own = newestWithOutcome(builds, re)
+    return stageItem(rule, re, own ? [own] : [], repo, sha, base, now, pr)
+  })
 }
 
 export const CVE_RULE: Record<CodebaseType, string> = { java: 'dependency-check', node: 'yarn-audit' }
@@ -221,16 +268,18 @@ export function cveRulesFor(rc: { builder?: 'gradle' | 'yarn' }): string[] {
 const CHECKER: Record<CodebaseType, string> = { java: 'OWASP dependency-check', node: 'yarn audit' }
 type Builder = 'gradle' | 'yarn' | undefined
 
-export function cveItem(repo: string, sha: string, c: Candidate, build: Build, doc: CveDoc, now?: () => Date, builder?: Builder): Item | null {
+export function cveItem(repo: string, sha: string, c: Candidate, build: Build, doc: CveDoc, now?: () => Date, builder?: Builder, pr?: PrRead): Item | null {
   const s = summariseCve(doc, builder)
   if (!s) return null
   const sev = Object.entries(s.bySeverity).map(([k, v]) => `${v} ${k}`).join(', ')
   // Suppressed findings were reported and then accepted, so the answer is Yes even when they pass.
   const answer = s.open + s.suppressed > 0 ? 'Yes' : 'No'
-  return item({ source: SOURCE, sha, repo, candidate: c.name, rule: CVE_RULE[s.type], status: s.open ? 'fail' : 'pass', answer,
+  const earlier = pr ? againstHead(build, pr) : ''
+  const note = earlier || (build.kind === 'branch' ? `${labelOf(build)}${build.sha ? `, at ${short(build.sha)}` : ''}` : `${build.kind} build #${build.number} of ${short(sha)}`)
+  return item({ source: SOURCE, sha: pr ? build.sha || null : sha, repo, candidate: c.name, rule: CVE_RULE[s.type], status: s.open ? 'fail' : 'pass', answer,
     value: `${CHECKER[s.type]}: ${s.open} open${sev ? ` (${sev})` : ''}, ${s.suppressed} suppressed`,
     links: build.url ? [{ text: `${repo} ${labelOf(build)}`, url: build.url }] : [],
-    note: build.kind === 'branch' ? `${labelOf(build)}${build.sha ? `, at ${short(build.sha)}` : ''}` : `${build.kind} build #${build.number} of ${short(sha)}`, data: { open: s.open, suppressed: s.suppressed, bySeverity: s.bySeverity } }, now)
+    note, data: { open: s.open, suppressed: s.suppressed, bySeverity: s.bySeverity, ...(pr ? { head: pr.head } : {}) } }, now)
 }
 
 /** Per build tag and codebase type, the newest report about this repo; ties keep the first read. */
@@ -246,13 +295,13 @@ export function newestReports(docs: CveDoc[], github: string, builder?: Builder)
 }
 
 /** The newest master build's report of each type, else the newest nightly's. */
-function cveItems(repo: string, sha: string, c: Candidate, builds: Build[], reports: Map<string, CveDoc>, builder: Builder, now?: () => Date): Item[] {
+function cveItems(repo: string, sha: string, c: Candidate, builds: Build[], reports: Map<string, CveDoc>, builder: Builder, now?: () => Date, pr?: PrRead): Item[] {
   const ordered = [...builds].sort((a, b) => (a.kind === b.kind ? b.number - a.number : a.kind === 'master' ? -1 : 1))
   const found = new Map<string, Item>()
   for (const b of ordered) {
     for (const [k, d] of reports) {
       if (!k.startsWith(`${b.tag}|`)) continue
-      const it = cveItem(repo, sha, c, b, d, now, builder)
+      const it = cveItem(repo, sha, c, b, d, now, builder, pr)
       if (it && !found.has(it.rule)) found.set(it.rule, it)
     }
   }
@@ -318,15 +367,6 @@ async function readBranchBuilds(query: CosmosQuery, rc: BranchRepo, branch: stri
   return byBuild(events.filter((e) => e.branch_name === branch && isRepoJob(str(e.job_name), rc.github, branch, job)))
 }
 
-/**
- * The PR build a repo read at its PR is measured by: its newest finished build of the candidate
- * commit, else its newest finished build, which ran a different commit (its finding says which).
- */
-export function prBuild(groups: StageEvent[][], sha: string): Build | null {
-  const builds = finished(groups)
-  return builds.find((b) => b.sha === sha) ?? builds[0] ?? null
-}
-
 const eventTime = (e: StageEvent) => e._ts ?? (Date.parse(e.current_build_scheduled_time ?? '') / 1000 || 0)
 
 /**
@@ -341,12 +381,32 @@ export function newestJob(groups: StageEvent[][]): StageEvent[][] {
 }
 
 /** The finished builds of the newest job among the groups, newest first. */
-const finished = (groups: StageEvent[][]): Build[] => newestJob(groups).map(completedBuild).filter((b): b is Build => !!b).sort((a, b) => b.number - a.number)
+export const finishedBuilds = (groups: StageEvent[][]): Build[] => newestJob(groups).map(completedBuild).filter((b): b is Build => !!b).sort((a, b) => b.number - a.number)
 
 /** The newest finished build among the groups, or null. */
-export const latestBuild = (groups: StageEvent[][]): Build | null => finished(groups)[0] ?? null
+export const latestBuild = (groups: StageEvent[][]): Build | null => finishedBuilds(groups)[0] ?? null
 
-export function cosmosReader(cfg: ReleaseConfig, query: CosmosQuery = defaultCosmosQuery(), now?: () => Date): () => Promise<Item[]> {
+/** How many of a PR's newest builds its CVE reports are looked for in. */
+export const CVE_BUILDS = 3
+/** The cnp-jenkins-library stage that runs the security checks CVEPublisher reports. */
+const SECURITY_STAGE = 'securitychecks'
+
+/** A PR's builds whose CVE reports are read: the newest few that ran the security checks, else the newest few. */
+function cveBuilds(builds: Build[]): Build[] {
+  const ran = builds.filter((b) => b.ran.includes(SECURITY_STAGE))
+  return (ran.length ? ran : builds).slice(0, CVE_BUILDS)
+}
+
+/** A PR's finished builds of commits still on it, and how they stand against its head on GitHub. */
+async function readPr(all: Build[], api: GitHubApi, gh: string, pr: number, sha: string): Promise<{ builds: Build[]; read: PrRead }> {
+  const on = await prCommits(api, gh, pr)
+  const head = 'error' in on ? sha : on.head
+  const builds = 'error' in on ? all.filter((b) => b.sha === sha) : all.filter((b) => on.on(b.sha))
+  return { builds, read: { number: pr, head, headBuilt: all.some((b) => b.sha === head), any: all.length > 0, ...('error' in on ? { unverified: on.error } : {}) } }
+}
+
+export function cosmosReader(cfg: ReleaseConfig, query: CosmosQuery = defaultCosmosQuery(), now?: () => Date,
+  api: GitHubApi = defaultGitHubApi()): () => Promise<Item[]> {
   return async () => {
     const out: Item[] = []
     let down: string | null = null
@@ -366,10 +426,13 @@ export function cosmosReader(cfg: ReleaseConfig, query: CosmosQuery = defaultCos
         }
         const pr = prOfRepo(cfg, repo)
         let builds: Build[]
+        let read: PrRead | undefined
         try {
           if (pr) {
-            const b = prBuild(await branchBuilds(query, rc, `PR-${String(pr)}`, rc.e2e?.jenkins.job, null, now ?? (() => new Date())), sha)
-            builds = b ? [b] : []
+            const all = finishedBuilds(await branchBuilds(query, rc, `PR-${String(pr)}`, rc.e2e?.jenkins.job, null, now ?? (() => new Date())))
+            const r = await readPr(all, api, rc.github, pr, sha)
+            builds = r.builds
+            read = r.read
           } else {
             builds = toBuilds(await everywhere(query, 'pipeline-metrics', STAGE_QUERY, [{ name: '@sha', value: sha },
               { name: '@p', value: rc.cosmos_product }, { name: '@c', value: rc.cosmos_component }]) as StageEvent[])
@@ -379,15 +442,10 @@ export function cosmosReader(cfg: ReleaseConfig, query: CosmosQuery = defaultCos
           out.push(...unknown(down, true))
           continue
         }
-        // A PR build of another commit says nothing about the candidate's.
-        const other = pr ? builds.find((b) => b.sha !== sha) : undefined
-        if (other) {
-          out.push(...unknown(`${labelOf(other)}, the PR's latest finished Jenkins build, ran ${other.sha ? short(other.sha) : 'no recorded commit'}, not ${short(sha)}`))
-          continue
-        }
-        out.push(...stageItems(repo, sha, c, builds, now, pr))
+        out.push(...stageItems(repo, sha, c, builds, now, read))
 
-        const withCve = builds.filter((b) => b.tag)
+        const tagged = builds.filter((b) => b.tag)
+        const withCve = read ? cveBuilds(tagged) : tagged
         let docs: CveDoc[] = []
         let cveError: string | null = null
         if (withCve.length) {
@@ -399,12 +457,12 @@ export function cosmosReader(cfg: ReleaseConfig, query: CosmosQuery = defaultCos
           }
         }
         const reports = newestReports(docs, rc.github, rc.builder)
-        const found = cveItems(repo, sha, c, withCve, reports, rc.builder, now)
+        const found = cveItems(repo, sha, c, withCve, reports, rc.builder, now, read)
         const unread = [...reports.values()].filter((d) => !summariseCve(d, rc.builder)).length
         out.push(...found)
         for (const rule of cveRules.filter((r) => !found.some((i) => i.rule === r))) {
           if (!cveError && !unread && rc.builder === undefined && found.length) continue
-          const missing = `no ${rule === 'yarn-audit' ? 'yarn audit' : 'dependency-check'} report is recorded for the Jenkins builds of ${short(sha)}`
+          const missing = `no ${rule === 'yarn-audit' ? 'yarn audit' : 'dependency-check'} report is recorded for the ${pr ? `newest finished Jenkins builds of PR-${String(pr)}` : `Jenkins builds of ${short(sha)}`}`
           out.push(item({ source: SOURCE, sha, repo, candidate: c.name, rule, status: 'unknown', value: 'not checked',
             unreachable: !!cveError, note: cveError ?? (unread ? `${missing}, and ${unread} report${unread === 1 ? '' : 's'} of a type nothing here reads` : missing) }, now))
         }

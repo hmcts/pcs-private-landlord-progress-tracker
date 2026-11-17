@@ -183,12 +183,16 @@ const HEAD = '9cc1a083edfe4fd1fb60a8b78e0355fdbf52a2d8'
 const TARGET = 'https://build.hmcts.net/job/HMCTS_j_to_z/job/pcs-frontend/job/PR-2312/14/display/redirect'
 
 /** GitHub with PR 2312's head, labels and the Jenkins status on it, recording each path. */
-function github(over: { state?: string | null; fail?: Error; url?: string; labels?: string[] | Error } = {}) {
+function github(over: { state?: string | null; fail?: Error; url?: string; labels?: string[] | Error; commits?: string[] | Error } = {}) {
   const calls: string[] = []
   const api = async (path: string) => {
     calls.push(path)
     if (over.fail) throw over.fail
     if (path === 'repos/hmcts/pcs-frontend/pulls/2312') return { head: { sha: HEAD } }
+    if (path === 'repos/hmcts/pcs-frontend/pulls/2312/commits?per_page=100&page=1') {
+      if (over.commits instanceof Error) throw over.commits
+      return (over.commits ?? [E2E_SHA, HEAD]).map((sha) => ({ sha }))
+    }
     if (path === 'repos/hmcts/pcs-frontend/issues/2312/labels?per_page=100') {
       if (over.labels instanceof Error) throw over.labels
       return (over.labels ?? ['ns:pcs', 'enable_private_landlord_test']).map((name) => ({ name }))
@@ -225,12 +229,13 @@ describe('E2E reader, from Cosmos', () => {
     const items = await read(q, api)
     const e2e = byRule(items, 'e2e-feature')
     assert.deepEqual([e2e.status, e2e.value, e2e.sha, e2e.source], ['pass', 'PR-2312 #13: functionalTest:preview passed', E2E_SHA, 'e2e'])
-    assert.match(e2e.note!, /^the PR is labelled enable_private_landlord_test, so the build ran the feature's tests; the stage outcome only: Cosmos keeps no per-test results$/)
+    assert.match(e2e.note!, /^PR-2312 #13 at 3d0d6bb, an earlier commit than the PR head 9cc1a08; the head 9cc1a08 has no finished build yet; the PR is labelled enable_private_landlord_test, so the build ran the feature's tests; the stage outcome only: Cosmos keeps no per-test results$/)
     assert.deepEqual(e2e.links, [{ text: 'pcs-frontend PR-2312 #13', url: 'https://build.example/job/x/13/' }])
     assert.deepEqual([...new Set(q.calls.map((c) => c.db))].sort(), ['jenkins', 'sds-jenkins'])
     assert.deepEqual(q.calls[0].params, { '@b': 'PR-2312', '@p': 'pcs', '@c': 'frontend', '@since': Math.floor(NOW().getTime() / 1000) - 60 * 86_400 })
     assert.match(q.calls[0].query, /c\._ts > @since$/)
-    assert.deepEqual(api.calls, ['repos/hmcts/pcs-frontend/issues/2312/labels?per_page=100'], 'GitHub is asked only for the labels')
+    assert.deepEqual(api.calls, ['repos/hmcts/pcs-frontend/pulls/2312', 'repos/hmcts/pcs-frontend/pulls/2312/commits?per_page=100&page=1',
+      'repos/hmcts/pcs-frontend/issues/2312/labels?per_page=100'], 'GitHub is asked for the PR\'s head, its commits and its labels')
     const header = byRule(items, 'e2e-build')
     assert.deepEqual([header.status, header.value], ['pass', 'pcs-frontend: PR-2312 #13 at 3d0d6bb, success'])
   })
@@ -257,7 +262,7 @@ describe('E2E reader, from Cosmos', () => {
     const none = byRule(await read(passing(), api, undefined, NO_LABEL), 'e2e-feature')
     assert.equal(none.status, 'pass')
     assert.match(none.note!, /no e2e.label is configured, so the stage result covers whatever scope the build ran/)
-    assert.deepEqual(api.calls, [], 'no labels are read when none is configured')
+    assert.ok(!api.calls.some((p) => p.includes('/labels')), 'no labels are read when none is configured')
   })
 
   test('a failed E2E stage fails the row, saying when Jenkins can\'t tell it from the next stage', async () => {
@@ -290,26 +295,59 @@ describe('E2E reader, from Cosmos', () => {
     assert.deepEqual(api.calls, [])
   })
 
-  test('a build with no commit: a pinned one leaves the commit unknown; the latest takes the head only if its status is for that build', async () => {
+  test('a build with no commit: a pinned one leaves its commit unknown; the latest, not known to be on the PR, gives way to the head\'s status', async () => {
     const noSha = (n: number) => cosmos(prBuild(n, PR_STEPS, 'Pipeline Succeeded', { git_commit: undefined }))
     const pinned = await read(noSha(14), github(), undefined, withBuild(14))
-    assert.deepEqual([byRule(pinned, 'e2e-build').sha, byRule(pinned, 'ignored-tests-feature').status], [null, 'unknown'])
-    assert.match(byRule(pinned, 'ignored-tests-feature').note!, /^Cosmos recorded no commit for PR-2312 #14$/)
-    assert.equal(byRule(await read(noSha(14)), 'ignored-tests-feature').sha, HEAD)
-    const other = await read(noSha(13))
-    assert.deepEqual([byRule(other, 'ignored-tests-feature').sha, byRule(other, 'ignored-tests-feature').status], [null, 'unknown'])
-    assert.match(byRule(other, 'ignored-tests-feature').note!, /the Jenkins status on its head commit is not for that build/)
+    assert.deepEqual([byRule(pinned, 'e2e-build').sha, byRule(pinned, 'e2e-build').note], [null, 'PR-2312 #14 with no recorded commit, not the PR head 9cc1a08; Cosmos recorded no commit for PR-2312 #14'])
+    assert.deepEqual([byRule(pinned, 'ignored-tests-feature').sha, byRule(pinned, 'ignored-tests-feature').status], [HEAD, 'fail'], 'the scan is at the head')
+    const latest = await read(noSha(14))
+    assert.deepEqual([byRule(latest, 'e2e-feature').data?.from, byRule(latest, 'ignored-tests-feature').sha], ['github', HEAD])
+    assert.match(byRule(latest, 'e2e-feature').note!, /Cosmos records no finished build of PR-2312 of a commit still on it$/)
   })
 
-  test('scans only the feature\'s specs, at the commit the build ran', async () => {
+
+  test('a latest build that ran no E2E stage gives way to the newest that did, of an earlier commit; the scan stays at the head', async () => {
+    const q = cosmos([...prBuild(13, PR_STEPS, 'Pipeline Succeeded'), ...prBuild(14, [['checkout'], ['build', 'FAILURE']], 'Pipeline Failed', { git_commit: HEAD })])
+    const asked: string[] = []
+    const items = await read(q, github(), async (repo, sha) => {
+      asked.push(`${repo}@${sha}`)
+      return SPECS
+    })
+    const e2e = byRule(items, 'e2e-feature')
+    const at = 'PR-2312 #13 at 3d0d6bb, an earlier commit than the PR head 9cc1a08'
+    assert.deepEqual([e2e.status, e2e.sha, e2e.value, e2e.data?.head], ['pass', E2E_SHA, 'PR-2312 #13: functionalTest:preview passed', HEAD])
+    assert.match(e2e.note!, new RegExp(`^${at}; the PR is labelled`))
+    const header = byRule(items, 'e2e-build')
+    assert.deepEqual([header.sha, header.value, header.note], [E2E_SHA, 'pcs-frontend: PR-2312 #13 at 3d0d6bb, success', at])
+    assert.deepEqual(asked, [`hmcts/pcs-frontend@${HEAD}`])
+    const scan = byRule(items, 'ignored-tests-feature')
+    assert.deepEqual([scan.sha, scan.note], [HEAD, 'scanned at 9cc1a08, the PR head; the E2E result is from PR-2312 #13 at 3d0d6bb'])
+    const none = byRule(await read(cosmos([...prBuild(13, [['checkout'], ['smoketest:preview']], 'Pipeline Succeeded'),
+      ...prBuild(14, [['checkout'], ['build', 'FAILURE']], 'Pipeline Failed', { git_commit: HEAD })])), 'e2e-feature')
+    assert.deepEqual([none.status, none.sha, none.value], ['fail', HEAD, 'PR-2312 #14: no E2E stage ran'], 'with none that ran one, the latest finished build')
+  })
+
+  test('a build of a commit no longer on the PR is skipped; while GitHub can\'t list them, only the latest build\'s commit is used', async () => {
+    const gone = 'c'.repeat(40)
+    const q = () => cosmos([...prBuild(12, PR_STEPS, 'Pipeline Succeeded'), ...prBuild(13, PR_STEPS, 'Pipeline Failed', { git_commit: gone }),
+      ...prBuild(14, [['checkout'], ['build', 'FAILURE']], 'Pipeline Failed', { git_commit: HEAD })])
+    assert.equal(byRule(await read(q()), 'e2e-feature').value, 'PR-2312 #12: functionalTest:preview passed')
+    const down = byRule(await read(q(), github({ commits: new HttpError(502, 'HTTP 502') })), 'e2e-feature')
+    assert.deepEqual([down.status, down.value], ['fail', 'PR-2312 #14: no E2E stage ran'])
+    assert.match(down.note!, /^builds of other commits than 9cc1a08 were not used: the PR's commits could not be read from GitHub: HTTP 502 \(502\); /)
+  })
+
+
+  test('scans only the feature\'s specs, at the PR head, whichever commit the E2E build ran', async () => {
     const asked: string[] = []
     const items = await read(passing(), github(), async (repo, sha) => {
       asked.push(`${repo}@${sha}`)
       return SPECS
     })
-    assert.deepEqual(asked, [`hmcts/pcs-frontend@${E2E_SHA}`])
+    assert.deepEqual(asked, [`hmcts/pcs-frontend@${HEAD}`])
     const scan = byRule(items, 'ignored-tests-feature')
     assert.deepEqual([scan.status, scan.value, scan.source], ['fail', '1 ignored or pending (skip ×1) in 1 files', 'github'])
+    assert.equal(scan.note, 'scanned at 9cc1a08, the PR head; the E2E result is from PR-2312 #13 at 3d0d6bb')
     assert.equal((scan.data as { files: number }).files, 2)
   })
 })
@@ -325,7 +363,7 @@ describe('E2E reader, from GitHub when Cosmos has no answer', () => {
     assert.match(e2e.note!, /GitHub's Jenkins status on the PR head: the whole build's result, not the E2E stage's; Cosmos records no finished build of PR-2312 in the last 60 days$/)
     assert.deepEqual(e2e.links, [{ text: 'pcs-frontend PR-2312 #14', url: TARGET }])
     assert.deepEqual([byRule(items, 'e2e-build').status, byRule(items, 'e2e-build').value], ['pass', 'pcs-frontend: PR-2312 #14, PR head 9cc1a08, Jenkins status success'])
-    assert.equal(byRule(items, 'ignored-tests-feature').sha, HEAD)
+    assert.deepEqual([byRule(items, 'ignored-tests-feature').sha, byRule(items, 'ignored-tests-feature').note], [HEAD, 'scanned at 9cc1a08, the PR head'])
     assert.equal(byRule(await read(cosmos([]), github({ labels: [] })), 'e2e-feature').status, 'fail')
     const unlabelled = byRule(await read(cosmos([]), github(), undefined, NO_LABEL), 'e2e-feature')
     assert.deepEqual([unlabelled.status, unlabelled.unreachable], ['unknown', undefined], 'a whole build\'s success shows no E2E stage ran')
