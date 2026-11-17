@@ -100,8 +100,8 @@ source said), `report.html`, `page.html` (the page as read), `merged.html`, `edi
 
 ## Agent rows: preview what CI would write
 
-A feature report's checklist rows (`rule: agent` in `pcs-feature`) are answered by the QA agent
-in the Publish workflow. To preview its answers locally, run the same three steps, writing
+A feature report's checklist rows (`rule: agent` in `pcs-feature`), its agent info rows and
+its sections are written by the QA agent in the Publish workflow. To preview its answers locally, run the same three steps, writing
 nothing to Confluence:
 
 ```sh
@@ -114,14 +114,15 @@ npm run qa-report -- --feature <name> --evidence --answers    # dry run; add --v
 
 Run `claude -p` with `TWG_AGENT_DEFAULTS=1` set, so its twg calls match the allowed tools.
 Check `.cache/qa/<name>/answers.json` against `agent-input.json` and `diff.txt`: every row
-answered, a link for each Yes and No, and "To confirm" where the evidence is missing. The CLI
+answered, a link for each Yes and No, a blank status (`""`) where the evidence is missing, and
+the sections filled in from the same evidence. The CLI
 prints how many answers it took and how many it rejected; the reasons are in
 `answers-rejected.txt`. Show the user the diff. Publishing is the scheduled workflow's job; run
 `--publish` yourself only if the user asks for it on this page.
 
 ## 3. Rows that need a person
 
-Rows marked `(needs a person)`, and rows left "To confirm", have no mechanical answer. For each:
+Rows marked `(needs a person)`, and a release's rows left "To confirm", have no mechanical answer. For each:
 
 1. Read its question in `config/qa-readiness/layouts/<layout>.yaml` and what `evidence.json`
    and `page.html` already say for it. If the page already has a person's answer, leave it.

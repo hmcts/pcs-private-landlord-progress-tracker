@@ -1,33 +1,55 @@
-# The PCS QA readiness report for a feature: the R1.3A template (pcs.yaml), question for
-# question, with a "Feature Information" table in place of "Release Information".
+# The PCS QA readiness report for a feature, reproducing the R1.3A template (Confluence page
+# 311427238) exactly: the "Created by" and "Last Updated" lines, the title, the intro, the
+# "Release Information" table, the checklist, and the sections after it. Nothing the template
+# lacks goes on the page.
 #
 # Every checklist row is answered by the QA agent (rule `agent`, README.md "Agent answers"). It
 # reads config/qa-readiness/agent-prompt.md, investigates the code, CI and tickets, and writes
-# answers.json in the feature's cache directory. `evidence` lists the rules whose mechanical
-# findings it gets as facts for the row; they inform the answer but don't decide it. `guide` says
-# what Yes, No and N/A mean for the question. `good` is the answer that means "no concern", as in
-# pcs.yaml. A row the agent hasn't answered keeps what the page says.
+# answers.json in the feature's cache directory: the rows, and under `sections` the info rows
+# with rule `agent`, the sections below and "Created by". `evidence` lists the rules whose
+# mechanical findings it gets as facts for the row; they inform the answer but don't decide it.
+# `guide` says what Yes, No and N/A mean for the question; where the evidence can't settle it,
+# the agent leaves the status blank. `good` is the answer that means "no concern", as in
+# pcs.yaml. A row or section the agent hasn't answered keeps what the page says.
 
 title: QA Readiness Report – {feature}
+header: true
 intro:
+  - As we continue to improve our testing maturity and strengthen our QA processes, the following readiness checklist has been completed to support the Release Approval Meeting.
+  - Where applicable, supporting evidence has been provided. Any items marked as N/A include an explanation.
+# What earlier versions of this layout put between the title and the first table.
+former_intro:
+  - This readiness checklist covers one feature. Rows marked service-wide are about each service as a whole, at the commit named under Service-wide revision; the rest are about the feature's own E2E tests and Jira tickets.
   - This readiness checklist covers one feature, using the questions of the release QA readiness report.
   - Where applicable, supporting evidence has been provided. Any items marked as N/A include an explanation.
   - Each weekday an AI agent (Claude) answers the checklist from the feature's code, CI and Jira tickets, and cites its evidence. Edit a cell to take it over.
+  - "Cells written by the qa-report pipeline are regenerated each time it runs. Edit a cell to take it over: the pipeline then leaves it alone."
 
 info:
-  heading: Feature Information
+  heading: Release Information
+  formerly: [Feature Information]
   columns: [Item, Details]
   widths: [178, 1133]
   rows:
-    - { key: Feature, rule: feature }
-    - { key: Release Type, rule: human }
-    - { key: Epics, rule: epics }
-    - { key: Test Environments, rule: human }
-    - { key: External Dependencies, rule: human }
-    - { key: External Risks, rule: human }
+    - { key: Release, rule: feature }
+    - key: Release Type
+      rule: agent
+      guide: The kind of release the feature goes out in, as its epics, fix versions or release plan name it (the R1.3A report says "Technical Release"). Leave it blank if nothing records it.
+    - { key: Jira Board, rule: epics }
+    - { key: Jira Tickets, rule: epic-tickets }
+    - key: Test Environments
+      rule: agent
+      evidence: [deployed-aat, e2e-build]
+      guide: The environments the feature was tested on, as builds and tickets record them, such as "AAT, SIT, Demo". Preview counts only if nothing else does.
+    - key: External Dependencies
+      rule: agent
+      guide: The services outside PCS the feature depends on for testing or release, each with the ticket that records it, as the R1.3A report lists PCQ and Your support. "None" if there are none.
+    - key: External Risks
+      rule: agent
+      guide: Risks from outside PCS to the feature's release, each with its ticket or page. "None" if none is recorded.
     - { key: Outstanding Bugs, rule: outstanding-bugs }
     - { key: GIT, rule: repos }
-    - { key: GIT Revision, rule: service-revision }
+    - { key: GIT Revision, match: '^GIT Revision\b', rule: service-revision }
 
 checklist:
   heading: QA Readiness Checklist
@@ -58,27 +80,27 @@ checklist:
       rule: agent
       question: Have all Cross Browser Tests passed?
       evidence: [functional]
-      guide: Yes only with a passing cross-browser run (a crossBrowserTest stage or a ticket recording one) covering the feature; N/A if the team runs none for this feature, saying so. Otherwise To confirm.
+      guide: Yes only with a passing cross-browser run (a crossBrowserTest stage or a ticket recording one) covering the feature; N/A if the team runs none for this feature, saying so. Otherwise leave the status blank.
     - key: '6'
       rule: agent
       question: Have all Performance Tests passed?
       evidence: [perf-signoff]
-      guide: Yes with a recorded performance run or sign-off covering the feature (the RIA, or a performance ticket); N/A if none was required, citing where that is said. Otherwise To confirm.
+      guide: Yes with a recorded performance run or sign-off covering the feature (the RIA, or a performance ticket); N/A if none was required, citing where that is said. Otherwise leave the status blank.
     - key: '7'
       rule: agent
       question: Was any additional Performance Testing required?
       evidence: [perf-required]
-      guide: Yes if the RIA or a ticket asks for performance testing of the feature, No if it says none is needed. With no RIA and no ticket, To confirm.
+      guide: Yes if the RIA or a ticket asks for performance testing of the feature, No if it says none is needed. With no RIA and no ticket, leave the status blank.
     - key: '8'
       rule: agent
       question: Has Security Testing been completed?
       evidence: [security-signoff]
-      guide: Yes with a security sign-off or ITHC/pen-test ticket covering the feature; N/A if none was required, citing where that is said. Otherwise To confirm.
+      guide: Yes with a security sign-off or ITHC/pen-test ticket covering the feature; N/A if none was required, citing where that is said. Otherwise leave the status blank.
     - key: '9'
       rule: agent
       good: 'No'
       question: Was any additional Manual Accessibility Testing required?
-      guide: Yes if a ticket or the RIA calls for a manual accessibility audit of the feature's pages, citing it; No if the feature's pages were covered by the automated accessibility checks and nothing asks for more. Otherwise To confirm.
+      guide: Yes if a ticket or the RIA calls for a manual accessibility audit of the feature's pages, citing it; No if the feature's pages were covered by the automated accessibility checks and nothing asks for more. Otherwise leave the status blank.
     - key: '10'
       rule: agent
       good: 'No'
@@ -118,15 +140,15 @@ checklist:
       rule: agent
       question: Has the Manual Regression Test Suite passed successfully?
       evidence: [test-complete]
-      guide: Yes with a recorded manual test run covering the feature (a test execution ticket, Test Complete comments on its stories); No if it recorded failures still open. Otherwise To confirm.
+      guide: Yes with a recorded manual test run covering the feature (a test execution ticket, Test Complete comments on its stories); No if it recorded failures still open. Otherwise leave the status blank.
     - key: '17'
       rule: agent
       question: Have dependent services completed validation?
-      guide: Yes if the services the feature calls (CCD, IDAM, payments, Notify and the like) are recorded as validated with it, citing where; N/A if it depends on no service outside PCS that changed. Otherwise To confirm.
+      guide: Yes if the services the feature calls (CCD, IDAM, payments, Notify and the like) are recorded as validated with it, citing where; N/A if it depends on no service outside PCS that changed. Otherwise leave the status blank.
     - key: '18'
       rule: agent
       question: Was formal Business Acceptance Testing (BAT) required?
-      guide: Yes if a ticket or plan calls for BAT of the feature, citing it, and saying whether it is done; No if none was planned. Otherwise To confirm.
+      guide: Yes if a ticket or plan calls for BAT of the feature, citing it, and saying whether it is done; No if none was planned. Otherwise leave the status blank.
     - key: '19'
       rule: agent
       question: Has the Product Owner signed off the stories?
@@ -151,4 +173,27 @@ checklist:
       rule: agent
       question: Has testing been completed using representative Production-like environments?
       evidence: [deployed-aat, e2e-build]
-      guide: Yes if the feature was tested on AAT/SIT or another production-like environment, citing the build or ticket; No if it was tested only on preview or locally. Otherwise To confirm.
+      guide: Yes if the feature was tested on AAT/SIT or another production-like environment, citing the build or ticket; No if it was tested only on preview or locally. Otherwise leave the status blank.
+
+sections:
+  - kind: testingSummary
+    heading: Testing Summary
+    level: 1
+    columns: [Test Activity, Status]
+    rows: [Smoke Testing, Functional Testing, Regression Testing, Automation Regression, Integration Testing, PCQ & Your support Validation, Liberata Reconciliation Testing, Production Readiness Validation]
+  - kind: defectSummary
+    heading: Defect Summary
+    level: 1
+    columns: [Severity, Outstanding]
+    rows: [Critical, High, Medium, Low]
+  - kind: risks
+    heading: Risks
+    level: 1
+    columns: [Risk, Mitigation]
+  - { kind: qaSummary, heading: QA Summary, level: 1 }
+  - { kind: recommendation, heading: QA Recommendation, level: 2 }
+  - kind: signOff
+    heading: Sign-off
+    level: 1
+    columns: [Role, Name, Status]
+    rows: [QA Manager, TCOE QA lead, Product Owner, Delivery Manager, Technical Lead]

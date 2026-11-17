@@ -1,0 +1,990 @@
+{
+ "evidence": {
+  "release": "R1.3A",
+  "generatedAt": "2026-09-19T08:00:00.000Z",
+  "candidates": [
+   {
+    "name": "V1",
+    "shas": {
+     "pcs-api": "e11f333989ad16e73efc00a06882f9d36bc26444",
+     "pcs-frontend": "a25f6121da3a13da2acd9377ed8d4df8b37754bd"
+    }
+   },
+   {
+    "name": "V2",
+    "shas": {
+     "pcs-api": "a8606ea0ce95532cd7d270baeb6a07881082259e",
+     "pcs-frontend": "5b8fb2e8578af40c76312cb1437e387048a78dec"
+    }
+   }
+  ],
+  "items": [
+   {
+    "value": "96.0%",
+    "links": [],
+    "source": "sonarcloud",
+    "sha": "e11f333989ad16e73efc00a06882f9d36bc26444",
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "repo": "pcs-api",
+    "candidate": "V1",
+    "rule": "sonar-coverage",
+    "status": "pass",
+    "row": "1"
+   },
+   {
+    "value": "passed",
+    "links": [],
+    "source": "sonarcloud",
+    "sha": "e11f333989ad16e73efc00a06882f9d36bc26444",
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "repo": "pcs-api",
+    "candidate": "V1",
+    "rule": "sonar-quality-gate",
+    "status": "pass",
+    "row": "2"
+   },
+   {
+    "value": "0 vulnerabilities",
+    "links": [],
+    "source": "sonarcloud",
+    "sha": "e11f333989ad16e73efc00a06882f9d36bc26444",
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "repo": "pcs-api",
+    "candidate": "V1",
+    "rule": "sonar-security",
+    "status": "pass",
+    "row": "11"
+   },
+   {
+    "value": "not checked",
+    "links": [],
+    "source": "cosmos",
+    "sha": "e11f333989ad16e73efc00a06882f9d36bc26444",
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "repo": "pcs-api",
+    "candidate": "V1",
+    "rule": "integration-contract",
+    "status": "unknown",
+    "note": "access denied (403)",
+    "unreachable": true,
+    "row": "3"
+   },
+   {
+    "value": "not checked",
+    "links": [],
+    "source": "github",
+    "sha": "e11f333989ad16e73efc00a06882f9d36bc26444",
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "repo": "pcs-api",
+    "candidate": "V1",
+    "rule": "functional",
+    "status": "unknown",
+    "note": "no build",
+    "row": "4"
+   },
+   {
+    "value": "Smoke Test - AKS aat: success",
+    "links": [
+     {
+      "text": "build",
+      "url": "https://build.hmcts.net/x"
+     }
+    ],
+    "source": "github",
+    "sha": "e11f333989ad16e73efc00a06882f9d36bc26444",
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "repo": "pcs-api",
+    "candidate": "V1",
+    "rule": "deployed-aat",
+    "status": "pass",
+    "row": "14"
+   },
+   {
+    "value": "3 ignored",
+    "links": [],
+    "source": "github",
+    "sha": "e11f333989ad16e73efc00a06882f9d36bc26444",
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "repo": "pcs-api",
+    "candidate": "V1",
+    "rule": "ignored-tests",
+    "status": "fail",
+    "answer": "Yes",
+    "row": "15"
+   },
+   {
+    "value": "0 open, 32 suppressed",
+    "links": [],
+    "source": "cosmos",
+    "sha": "e11f333989ad16e73efc00a06882f9d36bc26444",
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "repo": "pcs-api",
+    "candidate": "V1",
+    "rule": "dependency-check",
+    "status": "pass",
+    "answer": "Yes",
+    "row": "12"
+   },
+   {
+    "value": "94.1%",
+    "links": [],
+    "source": "sonarcloud",
+    "sha": "a25f6121da3a13da2acd9377ed8d4df8b37754bd",
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "repo": "pcs-frontend",
+    "candidate": "V1",
+    "rule": "sonar-coverage",
+    "status": "pass",
+    "row": "1"
+   },
+   {
+    "value": "passed",
+    "links": [],
+    "source": "sonarcloud",
+    "sha": "a25f6121da3a13da2acd9377ed8d4df8b37754bd",
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "repo": "pcs-frontend",
+    "candidate": "V1",
+    "rule": "sonar-quality-gate",
+    "status": "pass",
+    "row": "2"
+   },
+   {
+    "value": "1 vulnerability",
+    "links": [],
+    "source": "sonarcloud",
+    "sha": "a25f6121da3a13da2acd9377ed8d4df8b37754bd",
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "repo": "pcs-frontend",
+    "candidate": "V1",
+    "rule": "sonar-security",
+    "status": "fail",
+    "row": "11"
+   },
+   {
+    "value": "not checked",
+    "links": [],
+    "source": "cosmos",
+    "sha": "a25f6121da3a13da2acd9377ed8d4df8b37754bd",
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "repo": "pcs-frontend",
+    "candidate": "V1",
+    "rule": "integration-contract",
+    "status": "unknown",
+    "note": "access denied (403)",
+    "unreachable": true,
+    "row": "3"
+   },
+   {
+    "value": "not checked",
+    "links": [],
+    "source": "github",
+    "sha": "a25f6121da3a13da2acd9377ed8d4df8b37754bd",
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "repo": "pcs-frontend",
+    "candidate": "V1",
+    "rule": "functional",
+    "status": "unknown",
+    "note": "no build",
+    "row": "4"
+   },
+   {
+    "value": "Smoke Test - AKS aat: success",
+    "links": [
+     {
+      "text": "build",
+      "url": "https://build.hmcts.net/x"
+     }
+    ],
+    "source": "github",
+    "sha": "a25f6121da3a13da2acd9377ed8d4df8b37754bd",
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "repo": "pcs-frontend",
+    "candidate": "V1",
+    "rule": "deployed-aat",
+    "status": "pass",
+    "row": "14"
+   },
+   {
+    "value": "3 ignored",
+    "links": [],
+    "source": "github",
+    "sha": "a25f6121da3a13da2acd9377ed8d4df8b37754bd",
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "repo": "pcs-frontend",
+    "candidate": "V1",
+    "rule": "ignored-tests",
+    "status": "fail",
+    "answer": "Yes",
+    "row": "15"
+   },
+   {
+    "value": "0 open, 0 suppressed",
+    "links": [],
+    "source": "cosmos",
+    "sha": "a25f6121da3a13da2acd9377ed8d4df8b37754bd",
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "repo": "pcs-frontend",
+    "candidate": "V1",
+    "rule": "yarn-audit",
+    "status": "pass",
+    "answer": "No",
+    "row": "10"
+   },
+   {
+    "value": "96.0%",
+    "links": [],
+    "source": "sonarcloud",
+    "sha": "a8606ea0ce95532cd7d270baeb6a07881082259e",
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "repo": "pcs-api",
+    "candidate": "V2",
+    "rule": "sonar-coverage",
+    "status": "pass",
+    "row": "1"
+   },
+   {
+    "value": "passed",
+    "links": [],
+    "source": "sonarcloud",
+    "sha": "a8606ea0ce95532cd7d270baeb6a07881082259e",
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "repo": "pcs-api",
+    "candidate": "V2",
+    "rule": "sonar-quality-gate",
+    "status": "pass",
+    "row": "2"
+   },
+   {
+    "value": "0 vulnerabilities",
+    "links": [],
+    "source": "sonarcloud",
+    "sha": "a8606ea0ce95532cd7d270baeb6a07881082259e",
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "repo": "pcs-api",
+    "candidate": "V2",
+    "rule": "sonar-security",
+    "status": "pass",
+    "row": "11"
+   },
+   {
+    "value": "not checked",
+    "links": [],
+    "source": "cosmos",
+    "sha": "a8606ea0ce95532cd7d270baeb6a07881082259e",
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "repo": "pcs-api",
+    "candidate": "V2",
+    "rule": "integration-contract",
+    "status": "unknown",
+    "note": "access denied (403)",
+    "unreachable": true,
+    "row": "3"
+   },
+   {
+    "value": "not checked",
+    "links": [],
+    "source": "github",
+    "sha": "a8606ea0ce95532cd7d270baeb6a07881082259e",
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "repo": "pcs-api",
+    "candidate": "V2",
+    "rule": "functional",
+    "status": "unknown",
+    "note": "no build",
+    "row": "4"
+   },
+   {
+    "value": "Smoke Test - AKS aat: success",
+    "links": [
+     {
+      "text": "build",
+      "url": "https://build.hmcts.net/x"
+     }
+    ],
+    "source": "github",
+    "sha": "a8606ea0ce95532cd7d270baeb6a07881082259e",
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "repo": "pcs-api",
+    "candidate": "V2",
+    "rule": "deployed-aat",
+    "status": "pass",
+    "row": "14"
+   },
+   {
+    "value": "3 ignored",
+    "links": [],
+    "source": "github",
+    "sha": "a8606ea0ce95532cd7d270baeb6a07881082259e",
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "repo": "pcs-api",
+    "candidate": "V2",
+    "rule": "ignored-tests",
+    "status": "fail",
+    "answer": "Yes",
+    "row": "15"
+   },
+   {
+    "value": "0 open, 32 suppressed",
+    "links": [],
+    "source": "cosmos",
+    "sha": "a8606ea0ce95532cd7d270baeb6a07881082259e",
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "repo": "pcs-api",
+    "candidate": "V2",
+    "rule": "dependency-check",
+    "status": "pass",
+    "answer": "Yes",
+    "row": "12"
+   },
+   {
+    "value": "94.1%",
+    "links": [],
+    "source": "sonarcloud",
+    "sha": "5b8fb2e8578af40c76312cb1437e387048a78dec",
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "repo": "pcs-frontend",
+    "candidate": "V2",
+    "rule": "sonar-coverage",
+    "status": "pass",
+    "row": "1"
+   },
+   {
+    "value": "passed",
+    "links": [],
+    "source": "sonarcloud",
+    "sha": "5b8fb2e8578af40c76312cb1437e387048a78dec",
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "repo": "pcs-frontend",
+    "candidate": "V2",
+    "rule": "sonar-quality-gate",
+    "status": "pass",
+    "row": "2"
+   },
+   {
+    "value": "1 vulnerability",
+    "links": [],
+    "source": "sonarcloud",
+    "sha": "5b8fb2e8578af40c76312cb1437e387048a78dec",
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "repo": "pcs-frontend",
+    "candidate": "V2",
+    "rule": "sonar-security",
+    "status": "fail",
+    "row": "11"
+   },
+   {
+    "value": "not checked",
+    "links": [],
+    "source": "cosmos",
+    "sha": "5b8fb2e8578af40c76312cb1437e387048a78dec",
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "repo": "pcs-frontend",
+    "candidate": "V2",
+    "rule": "integration-contract",
+    "status": "unknown",
+    "note": "access denied (403)",
+    "unreachable": true,
+    "row": "3"
+   },
+   {
+    "value": "not checked",
+    "links": [],
+    "source": "github",
+    "sha": "5b8fb2e8578af40c76312cb1437e387048a78dec",
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "repo": "pcs-frontend",
+    "candidate": "V2",
+    "rule": "functional",
+    "status": "unknown",
+    "note": "no build",
+    "row": "4"
+   },
+   {
+    "value": "Smoke Test - AKS aat: success",
+    "links": [
+     {
+      "text": "build",
+      "url": "https://build.hmcts.net/x"
+     }
+    ],
+    "source": "github",
+    "sha": "5b8fb2e8578af40c76312cb1437e387048a78dec",
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "repo": "pcs-frontend",
+    "candidate": "V2",
+    "rule": "deployed-aat",
+    "status": "pass",
+    "row": "14"
+   },
+   {
+    "value": "3 ignored",
+    "links": [],
+    "source": "github",
+    "sha": "5b8fb2e8578af40c76312cb1437e387048a78dec",
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "repo": "pcs-frontend",
+    "candidate": "V2",
+    "rule": "ignored-tests",
+    "status": "fail",
+    "answer": "Yes",
+    "row": "15"
+   },
+   {
+    "value": "0 open, 0 suppressed",
+    "links": [],
+    "source": "cosmos",
+    "sha": "5b8fb2e8578af40c76312cb1437e387048a78dec",
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "repo": "pcs-frontend",
+    "candidate": "V2",
+    "rule": "yarn-audit",
+    "status": "pass",
+    "answer": "No",
+    "row": "10"
+   },
+   {
+    "value": "Critical – 0, High – 0, Medium – 0, Low – 0",
+    "links": [],
+    "source": "jira",
+    "sha": null,
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "rule": "outstanding-bugs",
+    "status": "pass",
+    "row": "info:Outstanding Bugs"
+   },
+   {
+    "value": "no Critical or High bugs open",
+    "links": [],
+    "source": "jira",
+    "sha": null,
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "rule": "high-defects",
+    "status": "pass",
+    "row": "21"
+   },
+   {
+    "value": "not signed by Perf Test yet",
+    "links": [],
+    "source": "ria",
+    "sha": null,
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "rule": "perf-signoff",
+    "status": "unknown",
+    "row": "6"
+   },
+   {
+    "value": "required",
+    "links": [],
+    "source": "ria",
+    "sha": null,
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "rule": "perf-required",
+    "status": "pass",
+    "answer": "Yes",
+    "row": "7"
+   },
+   {
+    "value": "Closed",
+    "links": [],
+    "source": "jira",
+    "sha": null,
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "rule": "human",
+    "status": "pass",
+    "data": {
+     "row": "6"
+    },
+    "row": "6"
+   },
+   {
+    "value": "Closed",
+    "links": [],
+    "source": "jira",
+    "sha": null,
+    "fetchedAt": "2026-09-19T08:00:00.000Z",
+    "rule": "human",
+    "status": "pass",
+    "data": {
+     "row": "16"
+    },
+    "row": "16"
+   }
+  ]
+ },
+ "report": "<h1>QA Readiness Report – R1.3A</h1>\n<p>As we continue to improve our testing maturity and strengthen our QA processes, the following readiness checklist has been completed to support the Release Approval Meeting.</p>\n<p>Where applicable, supporting evidence has been provided. Any items marked as N/A include an explanation.</p>\n<p><em>Cells written by the qa-report pipeline are regenerated each time it runs. Edit a cell to take it over: the pipeline then leaves it alone.</em></p>\n<h2>Release Information</h2><table data-layout=\"center\"><thead><tr><th data-colwidth=\"178\"><p>Item</p></th><th data-colwidth=\"1133\"><p>Details</p></th></tr></thead><tbody><tr><td data-colwidth=\"178\"><p>Release</p></td><td data-colwidth=\"1133\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-info-release-details-d4cc73dd&quot;}}}\"></span>R1.3A</p></td></tr><tr><td data-colwidth=\"178\"><p>Release Type</p></td><td data-colwidth=\"1133\"><p></p></td></tr><tr><td data-colwidth=\"178\"><p>Jira Board</p></td><td data-colwidth=\"1133\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-info-jira-board-details-eb3879be&quot;}}}\"></span><a href=\"https://hmcts.atlassian.net/jira/dashboards/10910\">R1.3A Release Candidate Version 1</a></p><p><a href=\"https://hmcts.atlassian.net/jira/dashboards/12291\">R1.3A Release Candidate Version 2</a></p><p><a href=\"https://hmcts.atlassian.net/jira/dashboards/10750\">R1.3A Defect release dashboard</a></p></td></tr><tr><td data-colwidth=\"178\"><p>Jira Tickets</p></td><td data-colwidth=\"1133\"><p></p></td></tr><tr><td data-colwidth=\"178\"><p>Test Environments</p></td><td data-colwidth=\"1133\"><p></p></td></tr><tr><td data-colwidth=\"178\"><p>External Dependencies</p></td><td data-colwidth=\"1133\"><p></p></td></tr><tr><td data-colwidth=\"178\"><p>External Risks</p></td><td data-colwidth=\"1133\"><p></p></td></tr><tr><td data-colwidth=\"178\"><p>Outstanding Bugs</p></td><td data-colwidth=\"1133\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-info-outstanding-bugs-details-4de2d605&quot;}}}\"></span>Critical – 0, High – 0, Medium – 0, Low – 0</p></td></tr><tr><td data-colwidth=\"178\"><p>GIT</p></td><td data-colwidth=\"1133\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-info-git-details-440ac218&quot;}}}\"></span>pcs-api → <a href=\"https://github.com/hmcts/pcs-api\">github.com/hmcts/pcs-api</a></p><p>pcs-frontend → <a href=\"https://github.com/hmcts/pcs-frontend\">github.com/hmcts/pcs-frontend</a></p></td></tr><tr><td data-colwidth=\"178\"><p>GIT Revision</p></td><td data-colwidth=\"1133\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-info-git-revision-details-f0f96e64&quot;}}}\"></span>V1: <a href=\"https://github.com/hmcts/pcs-api/commit/e11f333989ad16e73efc00a06882f9d36bc26444\">pcs-api = e11f333</a> · <a href=\"https://github.com/hmcts/pcs-frontend/commit/a25f6121da3a13da2acd9377ed8d4df8b37754bd\">pcs-frontend = a25f612</a></p><p>V2: <a href=\"https://github.com/hmcts/pcs-api/commit/a8606ea0ce95532cd7d270baeb6a07881082259e\">pcs-api = a8606ea</a> · <a href=\"https://github.com/hmcts/pcs-frontend/commit/5b8fb2e8578af40c76312cb1437e387048a78dec\">pcs-frontend = 5b8fb2e</a></p></td></tr></tbody></table>\n<h1>QA Readiness Checklist</h1><table data-layout=\"center\"><thead><tr><th data-colwidth=\"49\"><p>No</p></th><th data-colwidth=\"334\"><p>Question</p></th><th data-colwidth=\"60\"><p>Status</p></th><th data-colwidth=\"924\"><p>Comments / Evidence</p></th></tr></thead><tbody><tr><td data-colwidth=\"49\"><p>1</p></td><td data-colwidth=\"334\"><p>Is unit test coverage greater than 80% for all services?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-1-status-85a39ab3&quot;}}}\"></span>Yes</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-1-comments-79996d0b&quot;}}}\"></span>V1 — pcs-api e11f333: 96.0%.</p><p>V1 — pcs-frontend a25f612: 94.1%.</p><p>V2 — pcs-api a8606ea: 96.0%.</p><p>V2 — pcs-frontend 5b8fb2e: 94.1%.</p></td></tr><tr><td data-colwidth=\"49\"><p>2</p></td><td data-colwidth=\"334\"><p>Have all SonarCloud Quality Gates passed?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-2-status-85a39ab3&quot;}}}\"></span>Yes</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-2-comments-c9aae77f&quot;}}}\"></span>V1 — pcs-api e11f333: passed.</p><p>V1 — pcs-frontend a25f612: passed.</p><p>V2 — pcs-api a8606ea: passed.</p><p>V2 — pcs-frontend 5b8fb2e: passed.</p></td></tr><tr><td data-colwidth=\"49\"><p>3</p></td><td data-colwidth=\"334\"><p>Have all Integration and Contract Tests passed?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-3-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-3-comments-a716b6ce&quot;}}}\"></span>V1 — pcs-api e11f333: not checked: access denied (403).</p><p>V1 — pcs-frontend a25f612: not checked: access denied (403).</p><p>V2 — pcs-api a8606ea: not checked: access denied (403).</p><p>V2 — pcs-frontend 5b8fb2e: not checked: access denied (403).</p></td></tr><tr><td data-colwidth=\"49\"><p>4</p></td><td data-colwidth=\"334\"><p>Have all Functional Automation Tests passed?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-4-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-4-comments-e0206f73&quot;}}}\"></span>V1 — pcs-api e11f333: not checked: no build.</p><p>V1 — pcs-frontend a25f612: not checked: no build.</p><p>V2 — pcs-api a8606ea: not checked: no build.</p><p>V2 — pcs-frontend 5b8fb2e: not checked: no build.</p></td></tr><tr><td data-colwidth=\"49\"><p>5</p></td><td data-colwidth=\"334\"><p>Have all Cross Browser Tests passed?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-5-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-5-comments-d60ef082&quot;}}}\"></span>Needs a person to confirm: nothing records this automatically.</p></td></tr><tr><td data-colwidth=\"49\"><p>6</p></td><td data-colwidth=\"334\"><p>Have all Performance Tests passed?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-6-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-6-comments-7865012f&quot;}}}\"></span>not signed by Perf Test yet.</p><p>Closed.</p></td></tr><tr><td data-colwidth=\"49\"><p>7</p></td><td data-colwidth=\"334\"><p>Was any additional Performance Testing required?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-7-status-85a39ab3&quot;}}}\"></span>Yes</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-7-comments-9b41aca8&quot;}}}\"></span>required.</p></td></tr><tr><td data-colwidth=\"49\"><p>8</p></td><td data-colwidth=\"334\"><p>Has Security Testing been completed?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-8-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-8-comments-c0e148d2&quot;}}}\"></span>No evidence was collected for this row.</p></td></tr><tr><td data-colwidth=\"49\"><p>9</p></td><td data-colwidth=\"334\"><p>Was any additional Manual Accessibility Testing required?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-9-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-9-comments-d60ef082&quot;}}}\"></span>Needs a person to confirm: nothing records this automatically.</p></td></tr><tr><td data-colwidth=\"49\"><p>10</p></td><td data-colwidth=\"334\"><p>Has Yarn Audit reported any vulnerabilities?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-10-status-1ea442a1&quot;}}}\"></span>No</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-10-comments-1482477b&quot;}}}\"></span>V1 — pcs-frontend a25f612: 0 open, 0 suppressed.</p><p>V2 — pcs-frontend 5b8fb2e: 0 open, 0 suppressed.</p></td></tr><tr><td data-colwidth=\"49\"><p>11</p></td><td data-colwidth=\"334\"><p>Have SonarJava / Static Analysis checks reported any vulnerabilities?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-11-status-85a39ab3&quot;}}}\"></span>Yes</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-11-comments-19dcd8fa&quot;}}}\"></span>V1 — pcs-api e11f333: 0 vulnerabilities.</p><p>V1 — pcs-frontend a25f612: 1 vulnerability.</p><p>V2 — pcs-api a8606ea: 0 vulnerabilities.</p><p>V2 — pcs-frontend 5b8fb2e: 1 vulnerability.</p></td></tr><tr><td data-colwidth=\"49\"><p>12</p></td><td data-colwidth=\"334\"><p>Has Dependency Checker reported any vulnerabilities?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-12-status-85a39ab3&quot;}}}\"></span>Yes</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-12-comments-616a54cd&quot;}}}\"></span>V1 — pcs-api e11f333: 0 open, 32 suppressed.</p><p>V2 — pcs-api a8606ea: 0 open, 32 suppressed.</p></td></tr><tr><td data-colwidth=\"49\"><p>13</p></td><td data-colwidth=\"334\"><p>Has OWASP ZAP Scanner reported any High or Medium vulnerabilities?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-13-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-13-comments-d60ef082&quot;}}}\"></span>Needs a person to confirm: nothing records this automatically.</p></td></tr><tr><td data-colwidth=\"49\"><p>14</p></td><td data-colwidth=\"334\"><p>Has the Release Candidate been deployed to AAT/SIT?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-14-status-85a39ab3&quot;}}}\"></span>Yes</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-14-comments-eef40e7c&quot;}}}\"></span>V1 — pcs-api e11f333: Smoke Test - AKS aat: success. <a href=\"https://build.hmcts.net/x\">build</a></p><p>V1 — pcs-frontend a25f612: Smoke Test - AKS aat: success. <a href=\"https://build.hmcts.net/x\">build</a></p><p>V2 — pcs-api a8606ea: Smoke Test - AKS aat: success. <a href=\"https://build.hmcts.net/x\">build</a></p><p>V2 — pcs-frontend 5b8fb2e: Smoke Test - AKS aat: success. <a href=\"https://build.hmcts.net/x\">build</a></p></td></tr><tr><td data-colwidth=\"49\"><p>15</p></td><td data-colwidth=\"334\"><p>Are any Automation Tests ignored, removed or pending?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-15-status-85a39ab3&quot;}}}\"></span>Yes</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-15-comments-6f2856b6&quot;}}}\"></span>V1 — pcs-api e11f333: 3 ignored.</p><p>V1 — pcs-frontend a25f612: 3 ignored.</p><p>V2 — pcs-api a8606ea: 3 ignored.</p><p>V2 — pcs-frontend 5b8fb2e: 3 ignored.</p></td></tr><tr><td data-colwidth=\"49\"><p>16</p></td><td data-colwidth=\"334\"><p>Has the Manual Regression Test Suite passed successfully?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-16-status-85a39ab3&quot;}}}\"></span>Yes</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-16-comments-e01c351d&quot;}}}\"></span>Closed.</p></td></tr><tr><td data-colwidth=\"49\"><p>17</p></td><td data-colwidth=\"334\"><p>Have dependent services completed validation?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-17-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-17-comments-d60ef082&quot;}}}\"></span>Needs a person to confirm: nothing records this automatically.</p></td></tr><tr><td data-colwidth=\"49\"><p>18</p></td><td data-colwidth=\"334\"><p>Was formal Business Acceptance Testing (BAT) required?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-18-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-18-comments-d60ef082&quot;}}}\"></span>Needs a person to confirm: nothing records this automatically.</p></td></tr><tr><td data-colwidth=\"49\"><p>19</p></td><td data-colwidth=\"334\"><p>Has the Product Owner signed off the stories?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-19-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-19-comments-d60ef082&quot;}}}\"></span>Needs a person to confirm: nothing records this automatically.</p></td></tr><tr><td data-colwidth=\"49\"><p>20</p></td><td data-colwidth=\"334\"><p>Have Test Complete comments been added to all Stories and Defects?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-20-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-20-comments-c0e148d2&quot;}}}\"></span>No evidence was collected for this row.</p></td></tr><tr><td data-colwidth=\"49\"><p>21</p></td><td data-colwidth=\"334\"><p>Have all Critical and High Priority defects been resolved?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-21-status-85a39ab3&quot;}}}\"></span>Yes</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-21-comments-ce7bc9d6&quot;}}}\"></span>no Critical or High bugs open.</p></td></tr><tr><td data-colwidth=\"49\"><p>22</p></td><td data-colwidth=\"334\"><p>Have remaining defects been triaged and prioritised?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-22-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-22-comments-d60ef082&quot;}}}\"></span>Needs a person to confirm: nothing records this automatically.</p></td></tr><tr><td data-colwidth=\"49\"><p>23</p></td><td data-colwidth=\"334\"><p>Has testing been completed using representative Production-like environments?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-23-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-23-comments-d60ef082&quot;}}}\"></span>Needs a person to confirm: nothing records this automatically.</p></td></tr></tbody></table>",
+ "page": "<h1>QA Readiness Report – R1.3A</h1>\n<p>As we continue to improve our testing maturity and strengthen our QA processes, the following readiness checklist has been completed to support the Release Approval Meeting.</p>\n<p>Where applicable, supporting evidence has been provided. Any items marked as N/A include an explanation.</p>\n<p><em>Cells written by the qa-report pipeline are regenerated each time it runs. Edit a cell to take it over: the pipeline then leaves it alone.</em></p>\n<h2>Release Information</h2><table data-layout=\"center\"><thead><tr><th data-colwidth=\"178\"><p>Item</p></th><th data-colwidth=\"1133\"><p>Details</p></th></tr></thead><tbody><tr><td data-colwidth=\"178\"><p>Release</p></td><td data-colwidth=\"1133\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-info-release-details-d4cc73dd&quot;}}}\"></span>R1.3A</p></td></tr><tr><td data-colwidth=\"178\"><p>Release Type</p></td><td data-colwidth=\"1133\"><p></p></td></tr><tr><td data-colwidth=\"178\"><p>Jira Board</p></td><td data-colwidth=\"1133\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-info-jira-board-details-eb3879be&quot;}}}\"></span><a href=\"https://hmcts.atlassian.net/jira/dashboards/10910\">R1.3A Release Candidate Version 1</a></p><p><a href=\"https://hmcts.atlassian.net/jira/dashboards/12291\">R1.3A Release Candidate Version 2</a></p><p><a href=\"https://hmcts.atlassian.net/jira/dashboards/10750\">R1.3A Defect release dashboard</a></p></td></tr><tr><td data-colwidth=\"178\"><p>Jira Tickets</p></td><td data-colwidth=\"1133\"><p></p></td></tr><tr><td data-colwidth=\"178\"><p>Test Environments</p></td><td data-colwidth=\"1133\"><p></p></td></tr><tr><td data-colwidth=\"178\"><p>External Dependencies</p></td><td data-colwidth=\"1133\"><p></p></td></tr><tr><td data-colwidth=\"178\"><p>External Risks</p></td><td data-colwidth=\"1133\"><p></p></td></tr><tr><td data-colwidth=\"178\"><p>Outstanding Bugs</p></td><td data-colwidth=\"1133\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-info-outstanding-bugs-details-76a2ffba&quot;}}}\"></span>To confirm: Jira could not be read.</p></td></tr><tr><td data-colwidth=\"178\"><p>GIT</p></td><td data-colwidth=\"1133\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-info-git-details-440ac218&quot;}}}\"></span>pcs-api → <a href=\"https://github.com/hmcts/pcs-api\">github.com/hmcts/pcs-api</a></p><p>pcs-frontend → <a href=\"https://github.com/hmcts/pcs-frontend\">github.com/hmcts/pcs-frontend</a></p></td></tr><tr><td data-colwidth=\"178\"><p>GIT Revision</p></td><td data-colwidth=\"1133\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-info-git-revision-details-f0f96e64&quot;}}}\"></span>V1: <a href=\"https://github.com/hmcts/pcs-api/commit/e11f333989ad16e73efc00a06882f9d36bc26444\">pcs-api = e11f333</a> · <a href=\"https://github.com/hmcts/pcs-frontend/commit/a25f6121da3a13da2acd9377ed8d4df8b37754bd\">pcs-frontend = a25f612</a></p><p>V2: <a href=\"https://github.com/hmcts/pcs-api/commit/a8606ea0ce95532cd7d270baeb6a07881082259e\">pcs-api = a8606ea</a> · <a href=\"https://github.com/hmcts/pcs-frontend/commit/5b8fb2e8578af40c76312cb1437e387048a78dec\">pcs-frontend = 5b8fb2e</a></p></td></tr></tbody></table>\n<h1>QA Readiness Checklist</h1><table data-layout=\"center\"><thead><tr><th data-colwidth=\"49\"><p>No</p></th><th data-colwidth=\"334\"><p>Question</p></th><th data-colwidth=\"60\"><p>Status</p></th><th data-colwidth=\"924\"><p>Comments / Evidence</p></th></tr></thead><tbody><tr><td data-colwidth=\"49\"><p>1</p></td><td data-colwidth=\"334\"><p>Is unit test coverage greater than 80% for all services?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-1-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-1-comments-c0e148d2&quot;}}}\"></span>No evidence was collected for this row.</p></td></tr><tr><td data-colwidth=\"49\"><p>2</p></td><td data-colwidth=\"334\"><p>Have all SonarCloud Quality Gates passed?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-2-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-2-comments-c0e148d2&quot;}}}\"></span>No evidence was collected for this row.</p></td></tr><tr><td data-colwidth=\"49\"><p>3</p></td><td data-colwidth=\"334\"><p>Have all Integration and Contract Tests passed?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-3-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-3-comments-c0e148d2&quot;}}}\"></span>No evidence was collected for this row.</p></td></tr><tr><td data-colwidth=\"49\"><p>4</p></td><td data-colwidth=\"334\"><p>Have all Functional Automation Tests passed?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-4-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-4-comments-c0e148d2&quot;}}}\"></span>No evidence was collected for this row.</p></td></tr><tr><td data-colwidth=\"49\"><p>5</p></td><td data-colwidth=\"334\"><p>Have all Cross Browser Tests passed?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-5-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-5-comments-d60ef082&quot;}}}\"></span>Needs a person to confirm: nothing records this automatically.</p></td></tr><tr><td data-colwidth=\"49\"><p>6</p></td><td data-colwidth=\"334\"><p>Have all Performance Tests passed?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-6-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-6-comments-c0e148d2&quot;}}}\"></span>No evidence was collected for this row.</p></td></tr><tr><td data-colwidth=\"49\"><p>7</p></td><td data-colwidth=\"334\"><p>Was any additional Performance Testing required?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-7-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-7-comments-c0e148d2&quot;}}}\"></span>No evidence was collected for this row.</p></td></tr><tr><td data-colwidth=\"49\"><p>8</p></td><td data-colwidth=\"334\"><p>Has Security Testing been completed?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-8-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-8-comments-c0e148d2&quot;}}}\"></span>No evidence was collected for this row.</p></td></tr><tr><td data-colwidth=\"49\"><p>9</p></td><td data-colwidth=\"334\"><p>Was any additional Manual Accessibility Testing required?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-9-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-9-comments-d60ef082&quot;}}}\"></span>Needs a person to confirm: nothing records this automatically.</p></td></tr><tr><td data-colwidth=\"49\"><p>10</p></td><td data-colwidth=\"334\"><p>Has Yarn Audit reported any vulnerabilities?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-10-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-10-comments-c0e148d2&quot;}}}\"></span>No evidence was collected for this row.</p></td></tr><tr><td data-colwidth=\"49\"><p>11</p></td><td data-colwidth=\"334\"><p>Have SonarJava / Static Analysis checks reported any vulnerabilities?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-11-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-11-comments-c0e148d2&quot;}}}\"></span>No evidence was collected for this row.</p></td></tr><tr><td data-colwidth=\"49\"><p>12</p></td><td data-colwidth=\"334\"><p>Has Dependency Checker reported any vulnerabilities?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-12-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-12-comments-c0e148d2&quot;}}}\"></span>No evidence was collected for this row.</p></td></tr><tr><td data-colwidth=\"49\"><p>13</p></td><td data-colwidth=\"334\"><p>Has OWASP ZAP Scanner reported any High or Medium vulnerabilities?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-13-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-13-comments-d60ef082&quot;}}}\"></span>Needs a person to confirm: nothing records this automatically.</p></td></tr><tr><td data-colwidth=\"49\"><p>14</p></td><td data-colwidth=\"334\"><p>Has the Release Candidate been deployed to AAT/SIT?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-14-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-14-comments-c0e148d2&quot;}}}\"></span>No evidence was collected for this row.</p></td></tr><tr><td data-colwidth=\"49\"><p>15</p></td><td data-colwidth=\"334\"><p>Are any Automation Tests ignored, removed or pending?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-15-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-15-comments-c0e148d2&quot;}}}\"></span>No evidence was collected for this row.</p></td></tr><tr><td data-colwidth=\"49\"><p>16</p></td><td data-colwidth=\"334\"><p>Has the Manual Regression Test Suite passed successfully?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-16-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-16-comments-d60ef082&quot;}}}\"></span>Needs a person to confirm: nothing records this automatically.</p></td></tr><tr><td data-colwidth=\"49\"><p>17</p></td><td data-colwidth=\"334\"><p>Have dependent services completed validation?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-17-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-17-comments-d60ef082&quot;}}}\"></span>Needs a person to confirm: nothing records this automatically.</p></td></tr><tr><td data-colwidth=\"49\"><p>18</p></td><td data-colwidth=\"334\"><p>Was formal Business Acceptance Testing (BAT) required?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-18-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-18-comments-d60ef082&quot;}}}\"></span>Needs a person to confirm: nothing records this automatically.</p></td></tr><tr><td data-colwidth=\"49\"><p>19</p></td><td data-colwidth=\"334\"><p>Has the Product Owner signed off the stories?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-19-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-19-comments-d60ef082&quot;}}}\"></span>Needs a person to confirm: nothing records this automatically.</p></td></tr><tr><td data-colwidth=\"49\"><p>20</p></td><td data-colwidth=\"334\"><p>Have Test Complete comments been added to all Stories and Defects?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-20-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-20-comments-c0e148d2&quot;}}}\"></span>No evidence was collected for this row.</p></td></tr><tr><td data-colwidth=\"49\"><p>21</p></td><td data-colwidth=\"334\"><p>Have all Critical and High Priority defects been resolved?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-21-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-21-comments-c0e148d2&quot;}}}\"></span>No evidence was collected for this row.</p></td></tr><tr><td data-colwidth=\"49\"><p>22</p></td><td data-colwidth=\"334\"><p>Have remaining defects been triaged and prioritised?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-22-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-22-comments-d60ef082&quot;}}}\"></span>Needs a person to confirm: nothing records this automatically.</p></td></tr><tr><td data-colwidth=\"49\"><p>23</p></td><td data-colwidth=\"334\"><p>Has testing been completed using representative Production-like environments?</p></td><td data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-23-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-23-comments-d60ef082&quot;}}}\"></span>Needs a person to confirm: nothing records this automatically.</p></td></tr></tbody></table>",
+ "merged": "<h1 data-local-id=\"000000000001\">QA Readiness Report – R1.3A</h1>\n<p data-local-id=\"000000000002\">As we continue to improve our testing maturity and strengthen our QA processes, the following readiness checklist has been completed to support the Release Approval Meeting.</p>\n<p data-local-id=\"000000000003\">Where applicable, supporting evidence has been provided. Any items marked as N/A include an explanation.</p>\n<p data-local-id=\"000000000004\"><em>Cells written by the qa-report pipeline are regenerated each time it runs. Edit a cell to take it over: the pipeline then leaves it alone.</em></p>\n<h2 data-local-id=\"000000000005\">Release Information</h2><table data-local-id=\"000000000006\" data-layout=\"center\"><thead><tr data-local-id=\"000000000007\"><th data-local-id=\"000000000008\" data-colwidth=\"178\"><p data-local-id=\"000000000009\">Item</p></th><th data-local-id=\"00000000000a\" data-colwidth=\"1133\"><p data-local-id=\"00000000000b\">Details</p></th></tr></thead><tbody><tr data-local-id=\"00000000000c\"><td data-local-id=\"00000000000d\" data-colwidth=\"178\"><p data-local-id=\"00000000000e\">Release</p></td><td data-local-id=\"00000000000f\" data-colwidth=\"1133\"><p data-local-id=\"000000000010\"><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-info-release-details-d4cc73dd&quot;}}}\"></span>R1.3A</p></td></tr><tr data-local-id=\"000000000011\"><td data-local-id=\"000000000012\" data-colwidth=\"178\"><p data-local-id=\"000000000013\">Release Type</p></td><td data-local-id=\"000000000014\" data-colwidth=\"1133\"><p data-local-id=\"000000000015\"></p></td></tr><tr data-local-id=\"000000000016\"><td data-local-id=\"000000000017\" data-colwidth=\"178\"><p data-local-id=\"000000000018\">Jira Board</p></td><td data-local-id=\"000000000019\" data-colwidth=\"1133\"><p data-local-id=\"00000000001a\"><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-info-jira-board-details-eb3879be&quot;}}}\"></span><a href=\"https://hmcts.atlassian.net/jira/dashboards/10910\">R1.3A Release Candidate Version 1</a></p><p data-local-id=\"00000000001b\"><a href=\"https://hmcts.atlassian.net/jira/dashboards/12291\">R1.3A Release Candidate Version 2</a></p><p data-local-id=\"00000000001c\"><a href=\"https://hmcts.atlassian.net/jira/dashboards/10750\">R1.3A Defect release dashboard</a></p></td></tr><tr data-local-id=\"00000000001d\"><td data-local-id=\"00000000001e\" data-colwidth=\"178\"><p data-local-id=\"00000000001f\">Jira Tickets</p></td><td data-local-id=\"000000000020\" data-colwidth=\"1133\"><p data-local-id=\"000000000021\"></p></td></tr><tr data-local-id=\"000000000022\"><td data-local-id=\"000000000023\" data-colwidth=\"178\"><p data-local-id=\"000000000024\">Test Environments</p></td><td data-local-id=\"000000000025\" data-colwidth=\"1133\"><p data-local-id=\"000000000026\"></p></td></tr><tr data-local-id=\"000000000027\"><td data-local-id=\"000000000028\" data-colwidth=\"178\"><p data-local-id=\"000000000029\">External Dependencies</p></td><td data-local-id=\"00000000002a\" data-colwidth=\"1133\"><p data-local-id=\"00000000002b\"></p></td></tr><tr data-local-id=\"00000000002c\"><td data-local-id=\"00000000002d\" data-colwidth=\"178\"><p data-local-id=\"00000000002e\">External Risks</p></td><td data-local-id=\"00000000002f\" data-colwidth=\"1133\"><p data-local-id=\"000000000030\"></p></td></tr><tr data-local-id=\"000000000031\"><td data-local-id=\"000000000032\" data-colwidth=\"178\"><p data-local-id=\"000000000033\">Outstanding Bugs</p></td><td data-local-id=\"000000000034\" data-colwidth=\"1133\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-info-outstanding-bugs-details-4de2d605&quot;}}}\"></span>Critical – 0, High – 0, Medium – 0, Low – 0</p></td></tr><tr data-local-id=\"000000000036\"><td data-local-id=\"000000000037\" data-colwidth=\"178\"><p data-local-id=\"000000000038\">GIT</p></td><td data-local-id=\"000000000039\" data-colwidth=\"1133\"><p data-local-id=\"00000000003a\"><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-info-git-details-440ac218&quot;}}}\"></span>pcs-api → <a href=\"https://github.com/hmcts/pcs-api\">github.com/hmcts/pcs-api</a></p><p data-local-id=\"00000000003b\">pcs-frontend → <a href=\"https://github.com/hmcts/pcs-frontend\">github.com/hmcts/pcs-frontend</a></p></td></tr><tr data-local-id=\"00000000003c\"><td data-local-id=\"00000000003d\" data-colwidth=\"178\"><p data-local-id=\"00000000003e\">GIT Revision</p></td><td data-local-id=\"00000000003f\" data-colwidth=\"1133\"><p data-local-id=\"000000000040\"><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-info-git-revision-details-f0f96e64&quot;}}}\"></span>V1: <a href=\"https://github.com/hmcts/pcs-api/commit/e11f333989ad16e73efc00a06882f9d36bc26444\">pcs-api = e11f333</a> · <a href=\"https://github.com/hmcts/pcs-frontend/commit/a25f6121da3a13da2acd9377ed8d4df8b37754bd\">pcs-frontend = a25f612</a></p><p data-local-id=\"000000000041\">V2: <a href=\"https://github.com/hmcts/pcs-api/commit/a8606ea0ce95532cd7d270baeb6a07881082259e\">pcs-api = a8606ea</a> · <a href=\"https://github.com/hmcts/pcs-frontend/commit/5b8fb2e8578af40c76312cb1437e387048a78dec\">pcs-frontend = 5b8fb2e</a></p></td></tr></tbody></table>\n<h1 data-local-id=\"000000000042\">QA Readiness Checklist</h1><table data-local-id=\"000000000043\" data-layout=\"center\"><thead><tr data-local-id=\"000000000044\"><th data-local-id=\"000000000045\" data-colwidth=\"49\"><p data-local-id=\"000000000046\">No</p></th><th data-local-id=\"000000000047\" data-colwidth=\"334\"><p data-local-id=\"000000000048\">Question</p></th><th data-local-id=\"000000000049\" data-colwidth=\"60\"><p data-local-id=\"00000000004a\">Status</p></th><th data-local-id=\"00000000004b\" data-colwidth=\"924\"><p data-local-id=\"00000000004c\">Comments / Evidence</p></th></tr></thead><tbody><tr data-local-id=\"00000000004d\"><td data-local-id=\"00000000004e\" data-colwidth=\"49\"><p data-local-id=\"00000000004f\">1</p></td><td data-local-id=\"000000000050\" data-colwidth=\"334\"><p data-local-id=\"000000000051\">Is unit test coverage greater than 80% for all services?</p></td><td data-local-id=\"000000000052\" data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-1-status-85a39ab3&quot;}}}\"></span>Yes</p></td><td data-local-id=\"000000000054\" data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-1-comments-79996d0b&quot;}}}\"></span>V1 — pcs-api e11f333: 96.0%.</p><p>V1 — pcs-frontend a25f612: 94.1%.</p><p>V2 — pcs-api a8606ea: 96.0%.</p><p>V2 — pcs-frontend 5b8fb2e: 94.1%.</p></td></tr><tr data-local-id=\"000000000056\"><td data-local-id=\"000000000057\" data-colwidth=\"49\"><p data-local-id=\"000000000058\">2</p></td><td data-local-id=\"000000000059\" data-colwidth=\"334\"><p data-local-id=\"00000000005a\">Have all SonarCloud Quality Gates passed?</p></td><td data-local-id=\"00000000005b\" data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-2-status-85a39ab3&quot;}}}\"></span>Yes</p></td><td data-local-id=\"00000000005d\" data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-2-comments-c9aae77f&quot;}}}\"></span>V1 — pcs-api e11f333: passed.</p><p>V1 — pcs-frontend a25f612: passed.</p><p>V2 — pcs-api a8606ea: passed.</p><p>V2 — pcs-frontend 5b8fb2e: passed.</p></td></tr><tr data-local-id=\"00000000005f\"><td data-local-id=\"000000000060\" data-colwidth=\"49\"><p data-local-id=\"000000000061\">3</p></td><td data-local-id=\"000000000062\" data-colwidth=\"334\"><p data-local-id=\"000000000063\">Have all Integration and Contract Tests passed?</p></td><td data-local-id=\"000000000064\" data-colwidth=\"60\"><p data-local-id=\"000000000065\"><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-3-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-local-id=\"000000000066\" data-colwidth=\"924\"><p data-local-id=\"000000000067\"><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-3-comments-c0e148d2&quot;}}}\"></span>No evidence was collected for this row.</p></td></tr><tr data-local-id=\"000000000068\"><td data-local-id=\"000000000069\" data-colwidth=\"49\"><p data-local-id=\"00000000006a\">4</p></td><td data-local-id=\"00000000006b\" data-colwidth=\"334\"><p data-local-id=\"00000000006c\">Have all Functional Automation Tests passed?</p></td><td data-local-id=\"00000000006d\" data-colwidth=\"60\"><p data-local-id=\"00000000006e\"><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-4-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-local-id=\"00000000006f\" data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-4-comments-e0206f73&quot;}}}\"></span>V1 — pcs-api e11f333: not checked: no build.</p><p>V1 — pcs-frontend a25f612: not checked: no build.</p><p>V2 — pcs-api a8606ea: not checked: no build.</p><p>V2 — pcs-frontend 5b8fb2e: not checked: no build.</p></td></tr><tr data-local-id=\"000000000071\"><td data-local-id=\"000000000072\" data-colwidth=\"49\"><p data-local-id=\"000000000073\">5</p></td><td data-local-id=\"000000000074\" data-colwidth=\"334\"><p data-local-id=\"000000000075\">Have all Cross Browser Tests passed?</p></td><td data-local-id=\"000000000076\" data-colwidth=\"60\"><p data-local-id=\"000000000077\"><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-5-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-local-id=\"000000000078\" data-colwidth=\"924\"><p data-local-id=\"000000000079\"><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-5-comments-d60ef082&quot;}}}\"></span>Needs a person to confirm: nothing records this automatically.</p></td></tr><tr data-local-id=\"00000000007a\"><td data-local-id=\"00000000007b\" data-colwidth=\"49\"><p data-local-id=\"00000000007c\">6</p></td><td data-local-id=\"00000000007d\" data-colwidth=\"334\"><p data-local-id=\"00000000007e\">Have all Performance Tests passed?</p></td><td data-local-id=\"00000000007f\" data-colwidth=\"60\"><p data-local-id=\"000000000080\"><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-6-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-local-id=\"000000000081\" data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-6-comments-7865012f&quot;}}}\"></span>not signed by Perf Test yet.</p><p>Closed.</p></td></tr><tr data-local-id=\"000000000083\"><td data-local-id=\"000000000084\" data-colwidth=\"49\"><p data-local-id=\"000000000085\">7</p></td><td data-local-id=\"000000000086\" data-colwidth=\"334\"><p data-local-id=\"000000000087\">Was any additional Performance Testing required?</p></td><td data-local-id=\"000000000088\" data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-7-status-85a39ab3&quot;}}}\"></span>Yes</p></td><td data-local-id=\"00000000008a\" data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-7-comments-9b41aca8&quot;}}}\"></span>required.</p></td></tr><tr data-local-id=\"00000000008c\"><td data-local-id=\"00000000008d\" data-colwidth=\"49\"><p data-local-id=\"00000000008e\">8</p></td><td data-local-id=\"00000000008f\" data-colwidth=\"334\"><p data-local-id=\"000000000090\">Has Security Testing been completed?</p></td><td data-local-id=\"000000000091\" data-colwidth=\"60\"><p data-local-id=\"000000000092\"><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-8-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-local-id=\"000000000093\" data-colwidth=\"924\"><p data-local-id=\"000000000094\"><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-8-comments-c0e148d2&quot;}}}\"></span>No evidence was collected for this row.</p></td></tr><tr data-local-id=\"000000000095\"><td data-local-id=\"000000000096\" data-colwidth=\"49\"><p data-local-id=\"000000000097\">9</p></td><td data-local-id=\"000000000098\" data-colwidth=\"334\"><p data-local-id=\"000000000099\">Was any additional Manual Accessibility Testing required?</p></td><td data-local-id=\"00000000009a\" data-colwidth=\"60\"><p data-local-id=\"00000000009b\"><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-9-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-local-id=\"00000000009c\" data-colwidth=\"924\"><p data-local-id=\"00000000009d\"><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-9-comments-d60ef082&quot;}}}\"></span>Needs a person to confirm: nothing records this automatically.</p></td></tr><tr data-local-id=\"00000000009e\"><td data-local-id=\"00000000009f\" data-colwidth=\"49\"><p data-local-id=\"0000000000a0\">10</p></td><td data-local-id=\"0000000000a1\" data-colwidth=\"334\"><p data-local-id=\"0000000000a2\">Has Yarn Audit reported any vulnerabilities?</p></td><td data-local-id=\"0000000000a3\" data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-10-status-1ea442a1&quot;}}}\"></span>No</p></td><td data-local-id=\"0000000000a5\" data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-10-comments-1482477b&quot;}}}\"></span>V1 — pcs-frontend a25f612: 0 open, 0 suppressed.</p><p>V2 — pcs-frontend 5b8fb2e: 0 open, 0 suppressed.</p></td></tr><tr data-local-id=\"0000000000a7\"><td data-local-id=\"0000000000a8\" data-colwidth=\"49\"><p data-local-id=\"0000000000a9\">11</p></td><td data-local-id=\"0000000000aa\" data-colwidth=\"334\"><p data-local-id=\"0000000000ab\">Have SonarJava / Static Analysis checks reported any vulnerabilities?</p></td><td data-local-id=\"0000000000ac\" data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-11-status-85a39ab3&quot;}}}\"></span>Yes</p></td><td data-local-id=\"0000000000ae\" data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-11-comments-19dcd8fa&quot;}}}\"></span>V1 — pcs-api e11f333: 0 vulnerabilities.</p><p>V1 — pcs-frontend a25f612: 1 vulnerability.</p><p>V2 — pcs-api a8606ea: 0 vulnerabilities.</p><p>V2 — pcs-frontend 5b8fb2e: 1 vulnerability.</p></td></tr><tr data-local-id=\"0000000000b0\"><td data-local-id=\"0000000000b1\" data-colwidth=\"49\"><p data-local-id=\"0000000000b2\">12</p></td><td data-local-id=\"0000000000b3\" data-colwidth=\"334\"><p data-local-id=\"0000000000b4\">Has Dependency Checker reported any vulnerabilities?</p></td><td data-local-id=\"0000000000b5\" data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-12-status-85a39ab3&quot;}}}\"></span>Yes</p></td><td data-local-id=\"0000000000b7\" data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-12-comments-616a54cd&quot;}}}\"></span>V1 — pcs-api e11f333: 0 open, 32 suppressed.</p><p>V2 — pcs-api a8606ea: 0 open, 32 suppressed.</p></td></tr><tr data-local-id=\"0000000000b9\"><td data-local-id=\"0000000000ba\" data-colwidth=\"49\"><p data-local-id=\"0000000000bb\">13</p></td><td data-local-id=\"0000000000bc\" data-colwidth=\"334\"><p data-local-id=\"0000000000bd\">Has OWASP ZAP Scanner reported any High or Medium vulnerabilities?</p></td><td data-local-id=\"0000000000be\" data-colwidth=\"60\"><p data-local-id=\"0000000000bf\"><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-13-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-local-id=\"0000000000c0\" data-colwidth=\"924\"><p data-local-id=\"0000000000c1\"><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-13-comments-d60ef082&quot;}}}\"></span>Needs a person to confirm: nothing records this automatically.</p></td></tr><tr data-local-id=\"0000000000c2\"><td data-local-id=\"0000000000c3\" data-colwidth=\"49\"><p data-local-id=\"0000000000c4\">14</p></td><td data-local-id=\"0000000000c5\" data-colwidth=\"334\"><p data-local-id=\"0000000000c6\">Has the Release Candidate been deployed to AAT/SIT?</p></td><td data-local-id=\"0000000000c7\" data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-14-status-85a39ab3&quot;}}}\"></span>Yes</p></td><td data-local-id=\"0000000000c9\" data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-14-comments-eef40e7c&quot;}}}\"></span>V1 — pcs-api e11f333: Smoke Test - AKS aat: success. <a href=\"https://build.hmcts.net/x\">build</a></p><p>V1 — pcs-frontend a25f612: Smoke Test - AKS aat: success. <a href=\"https://build.hmcts.net/x\">build</a></p><p>V2 — pcs-api a8606ea: Smoke Test - AKS aat: success. <a href=\"https://build.hmcts.net/x\">build</a></p><p>V2 — pcs-frontend 5b8fb2e: Smoke Test - AKS aat: success. <a href=\"https://build.hmcts.net/x\">build</a></p></td></tr><tr data-local-id=\"0000000000cb\"><td data-local-id=\"0000000000cc\" data-colwidth=\"49\"><p data-local-id=\"0000000000cd\">15</p></td><td data-local-id=\"0000000000ce\" data-colwidth=\"334\"><p data-local-id=\"0000000000cf\">Are any Automation Tests ignored, removed or pending?</p></td><td data-local-id=\"0000000000d0\" data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-15-status-85a39ab3&quot;}}}\"></span>Yes</p></td><td data-local-id=\"0000000000d2\" data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-15-comments-6f2856b6&quot;}}}\"></span>V1 — pcs-api e11f333: 3 ignored.</p><p>V1 — pcs-frontend a25f612: 3 ignored.</p><p>V2 — pcs-api a8606ea: 3 ignored.</p><p>V2 — pcs-frontend 5b8fb2e: 3 ignored.</p></td></tr><tr data-local-id=\"0000000000d4\"><td data-local-id=\"0000000000d5\" data-colwidth=\"49\"><p data-local-id=\"0000000000d6\">16</p></td><td data-local-id=\"0000000000d7\" data-colwidth=\"334\"><p data-local-id=\"0000000000d8\">Has the Manual Regression Test Suite passed successfully?</p></td><td data-local-id=\"0000000000d9\" data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-16-status-85a39ab3&quot;}}}\"></span>Yes</p></td><td data-local-id=\"0000000000db\" data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-16-comments-e01c351d&quot;}}}\"></span>Closed.</p></td></tr><tr data-local-id=\"0000000000dd\"><td data-local-id=\"0000000000de\" data-colwidth=\"49\"><p data-local-id=\"0000000000df\">17</p></td><td data-local-id=\"0000000000e0\" data-colwidth=\"334\"><p data-local-id=\"0000000000e1\">Have dependent services completed validation?</p></td><td data-local-id=\"0000000000e2\" data-colwidth=\"60\"><p data-local-id=\"0000000000e3\"><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-17-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-local-id=\"0000000000e4\" data-colwidth=\"924\"><p data-local-id=\"0000000000e5\"><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-17-comments-d60ef082&quot;}}}\"></span>Needs a person to confirm: nothing records this automatically.</p></td></tr><tr data-local-id=\"0000000000e6\"><td data-local-id=\"0000000000e7\" data-colwidth=\"49\"><p data-local-id=\"0000000000e8\">18</p></td><td data-local-id=\"0000000000e9\" data-colwidth=\"334\"><p data-local-id=\"0000000000ea\">Was formal Business Acceptance Testing (BAT) required?</p></td><td data-local-id=\"0000000000eb\" data-colwidth=\"60\"><p data-local-id=\"0000000000ec\"><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-18-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-local-id=\"0000000000ed\" data-colwidth=\"924\"><p data-local-id=\"0000000000ee\"><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-18-comments-d60ef082&quot;}}}\"></span>Needs a person to confirm: nothing records this automatically.</p></td></tr><tr data-local-id=\"0000000000ef\"><td data-local-id=\"0000000000f0\" data-colwidth=\"49\"><p data-local-id=\"0000000000f1\">19</p></td><td data-local-id=\"0000000000f2\" data-colwidth=\"334\"><p data-local-id=\"0000000000f3\">Has the Product Owner signed off the stories?</p></td><td data-local-id=\"0000000000f4\" data-colwidth=\"60\"><p data-local-id=\"0000000000f5\"><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-19-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-local-id=\"0000000000f6\" data-colwidth=\"924\"><p data-local-id=\"0000000000f7\"><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-19-comments-d60ef082&quot;}}}\"></span>Needs a person to confirm: nothing records this automatically.</p></td></tr><tr data-local-id=\"0000000000f8\"><td data-local-id=\"0000000000f9\" data-colwidth=\"49\"><p data-local-id=\"0000000000fa\">20</p></td><td data-local-id=\"0000000000fb\" data-colwidth=\"334\"><p data-local-id=\"0000000000fc\">Have Test Complete comments been added to all Stories and Defects?</p></td><td data-local-id=\"0000000000fd\" data-colwidth=\"60\"><p data-local-id=\"0000000000fe\"><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-20-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-local-id=\"0000000000ff\" data-colwidth=\"924\"><p data-local-id=\"000000000100\"><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-20-comments-c0e148d2&quot;}}}\"></span>No evidence was collected for this row.</p></td></tr><tr data-local-id=\"000000000101\"><td data-local-id=\"000000000102\" data-colwidth=\"49\"><p data-local-id=\"000000000103\">21</p></td><td data-local-id=\"000000000104\" data-colwidth=\"334\"><p data-local-id=\"000000000105\">Have all Critical and High Priority defects been resolved?</p></td><td data-local-id=\"000000000106\" data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-21-status-85a39ab3&quot;}}}\"></span>Yes</p></td><td data-local-id=\"000000000108\" data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-21-comments-ce7bc9d6&quot;}}}\"></span>no Critical or High bugs open.</p></td></tr><tr data-local-id=\"00000000010a\"><td data-local-id=\"00000000010b\" data-colwidth=\"49\"><p data-local-id=\"00000000010c\">22</p></td><td data-local-id=\"00000000010d\" data-colwidth=\"334\"><p data-local-id=\"00000000010e\">Have remaining defects been triaged and prioritised?</p></td><td data-local-id=\"00000000010f\" data-colwidth=\"60\"><p data-local-id=\"000000000110\"><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-22-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-local-id=\"000000000111\" data-colwidth=\"924\"><p data-local-id=\"000000000112\"><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-22-comments-d60ef082&quot;}}}\"></span>Needs a person to confirm: nothing records this automatically.</p></td></tr><tr data-local-id=\"000000000113\"><td data-local-id=\"000000000114\" data-colwidth=\"49\"><p data-local-id=\"000000000115\">23</p></td><td data-local-id=\"000000000116\" data-colwidth=\"334\"><p data-local-id=\"000000000117\">Has testing been completed using representative Production-like environments?</p></td><td data-local-id=\"000000000118\" data-colwidth=\"60\"><p data-local-id=\"000000000119\"><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-23-status-091fd6e9&quot;}}}\"></span>To confirm</p></td><td data-local-id=\"00000000011a\" data-colwidth=\"924\"><p data-local-id=\"00000000011b\"><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-23-comments-d60ef082&quot;}}}\"></span>Needs a person to confirm: nothing records this automatically.</p></td></tr></tbody></table>",
+ "edits": [
+  {
+   "name": "replaceNode",
+   "localId": "000000000034",
+   "value": "<td data-local-id=\"000000000034\" data-colwidth=\"1133\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-info-outstanding-bugs-details-4de2d605&quot;}}}\"></span>Critical – 0, High – 0, Medium – 0, Low – 0</p></td>"
+  },
+  {
+   "name": "replaceNode",
+   "localId": "000000000052",
+   "value": "<td data-local-id=\"000000000052\" data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-1-status-85a39ab3&quot;}}}\"></span>Yes</p></td>"
+  },
+  {
+   "name": "replaceNode",
+   "localId": "000000000054",
+   "value": "<td data-local-id=\"000000000054\" data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-1-comments-79996d0b&quot;}}}\"></span>V1 — pcs-api e11f333: 96.0%.</p><p>V1 — pcs-frontend a25f612: 94.1%.</p><p>V2 — pcs-api a8606ea: 96.0%.</p><p>V2 — pcs-frontend 5b8fb2e: 94.1%.</p></td>"
+  },
+  {
+   "name": "replaceNode",
+   "localId": "00000000005b",
+   "value": "<td data-local-id=\"00000000005b\" data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-2-status-85a39ab3&quot;}}}\"></span>Yes</p></td>"
+  },
+  {
+   "name": "replaceNode",
+   "localId": "00000000005d",
+   "value": "<td data-local-id=\"00000000005d\" data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-2-comments-c9aae77f&quot;}}}\"></span>V1 — pcs-api e11f333: passed.</p><p>V1 — pcs-frontend a25f612: passed.</p><p>V2 — pcs-api a8606ea: passed.</p><p>V2 — pcs-frontend 5b8fb2e: passed.</p></td>"
+  },
+  {
+   "name": "replaceNode",
+   "localId": "00000000006f",
+   "value": "<td data-local-id=\"00000000006f\" data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-4-comments-e0206f73&quot;}}}\"></span>V1 — pcs-api e11f333: not checked: no build.</p><p>V1 — pcs-frontend a25f612: not checked: no build.</p><p>V2 — pcs-api a8606ea: not checked: no build.</p><p>V2 — pcs-frontend 5b8fb2e: not checked: no build.</p></td>"
+  },
+  {
+   "name": "replaceNode",
+   "localId": "000000000081",
+   "value": "<td data-local-id=\"000000000081\" data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-6-comments-7865012f&quot;}}}\"></span>not signed by Perf Test yet.</p><p>Closed.</p></td>"
+  },
+  {
+   "name": "replaceNode",
+   "localId": "000000000088",
+   "value": "<td data-local-id=\"000000000088\" data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-7-status-85a39ab3&quot;}}}\"></span>Yes</p></td>"
+  },
+  {
+   "name": "replaceNode",
+   "localId": "00000000008a",
+   "value": "<td data-local-id=\"00000000008a\" data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-7-comments-9b41aca8&quot;}}}\"></span>required.</p></td>"
+  },
+  {
+   "name": "replaceNode",
+   "localId": "0000000000a3",
+   "value": "<td data-local-id=\"0000000000a3\" data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-10-status-1ea442a1&quot;}}}\"></span>No</p></td>"
+  },
+  {
+   "name": "replaceNode",
+   "localId": "0000000000a5",
+   "value": "<td data-local-id=\"0000000000a5\" data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-10-comments-1482477b&quot;}}}\"></span>V1 — pcs-frontend a25f612: 0 open, 0 suppressed.</p><p>V2 — pcs-frontend 5b8fb2e: 0 open, 0 suppressed.</p></td>"
+  },
+  {
+   "name": "replaceNode",
+   "localId": "0000000000ac",
+   "value": "<td data-local-id=\"0000000000ac\" data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-11-status-85a39ab3&quot;}}}\"></span>Yes</p></td>"
+  },
+  {
+   "name": "replaceNode",
+   "localId": "0000000000ae",
+   "value": "<td data-local-id=\"0000000000ae\" data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-11-comments-19dcd8fa&quot;}}}\"></span>V1 — pcs-api e11f333: 0 vulnerabilities.</p><p>V1 — pcs-frontend a25f612: 1 vulnerability.</p><p>V2 — pcs-api a8606ea: 0 vulnerabilities.</p><p>V2 — pcs-frontend 5b8fb2e: 1 vulnerability.</p></td>"
+  },
+  {
+   "name": "replaceNode",
+   "localId": "0000000000b5",
+   "value": "<td data-local-id=\"0000000000b5\" data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-12-status-85a39ab3&quot;}}}\"></span>Yes</p></td>"
+  },
+  {
+   "name": "replaceNode",
+   "localId": "0000000000b7",
+   "value": "<td data-local-id=\"0000000000b7\" data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-12-comments-616a54cd&quot;}}}\"></span>V1 — pcs-api e11f333: 0 open, 32 suppressed.</p><p>V2 — pcs-api a8606ea: 0 open, 32 suppressed.</p></td>"
+  },
+  {
+   "name": "replaceNode",
+   "localId": "0000000000c7",
+   "value": "<td data-local-id=\"0000000000c7\" data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-14-status-85a39ab3&quot;}}}\"></span>Yes</p></td>"
+  },
+  {
+   "name": "replaceNode",
+   "localId": "0000000000c9",
+   "value": "<td data-local-id=\"0000000000c9\" data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-14-comments-eef40e7c&quot;}}}\"></span>V1 — pcs-api e11f333: Smoke Test - AKS aat: success. <a href=\"https://build.hmcts.net/x\">build</a></p><p>V1 — pcs-frontend a25f612: Smoke Test - AKS aat: success. <a href=\"https://build.hmcts.net/x\">build</a></p><p>V2 — pcs-api a8606ea: Smoke Test - AKS aat: success. <a href=\"https://build.hmcts.net/x\">build</a></p><p>V2 — pcs-frontend 5b8fb2e: Smoke Test - AKS aat: success. <a href=\"https://build.hmcts.net/x\">build</a></p></td>"
+  },
+  {
+   "name": "replaceNode",
+   "localId": "0000000000d0",
+   "value": "<td data-local-id=\"0000000000d0\" data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-15-status-85a39ab3&quot;}}}\"></span>Yes</p></td>"
+  },
+  {
+   "name": "replaceNode",
+   "localId": "0000000000d2",
+   "value": "<td data-local-id=\"0000000000d2\" data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-15-comments-6f2856b6&quot;}}}\"></span>V1 — pcs-api e11f333: 3 ignored.</p><p>V1 — pcs-frontend a25f612: 3 ignored.</p><p>V2 — pcs-api a8606ea: 3 ignored.</p><p>V2 — pcs-frontend 5b8fb2e: 3 ignored.</p></td>"
+  },
+  {
+   "name": "replaceNode",
+   "localId": "0000000000d9",
+   "value": "<td data-local-id=\"0000000000d9\" data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-16-status-85a39ab3&quot;}}}\"></span>Yes</p></td>"
+  },
+  {
+   "name": "replaceNode",
+   "localId": "0000000000db",
+   "value": "<td data-local-id=\"0000000000db\" data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-16-comments-e01c351d&quot;}}}\"></span>Closed.</p></td>"
+  },
+  {
+   "name": "replaceNode",
+   "localId": "000000000106",
+   "value": "<td data-local-id=\"000000000106\" data-colwidth=\"60\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-21-status-85a39ab3&quot;}}}\"></span>Yes</p></td>"
+  },
+  {
+   "name": "replaceNode",
+   "localId": "000000000108",
+   "value": "<td data-local-id=\"000000000108\" data-colwidth=\"924\"><p><span data-type=\"inline-extension\" data-extension-key=\"anchor\" data-extension-type=\"com.atlassian.confluence.macro.core\" data-parameters=\"{&quot;macroParams&quot;:{&quot;&quot;:{&quot;value&quot;:&quot;qa-auto-21-comments-ce7bc9d6&quot;}}}\"></span>no Critical or High bugs open.</p></td>"
+  }
+ ],
+ "changes": [
+  {
+   "table": "info",
+   "key": "Release",
+   "cell": "details",
+   "action": "unchanged"
+  },
+  {
+   "table": "info",
+   "key": "Jira Board",
+   "cell": "details",
+   "action": "unchanged"
+  },
+  {
+   "table": "info",
+   "key": "Outstanding Bugs",
+   "cell": "details",
+   "action": "update",
+   "before": "To confirm: Jira could not be read.",
+   "after": "Critical – 0, High – 0, Medium – 0, Low – 0"
+  },
+  {
+   "table": "info",
+   "key": "GIT",
+   "cell": "details",
+   "action": "unchanged"
+  },
+  {
+   "table": "info",
+   "key": "GIT Revision",
+   "cell": "details",
+   "action": "unchanged"
+  },
+  {
+   "table": "checklist",
+   "key": "1",
+   "cell": "status",
+   "action": "update",
+   "before": "To confirm",
+   "after": "Yes"
+  },
+  {
+   "table": "checklist",
+   "key": "1",
+   "cell": "comments",
+   "action": "update",
+   "before": "No evidence was collected for this row.",
+   "after": "V1 — pcs-api e11f333: 96.0%. V1 — pcs-frontend a25f612: 94.1%. V2 — pcs-api a8606ea: 96.0%. V2 — pcs-frontend 5b8fb2e: 94.1%."
+  },
+  {
+   "table": "checklist",
+   "key": "2",
+   "cell": "status",
+   "action": "update",
+   "before": "To confirm",
+   "after": "Yes"
+  },
+  {
+   "table": "checklist",
+   "key": "2",
+   "cell": "comments",
+   "action": "update",
+   "before": "No evidence was collected for this row.",
+   "after": "V1 — pcs-api e11f333: passed. V1 — pcs-frontend a25f612: passed. V2 — pcs-api a8606ea: passed. V2 — pcs-frontend 5b8fb2e: passed."
+  },
+  {
+   "table": "checklist",
+   "key": "3",
+   "cell": "status",
+   "action": "unchanged"
+  },
+  {
+   "table": "checklist",
+   "key": "3",
+   "cell": "comments",
+   "action": "keep-unreachable",
+   "before": "No evidence was collected for this row."
+  },
+  {
+   "table": "checklist",
+   "key": "4",
+   "cell": "status",
+   "action": "unchanged"
+  },
+  {
+   "table": "checklist",
+   "key": "4",
+   "cell": "comments",
+   "action": "update",
+   "before": "No evidence was collected for this row.",
+   "after": "V1 — pcs-api e11f333: not checked: no build. V1 — pcs-frontend a25f612: not checked: no build. V2 — pcs-api a8606ea: not checked: no build. V2 — pcs-frontend 5b8fb2e: not checked: no build."
+  },
+  {
+   "table": "checklist",
+   "key": "5",
+   "cell": "status",
+   "action": "unchanged"
+  },
+  {
+   "table": "checklist",
+   "key": "5",
+   "cell": "comments",
+   "action": "unchanged"
+  },
+  {
+   "table": "checklist",
+   "key": "6",
+   "cell": "status",
+   "action": "unchanged"
+  },
+  {
+   "table": "checklist",
+   "key": "6",
+   "cell": "comments",
+   "action": "update",
+   "before": "No evidence was collected for this row.",
+   "after": "not signed by Perf Test yet. Closed."
+  },
+  {
+   "table": "checklist",
+   "key": "7",
+   "cell": "status",
+   "action": "update",
+   "before": "To confirm",
+   "after": "Yes"
+  },
+  {
+   "table": "checklist",
+   "key": "7",
+   "cell": "comments",
+   "action": "update",
+   "before": "No evidence was collected for this row.",
+   "after": "required."
+  },
+  {
+   "table": "checklist",
+   "key": "8",
+   "cell": "status",
+   "action": "unchanged"
+  },
+  {
+   "table": "checklist",
+   "key": "8",
+   "cell": "comments",
+   "action": "unchanged"
+  },
+  {
+   "table": "checklist",
+   "key": "9",
+   "cell": "status",
+   "action": "unchanged"
+  },
+  {
+   "table": "checklist",
+   "key": "9",
+   "cell": "comments",
+   "action": "unchanged"
+  },
+  {
+   "table": "checklist",
+   "key": "10",
+   "cell": "status",
+   "action": "update",
+   "before": "To confirm",
+   "after": "No"
+  },
+  {
+   "table": "checklist",
+   "key": "10",
+   "cell": "comments",
+   "action": "update",
+   "before": "No evidence was collected for this row.",
+   "after": "V1 — pcs-frontend a25f612: 0 open, 0 suppressed. V2 — pcs-frontend 5b8fb2e: 0 open, 0 suppressed."
+  },
+  {
+   "table": "checklist",
+   "key": "11",
+   "cell": "status",
+   "action": "update",
+   "before": "To confirm",
+   "after": "Yes"
+  },
+  {
+   "table": "checklist",
+   "key": "11",
+   "cell": "comments",
+   "action": "update",
+   "before": "No evidence was collected for this row.",
+   "after": "V1 — pcs-api e11f333: 0 vulnerabilities. V1 — pcs-frontend a25f612: 1 vulnerability. V2 — pcs-api a8606ea: 0 vulnerabilities. V2 — pcs-frontend 5b8fb2e: 1 vulnerability."
+  },
+  {
+   "table": "checklist",
+   "key": "12",
+   "cell": "status",
+   "action": "update",
+   "before": "To confirm",
+   "after": "Yes"
+  },
+  {
+   "table": "checklist",
+   "key": "12",
+   "cell": "comments",
+   "action": "update",
+   "before": "No evidence was collected for this row.",
+   "after": "V1 — pcs-api e11f333: 0 open, 32 suppressed. V2 — pcs-api a8606ea: 0 open, 32 suppressed."
+  },
+  {
+   "table": "checklist",
+   "key": "13",
+   "cell": "status",
+   "action": "unchanged"
+  },
+  {
+   "table": "checklist",
+   "key": "13",
+   "cell": "comments",
+   "action": "unchanged"
+  },
+  {
+   "table": "checklist",
+   "key": "14",
+   "cell": "status",
+   "action": "update",
+   "before": "To confirm",
+   "after": "Yes"
+  },
+  {
+   "table": "checklist",
+   "key": "14",
+   "cell": "comments",
+   "action": "update",
+   "before": "No evidence was collected for this row.",
+   "after": "V1 — pcs-api e11f333: Smoke Test - AKS aat: success. build V1 — pcs-frontend a25f612: Smoke Test - AKS aat: success. build V2 — pcs-api a8606ea: Smoke Test - AKS aat: success. build V2 — pcs-frontend 5b8fb2e: Smoke Test - AKS aat: success. build"
+  },
+  {
+   "table": "checklist",
+   "key": "15",
+   "cell": "status",
+   "action": "update",
+   "before": "To confirm",
+   "after": "Yes"
+  },
+  {
+   "table": "checklist",
+   "key": "15",
+   "cell": "comments",
+   "action": "update",
+   "before": "No evidence was collected for this row.",
+   "after": "V1 — pcs-api e11f333: 3 ignored. V1 — pcs-frontend a25f612: 3 ignored. V2 — pcs-api a8606ea: 3 ignored. V2 — pcs-frontend 5b8fb2e: 3 ignored."
+  },
+  {
+   "table": "checklist",
+   "key": "16",
+   "cell": "status",
+   "action": "update",
+   "before": "To confirm",
+   "after": "Yes"
+  },
+  {
+   "table": "checklist",
+   "key": "16",
+   "cell": "comments",
+   "action": "update",
+   "before": "Needs a person to confirm: nothing records this automatically.",
+   "after": "Closed."
+  },
+  {
+   "table": "checklist",
+   "key": "17",
+   "cell": "status",
+   "action": "unchanged"
+  },
+  {
+   "table": "checklist",
+   "key": "17",
+   "cell": "comments",
+   "action": "unchanged"
+  },
+  {
+   "table": "checklist",
+   "key": "18",
+   "cell": "status",
+   "action": "unchanged"
+  },
+  {
+   "table": "checklist",
+   "key": "18",
+   "cell": "comments",
+   "action": "unchanged"
+  },
+  {
+   "table": "checklist",
+   "key": "19",
+   "cell": "status",
+   "action": "unchanged"
+  },
+  {
+   "table": "checklist",
+   "key": "19",
+   "cell": "comments",
+   "action": "unchanged"
+  },
+  {
+   "table": "checklist",
+   "key": "20",
+   "cell": "status",
+   "action": "unchanged"
+  },
+  {
+   "table": "checklist",
+   "key": "20",
+   "cell": "comments",
+   "action": "unchanged"
+  },
+  {
+   "table": "checklist",
+   "key": "21",
+   "cell": "status",
+   "action": "update",
+   "before": "To confirm",
+   "after": "Yes"
+  },
+  {
+   "table": "checklist",
+   "key": "21",
+   "cell": "comments",
+   "action": "update",
+   "before": "No evidence was collected for this row.",
+   "after": "no Critical or High bugs open."
+  },
+  {
+   "table": "checklist",
+   "key": "22",
+   "cell": "status",
+   "action": "unchanged"
+  },
+  {
+   "table": "checklist",
+   "key": "22",
+   "cell": "comments",
+   "action": "unchanged"
+  },
+  {
+   "table": "checklist",
+   "key": "23",
+   "cell": "status",
+   "action": "unchanged"
+  },
+  {
+   "table": "checklist",
+   "key": "23",
+   "cell": "comments",
+   "action": "unchanged"
+  }
+ ]
+}

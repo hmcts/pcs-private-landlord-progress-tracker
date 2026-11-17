@@ -88,16 +88,44 @@ export interface LayoutRow {
 
 export interface LayoutTable {
   heading: string
+  /** Headings the generator gave the table before: the table is found under one, and the heading rewritten. */
+  formerly?: string[]
   columns: string[]
   widths?: number[]
   rows: LayoutRow[]
 }
 
+/** The parts of the template below the checklist, each with the answer schema its kind takes (sections.ts). */
+export const SECTION_KINDS = ['testingSummary', 'defectSummary', 'risks', 'qaSummary', 'recommendation', 'signOff'] as const
+export type SectionKind = (typeof SECTION_KINDS)[number]
+
+export interface LayoutSection {
+  kind: SectionKind
+  heading: string
+  level: 1 | 2
+  /** The table's columns, for the kinds that are a table. */
+  columns?: string[]
+  /** The first column's fixed entries: the test activities, the severities or the sign-off roles. */
+  rows?: string[]
+}
+
 export interface Layout {
   title: string
   intro?: string[]
+  /** The "Created by" and "Last Updated" lines above the title. */
+  header?: boolean
+  /**
+   * Paragraphs the generator wrote between the title and the first table before. A paragraph
+   * reading exactly as one of these, with nothing else in it, is the generator's to replace.
+   */
+  former_intro?: string[]
   info?: LayoutTable
   checklist: LayoutTable
+  /**
+   * The sections after the checklist. A layout with sections reproduces the whole template: its
+   * header, intro and sections are generator-owned like its cells, and it carries nothing else.
+   */
+  sections?: LayoutSection[]
 }
 
 /**
@@ -111,10 +139,10 @@ export const CHECKLIST_RULES = [
 ] as const
 
 export const INFO_RULES = ['release', 'dashboards', 'outstanding-bugs', 'repos', 'revisions', 'human',
-  'feature', 'epics', 'service-revision', 'e2e-build', 'generated'] as const
+  'feature', 'epics', 'epic-tickets', 'service-revision', 'e2e-build', 'generated', 'agent'] as const
 
 /** Rules only a feature config can answer. */
-export const FEATURE_RULES = new Set(['e2e-feature', 'ignored-tests-feature', 'feature', 'epics', 'service-revision', 'e2e-build'])
+export const FEATURE_RULES = new Set(['e2e-feature', 'ignored-tests-feature', 'feature', 'epics', 'epic-tickets', 'service-revision', 'e2e-build'])
 /** Rules only a release config can answer. */
 export const RELEASE_RULES = new Set(['release', 'revisions'])
 
@@ -156,6 +184,7 @@ export function validateLayout(doc: unknown, name = 'layout'): string[] {
   const table = (t: unknown, where: string, rules: readonly string[], needQuestion: boolean) => {
     if (!isRec(t)) return errors.push(`${where}: expected a mapping`)
     if (!nonEmpty(t.heading)) errors.push(`${where}: "heading" is required`)
+    if (t.formerly !== undefined && !isList(t.formerly, nonEmpty)) errors.push(`${where}: "formerly" must be a list of headings`)
     if (!Array.isArray(t.columns) || t.columns.length < 2) errors.push(`${where}: "columns" needs at least two names`)
     if (t.widths !== undefined && (!Array.isArray(t.widths) || t.widths.length !== (t.columns as unknown[])?.length)) {
       errors.push(`${where}: "widths" must have one number per column`)
@@ -178,7 +207,56 @@ export function validateLayout(doc: unknown, name = 'layout'): string[] {
   }
   if (doc.info !== undefined) table(doc.info, `${name}.info`, INFO_RULES, false)
   table(doc.checklist, `${name}.checklist`, CHECKLIST_RULES, true)
+  if (doc.intro !== undefined && !isList(doc.intro, nonEmpty)) errors.push(`${name}: "intro" must be a list of paragraphs`)
+  if (doc.header !== undefined && typeof doc.header !== 'boolean') errors.push(`${name}: "header" must be true or false`)
+  if (doc.former_intro !== undefined && !isList(doc.former_intro, nonEmpty)) errors.push(`${name}: "former_intro" must be a list of paragraphs`)
+  if (doc.sections !== undefined) errors.push(...validateSections(doc.sections, `${name}.sections`))
+  else {
+    if (doc.header !== undefined || doc.former_intro !== undefined) errors.push(`${name}: "header" and "former_intro" are only for a layout with "sections"`)
+    // The agent answers info rows under `sections` in answers.json.
+    const info = isRec(doc.info) && Array.isArray(doc.info.rows) ? doc.info.rows : []
+    info.forEach((r: unknown, n: number) => {
+      if (isRec(r) && r.rule === 'agent') errors.push(`${name}.info.rows[${n}]: rule agent is only for a layout with "sections"`)
+    })
+  }
   return errors
+}
+
+/** How many columns each kind of section has, and whether its first column is fixed by the layout. */
+export const SECTION_SHAPES: Record<SectionKind, { columns: number; rows: boolean }> = {
+  testingSummary: { columns: 2, rows: true },
+  defectSummary: { columns: 2, rows: true },
+  risks: { columns: 2, rows: false },
+  qaSummary: { columns: 0, rows: false },
+  recommendation: { columns: 0, rows: false },
+  signOff: { columns: 3, rows: true },
+}
+
+const SECTION_FIELDS = ['kind', 'heading', 'level', 'columns', 'rows']
+
+function validateSections(sections: unknown, where: string): string[] {
+  if (!Array.isArray(sections) || !sections.length) return [`${where}: expected a list of sections`]
+  const seen = new Set<string>()
+  return sections.flatMap((x: unknown, n: number) => {
+    const w = `${where}[${n}]`
+    if (!isRec(x)) return [`${w}: expected a mapping`]
+    const errors = Object.keys(x).filter((k) => !SECTION_FIELDS.includes(k)).map((k) => `${w}: unknown field "${k}"`)
+    const kind = str(x.kind)
+    if (!(SECTION_KINDS as readonly string[]).includes(kind)) return [...errors, `${w}: "kind" must be one of ${SECTION_KINDS.join(', ')}`]
+    if (seen.has(kind)) errors.push(`${where}: duplicate section ${kind}`)
+    seen.add(kind)
+    const shape = SECTION_SHAPES[kind as SectionKind]
+    if (!nonEmpty(x.heading)) errors.push(`${w}: "heading" is required`)
+    if (x.level !== 1 && x.level !== 2) errors.push(`${w}: "level" must be 1 or 2`)
+    if (shape.columns ? !(isList(x.columns, nonEmpty) && (x.columns as unknown[]).length === shape.columns) : x.columns !== undefined) {
+      errors.push(shape.columns ? `${w}: "columns" needs ${shape.columns} names` : `${w}: a ${kind} section has no "columns"`)
+    }
+    const rows = x.rows
+    if (shape.rows ? !(isList(rows, nonEmpty) && new Set(rows as string[]).size === (rows as string[]).length) : rows !== undefined) {
+      errors.push(shape.rows ? `${w}: "rows" must list distinct entries` : `${w}: a ${kind} section has no "rows"`)
+    }
+    return errors
+  })
 }
 
 /** A top-level field's check: when it applies (undefined is skipped unless `required`), and what's wrong otherwise. */

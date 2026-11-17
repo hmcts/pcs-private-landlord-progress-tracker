@@ -53,3 +53,18 @@ export function oneAtATime(run: (args: string[]) => Promise<string>): (args: str
 export const quietRunnerAsync: AsyncTwgRunner = oneAtATime((args) => runCommand('twg', args, options()))
 
 export const quietRunner: TwgRunner = (args) => execFileSync(commandPath('twg'), args, { ...options(), stdio: ['ignore', 'pipe', 'pipe'] })
+
+/**
+ * The display name of the account twg is signed in as, for a report's "Created by" line, or
+ * null if twg can't say. Only ever runs `twg confluence space me`, which reads.
+ */
+export function accountName(run: TwgRunner = quietRunner): string | null {
+  try {
+    const out = JSON.parse(run(['confluence', 'space', 'me', '-o', 'json', '--output-summary', 'none']))
+    const user = out?.data?.currentUser
+    const name = [user?.displayName, user?.publicName].find((n): n is string => typeof n === 'string' && n.trim() !== '')
+    return name ? name.replace(/\s+/g, ' ').trim().slice(0, 100) : null
+  } catch {
+    return null
+  }
+}

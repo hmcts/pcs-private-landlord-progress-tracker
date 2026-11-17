@@ -1,9 +1,10 @@
 // Jira, read through twg as the roadmap is (scripts/lib/roadmap-runner.ts, but awaitable, so the
 // other sources carry on while twg runs; twg itself still runs one call at a time): outstanding
 // bugs by priority, "Test Complete" style comments on the scope's stories, tasks and bugs, how
-// many of them are done, and the status of each ticket backing a human-answered row. The scope
-// is the release's jql, or for a feature the child tickets of its epics (see config.ts). The report is internal, so this doesn't
-// apply the public site's not-public filter, and nothing it reads may reach the site.
+// many of them are done, the status of each ticket backing a human-answered row, and a feature's
+// tickets to link. The scope is the release's jql, or for a feature the child tickets of its
+// epics (see config.ts). The report is internal, so this doesn't apply the public site's
+// not-public filter, and nothing it reads may reach the site.
 
 import type { ReleaseConfig } from '../config.ts'
 import { type AsyncTwgRunner, jiraKey, quietRunnerAsync } from '../twg.ts'
@@ -125,15 +126,33 @@ async function hasTestComplete(w: JiraIssue, re: RegExp, run: AsyncTwgRunner): P
   }
 }
 
-/** "Test complete" comments, and how many of the stories, tasks and bugs are done: one query for both. */
+/** How many of a feature's tickets the Jira Tickets row links, before one link to the search for the rest. */
+export const TICKET_LINKS = 15
+
+/** A feature's epics' child tickets, every type and status, for the info table to link. */
+function ticketItem(cfg: ReleaseConfig, all: JiraIssue[], now: Now): Item {
+  const keys = all.map((i) => i.key).sort((a, b) => a.localeCompare(b, 'en', { numeric: true }))
+  const rest = keys.length - TICKET_LINKS
+  const links = [...keys.slice(0, TICKET_LINKS).map(browse), ...(rest > 0 ? [jqlLink(`and ${rest} more`, cfg.jql)] : [])]
+  return item({ source: SOURCE, rule: 'epic-tickets', status: 'pass', value: `${keys.length} tickets`, links, data: { keys } }, now)
+}
+
+/**
+ * "Test complete" comments, how many of the stories, tasks and bugs are done and, for a feature,
+ * its tickets to link: one query for all of them. A feature's reads every child ticket, and its
+ * stories, tasks and bugs are picked out of those.
+ */
 async function workItems(cfg: ReleaseConfig, run: AsyncTwgRunner, now: Now): Promise<Item[]> {
+  const feature = cfg.kind === 'feature'
   try {
     // A feature counts every bug type it names among its work; a release keeps to Bug, as it always has.
-    const types = cfg.kind === 'feature' ? ['Story', 'Task', ...(cfg.bug_types ?? ['Bug'])].map((t) => `"${t}"`).join(', ') : 'Story, Task, Bug'
-    const workJql = `(${cfg.jql}) AND issuetype in (${types})`
+    const types = feature ? ['Story', 'Task', ...(cfg.bug_types ?? ['Bug'])] : ['Story', 'Task', 'Bug']
+    const workJql = `(${cfg.jql}) AND issuetype in (${feature ? types.map((t) => `"${t}"`).join(', ') : types.join(', ')})`
     const re = new RegExp(cfg.test_complete_pattern ?? TEST_COMPLETE, 'i')
+    const all = await query(feature ? cfg.jql : workJql, 'comment,issuetype,status', run)
+    const wanted = new Set(types.map((t) => t.toLowerCase()))
     // Withdrawn or duplicate tickets were never going to be tested.
-    const work = (await query(workJql, 'comment,issuetype,status', run)).filter((w) => !CLOSED_UNDONE.test(w.status?.name ?? ''))
+    const work = all.filter((w) => (!feature || wanted.has((w.issuetype?.name ?? '').toLowerCase())) && !CLOSED_UNDONE.test(w.status?.name ?? ''))
     const links = [jqlLink(`Stories, tasks and bugs in ${scopeName(cfg)}`, workJql)]
     const open = work.filter((w) => !done(w)).map((w) => w.key)
     const finished = item({ source: SOURCE, rule: 'stories-done', status: open.length || !work.length ? 'fail' : 'pass',
@@ -151,10 +170,12 @@ async function workItems(cfg: ReleaseConfig, run: AsyncTwgRunner, now: Now): Pro
       value: `${tested} of ${work.length} stories, tasks and bugs have a test complete comment`,
       links: [...links, ...missing.slice(0, 15).map(browse)],
       note: unread.length ? `the comments of ${unread.length} could not be read in full` : undefined,
-      unreachable: !missing.length && unread.length > 0, data: { total: work.length, missing, unread } }, now), finished]
+      unreachable: !missing.length && unread.length > 0, data: { total: work.length, missing, unread } }, now), finished,
+    ...(feature ? [ticketItem(cfg, all, now)] : [])]
   } catch (e) {
     const note = `Jira could not be read: ${reason(e)}`
-    return ['test-complete', 'stories-done'].map((rule) => item({ source: SOURCE, rule, status: 'unknown', value: 'not checked', note, unreachable: true }, now))
+    return ['test-complete', 'stories-done', ...(feature ? ['epic-tickets'] : [])]
+      .map((rule) => item({ source: SOURCE, rule, status: 'unknown', value: 'not checked', note, unreachable: true }, now))
   }
 }
 
