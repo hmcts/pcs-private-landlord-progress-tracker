@@ -1,6 +1,6 @@
 {
   "date": "2026-11-20",
-  "generatedAt": "2026-11-20T20:35:38.505Z",
+  "generatedAt": "2026-11-20T20:44:21.689Z",
   "title": "PCS Private Landlord roadmap",
   "project": "HDPI",
   "jiraUrl": "https://hmcts.atlassian.net",
@@ -22,11 +22,11 @@
           "start": "2026-11-30",
           "due": "2027-03-31",
           "derived": 0,
-          "total": 36,
+          "total": 37,
           "counts": {
             "done": 0,
             "indeterminate": 0,
-            "new": 36
+            "new": 37
           },
           "clashes": [],
           "items": [
@@ -331,13 +331,23 @@
               "forecast": true
             },
             {
+              "key": "HDPI-10205",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10205",
+              "summary": "30. Claim pack posted to each defendant, and no posted pack for the claimant",
+              "status": "New",
+              "category": "new",
+              "start": "2027-02-28",
+              "due": "2027-03-02",
+              "forecast": true
+            },
+            {
               "key": "HDPI-10072",
               "url": "https://hmcts.atlassian.net/browse/HDPI-10072",
               "summary": "31. Pages opened out of order or from an old link",
               "status": "New",
               "category": "new",
-              "start": "2027-02-28",
-              "due": "2027-03-02",
+              "start": "2027-03-03",
+              "due": "2027-03-05",
               "forecast": true
             },
             {
@@ -346,8 +356,8 @@
               "summary": "Update the claim form template for a self-represented private landlord",
               "status": "New",
               "category": "new",
-              "start": "2027-03-03",
-              "due": "2027-03-05",
+              "start": "2027-03-06",
+              "due": "2027-03-08",
               "forecast": true
             },
             {
@@ -356,8 +366,8 @@
               "summary": "Add the rent history to the claim pack",
               "status": "New",
               "category": "new",
-              "start": "2027-03-06",
-              "due": "2027-03-08",
+              "start": "2027-03-09",
+              "due": "2027-03-11",
               "forecast": true
             },
             {
@@ -366,8 +376,8 @@
               "summary": "Citizen \"claim issued\" email that links to the citizen service",
               "status": "New",
               "category": "new",
-              "start": "2027-03-09",
-              "due": "2027-03-11",
+              "start": "2027-03-12",
+              "due": "2027-03-14",
               "forecast": true
             },
             {
@@ -376,8 +386,8 @@
               "summary": "Citizen \"claim saved for later\" email",
               "status": "New",
               "category": "new",
-              "start": "2027-03-12",
-              "due": "2027-03-14",
+              "start": "2027-03-15",
+              "due": "2027-03-17",
               "forecast": true
             },
             {
@@ -386,7 +396,7 @@
               "summary": "\"Claim submitted / payment received\" and \"payment failed\" emails",
               "status": "New",
               "category": "new",
-              "start": "2027-03-15",
+              "start": "2027-03-18",
               "due": "2027-03-31",
               "forecast": true
             }
@@ -401,7 +411,7 @@
   "totals": {
     "epics": 1,
     "epicsDone": 0,
-    "items": 36,
+    "items": 37,
     "itemsDone": 0,
     "undated": 0
   }
