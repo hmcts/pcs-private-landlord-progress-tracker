@@ -379,8 +379,8 @@
   date: "2026-11-20"
   area: pay
   title: Claims whose fee is never paid
-  decision: "Proposed, waiting for the service team to confirm: a claim whose fee hasn't been paid stays a draft, and is deleted after 90 days."
-  outcome: open-question
+  decision: A self-represented landlord's claim whose fee isn't paid is handled the same way as a legal representative's claim is today. Nothing new will be built for it.
+  outcome: keep
 
 - id: DEC-048
   date: "2026-11-20"
