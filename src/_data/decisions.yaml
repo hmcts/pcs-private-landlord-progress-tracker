@@ -76,11 +76,11 @@
   ref: OBS-8
 
 - id: DEC-009
-  date: "2026-11-11"
+  date: "2026-11-20"
   area: other
   title: Guidance on general applications after submission
-  decision: The hint about general applications says guidance will be given after submission, but it isn't given yet. We haven't decided what to do about this.
-  outcome: open-question
+  decision: The hint saying we'll explain how to make a general application after the claim is submitted will be removed, because no such guidance is given during or after the journey. Once the claim fee is paid, a claimant makes a general application from their dashboard, or from Next steps if they're a professional user.
+  outcome: fix
   ref: OBS-9
 
 - id: DEC-010
@@ -108,11 +108,11 @@
   ref: OBS-12
 
 - id: DEC-013
-  date: "2026-11-11"
+  date: "2026-11-20"
   area: journey
   title: Seeing the claim once it's issued
-  decision: After the claim is issued, the claimant may not be able to see it. We haven't decided how this should work.
-  outcome: open-question
+  decision: The last screen of the journey will give the claimant a way back to their case. A self-represented landlord will see a link on their dashboard to view the claim form the service generates. Professional users see the same claim form in the Case File View tab.
+  outcome: fix
   ref: OBS-13
 
 - id: DEC-014
@@ -348,46 +348,46 @@
   ref: OBS-42
 
 - id: DEC-043
-  date: "2026-11-11"
+  date: "2026-11-20"
   area: journey
   title: Welsh translations
-  decision: Find out whether the private landlord journeys need Welsh translations.
-  outcome: open-question
+  decision: The private landlord journey is for the whole of England and Wales, although the service as built is still restricted and no decision has been made on when or how it will be released to private landlords. Claims about properties in Wales have their own journey, which differs quite a bit from the English one. Both the English and the Welsh journeys need Welsh translations.
+  outcome: fix
 
 - id: DEC-044
-  date: "2026-11-11"
+  date: "2026-11-20"
   area: other
   title: What goes in the defendant's claim pack
-  decision: Decide whether the claimant's uploads (the tenancy agreement, the notice, the rent statement and other files) go into the claim pack posted to the defendants. Today the pack holds only the claim form, the access code letter and the blank forms.
-  outcome: open-question
+  decision: The claim pack posted to each defendant will hold the claim form, every document the claimant uploaded while making the claim, the access code letter, the blank defence and counterclaim form, and the Housing Loss Prevention Advice Service (HLPAS) leaflet. Today it holds only the claim form, the access code letter and the blank forms.
+  outcome: fix
 
 - id: DEC-045
-  date: "2026-11-11"
+  date: "2026-11-20"
   area: about-you
   title: Text message updates
-  decision: The journey asks whether the claimant wants updates by text message and collects a mobile number, but the service sends no text messages. Decide whether to send text updates or remove the question.
-  outcome: open-question
+  decision: The service won't send text messages yet. The journey keeps asking about text updates and keeps collecting the mobile number, so the service can use them if it adds text messages later.
+  outcome: keep
 
 - id: DEC-046
-  date: "2026-11-11"
+  date: "2026-11-20"
   area: other
   title: Posted claimant pack for a self-represented claimant
-  decision: Decide whether a self-represented private landlord should be posted the claimant pack after their claim is issued.
-  outcome: open-question
+  decision: A self-represented private landlord won't be posted a claimant pack. They made the claim online, so they'll see all its documents on their dashboard.
+  outcome: fix
 
 - id: DEC-047
-  date: "2026-11-11"
+  date: "2026-11-20"
   area: pay
   title: Claims whose fee is never paid
-  decision: Decide what happens to a submitted claim whose fee payment failed or was never made, including retries, reminders, expiry and the state the case is left in.
+  decision: "Proposed, waiting for the service team to confirm: a claim whose fee hasn't been paid stays a draft, and is deleted after 90 days."
   outcome: open-question
 
 - id: DEC-048
-  date: "2026-11-11"
+  date: "2026-11-20"
   area: other
   title: Work allocation tasks for self-represented claims
-  decision: Agree with work allocation and operations whether a self-represented private landlord's claim raises the same caseworker tasks as a claim made by a legal representative, or new ones, for example a review of a claim made without a legal representative.
-  outcome: open-question
+  decision: A self-represented private landlord's claim will raise the same caseworker tasks as a claim made by a legal representative.
+  outcome: keep
 
 - id: DEC-049
   date: "2026-11-12"
@@ -400,5 +400,5 @@
   date: "2026-11-16"
   area: journey
   title: Getting to make a claim from the claims list and the service's home address
-  decision: "Decide whether the claims list (/claims) links to making a claim, and what the service's home address (/) does for someone who isn't signed in. Today /claims lists only the claims made against the signed-in person, with no way to start one, and / sends anyone not signed in straight to sign-in. A private landlord who arrives at / therefore skips the start page and the eligibility checks at /make-a-claim, and lands on /claims after signing in. The planned journey signs a landlord in only after they've confirmed they're a private landlord, and the service name in the header links to /make-a-claim before sign-in and to /claims after."
+  decision: "Decide whether the claims list (/claims) links to making a claim, and what the service's home address (/) does for someone who isn't signed in. Today /claims lists only the claims made against the signed-in person, with no way to start one, and / sends anyone not signed in straight to sign-in. A private landlord who arrives at / therefore skips the start page and the eligibility checks at /make-a-claim, and lands on /claims after signing in. The planned journey signs a landlord in only after they've confirmed they're a private landlord, and the service name in the header links to /make-a-claim before sign-in and to /claims after. Update 2026-11-20: professional users sign in through MyHMCTS. A self-represented landlord's sign-in should work like a defendant's, but without the access code. Where the journey is hosted is still to be agreed, and the team will look at how other services do this first."
   outcome: open-question
