@@ -1,6 +1,6 @@
 {
   "date": "2026-11-24",
-  "generatedAt": "2026-11-24T06:02:22.564Z",
+  "generatedAt": "2026-11-24T13:04:13.051Z",
   "title": "PCS Private Landlord roadmap",
   "project": "HDPI",
   "jiraUrl": "https://hmcts.atlassian.net",
@@ -22,11 +22,11 @@
           "start": "2026-11-30",
           "due": "2027-03-31",
           "derived": 0,
-          "total": 38,
+          "total": 39,
           "counts": {
             "done": 0,
             "indeterminate": 0,
-            "new": 38
+            "new": 39
           },
           "clashes": [],
           "items": [
@@ -407,6 +407,16 @@
               "status": "New",
               "category": "new",
               "start": "2027-03-21",
+              "due": "2027-03-23",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10220",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10220",
+              "summary": "Close a private landlord claim whose fee is still unpaid after 90 days",
+              "status": "New",
+              "category": "new",
+              "start": "2027-03-24",
               "due": "2027-03-31",
               "forecast": true
             }
@@ -421,7 +431,7 @@
   "totals": {
     "epics": 1,
     "epicsDone": 0,
-    "items": 38,
+    "items": 39,
     "itemsDone": 0,
     "undated": 0
   }
