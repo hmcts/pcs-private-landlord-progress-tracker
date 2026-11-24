@@ -376,11 +376,12 @@
   outcome: fix
 
 - id: DEC-047
-  date: "2026-11-20"
+  date: "2026-11-24"
   area: pay
   title: Claims whose fee is never paid
-  decision: A self-represented landlord's claim whose fee isn't paid is handled the same way as a legal representative's claim is today. Nothing new will be built for it.
-  outcome: keep
+  decision: If a self-represented landlord's claim is still unpaid 90 days after it was submitted, it will be closed automatically.
+  outcome: fix
+  ref: HDPI-10220
 
 - id: DEC-048
   date: "2026-11-20"
