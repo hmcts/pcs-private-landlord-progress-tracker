@@ -390,11 +390,11 @@
   outcome: keep
 
 - id: DEC-049
-  date: "2026-11-12"
+  date: "2026-11-24"
   area: eligibility
   title: Where a private landlord can make a claim
-  decision: "Agree the area of eligibility for private landlord claims. The service as built accepts properties in England only, and only where the postcode is covered by one of the release 1 pilot courts (Bradford, Huddersfield and Wandsworth), the same courts legal representatives are limited to. The prototype accepts any property in England or Wales, and a Wales version of the approved screens exists."
-  outcome: open-question
+  decision: A private landlord can make a claim about a property in England or in Wales. A property in Wales follows the Wales screens, such as the occupation contract questions, instead of the tenancy screens.
+  outcome: fix
 
 - id: DEC-050
   date: "2026-11-16"
