@@ -403,3 +403,10 @@
   title: Getting to make a claim from the claims list and the service's home address
   decision: "Decide whether the claims list (/claims) links to making a claim, and what the service's home address (/) does for someone who isn't signed in. Today /claims lists only the claims made against the signed-in person, with no way to start one, and / sends anyone not signed in straight to sign-in. A private landlord who arrives at / therefore skips the start page and the eligibility checks at /make-a-claim, and lands on /claims after signing in. The planned journey signs a landlord in only after they've confirmed they're a private landlord, and the service name in the header links to /make-a-claim before sign-in and to /claims after. Update 2026-11-20: professional users sign in through MyHMCTS. A self-represented landlord's sign-in should work like a defendant's, but without the access code. Where the journey is hosted is still to be agreed, and the team will look at how other services do this first."
   outcome: open-question
+
+- id: DEC-051
+  date: "2026-11-24"
+  area: notice
+  title: The served date when a notice was served in more than one way
+  decision: "The journey asks for the date under each method the notice was served by, but the claim records one served date. Today it uses the date of the first method chosen, in the order the methods are listed. Decide whether it should be that date, the earliest date, or the latest one."
+  outcome: open-question
