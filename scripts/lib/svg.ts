@@ -28,6 +28,9 @@ export function fmtDate(isoDate: string): string {
 
 const truncate = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 
+const jiraLink = (url: string, content: string) =>
+  `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${content}</a>`
+
 /** Mixes a hex colour with white; f = 0 is the colour, 1 is white. */
 function tint(hex: string, f: number): string {
   const n = Number.parseInt(hex.slice(1), 16)
@@ -69,8 +72,8 @@ export function roadmapSvg(s: Snapshot, today: string): string {
   function itemRow(i: ItemRow, y: number, colour: string): string {
     const mid = y + ITEM_H / 2
     const parts = [`<line x1="0" y1="${y + ITEM_H}" x2="${W}" y2="${y + ITEM_H}" stroke="#f3f2f1"/>`,
-      `<text x="28" y="${mid + 4}" font-size="12" fill="${INK}"><tspan font-weight="bold">${esc(i.key)}</tspan> ` +
-      `${esc(truncate(i.summary, 38))}</text>`]
+      jiraLink(i.url, `<text x="28" y="${mid + 4}" font-size="12" fill="${INK}"><tspan font-weight="bold">${esc(i.key)}</tspan> ` +
+      `${esc(truncate(i.summary, 38))}</text>`)]
     const tip = `<title>${esc(`${i.key} ${i.summary} · ${i.status} · ${i.forecast ? 'Forecast ' : ''}` +
       `${fmtDate(i.start)} to ${fmtDate(i.due)}`)}</title>`
     if (t(i.due) < t(s.start)) {
@@ -109,7 +112,7 @@ export function roadmapSvg(s: Snapshot, today: string): string {
     for (const r of L.rows) {
       const mid = y + ROW_H / 2
       out.push(`<line x1="0" y1="${y + ROW_H}" x2="${W}" y2="${y + ROW_H}" stroke="#f3f2f1"/>`,
-        `<text x="14" y="${y + 17}" font-size="13" fill="${INK}"><tspan font-weight="bold">${esc(r.key)}</tspan> ${esc(truncate(r.summary, 32))}</text>`,
+        jiraLink(r.url, `<text x="14" y="${y + 17}" font-size="13" fill="${INK}"><tspan font-weight="bold">${esc(r.key)}</tspan> ${esc(truncate(r.summary, 32))}</text>`),
         `<text x="14" y="${y + 33}" font-size="11" fill="${SUB}">${esc(progressText(r))}</text>`)
       const clash = r.clashes.length > 0
       const stroke = clash ? ` stroke="${RED}" stroke-width="2"` : ''

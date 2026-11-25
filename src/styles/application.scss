@@ -26,3 +26,9 @@
   font-weight: 700;
   color: #505a5f;
 }
+
+// Stops the global GOV.UK link styles restyling the Jira links inside the roadmap chart.
+.app-chart a {
+  font-family: inherit;
+  text-decoration: none;
+}
