@@ -28,6 +28,9 @@ standards:
   - id: hmcts-qa
     title: HMCTS Quality Assurance standards
     url: https://hmcts.atlassian.net/wiki/pages/viewpage.action?pageId=268043682
+  - id: hmcts-security
+    title: HMCTS baseline security requirements for applications (F6f)
+    url: https://hmcts.atlassian.net/wiki/spaces/DACS/pages/279758773
   - id: hmcts-way
     title: HMCTS engineering standards (The HMCTS Way)
     url: https://hmcts.github.io/standards/
@@ -109,6 +112,91 @@ nfrs:
     category: security
     requirement: An IT health check (ITHC) penetration test is completed or booked before release to production, and its findings are tracked.
     source: hmcts-qa
+  - id: SEC-09
+    category: security
+    requirement: Every user has their own account, and legal representatives and other government bodies use multi-factor authentication to reach case data.
+    ref: SNFR-AM-01, SNFR-AM-08
+    source: hmcts-security
+  - id: SEC-10
+    category: security
+    requirement: 'Passwords follow the HMCTS password standard: accounts lock after repeated failed sign-ins, blank, weak and commonly used passwords are refused, passwords are stored only as salted hashes, and password reset is secure.'
+    target: Lock for 60 minutes after 5 failed attempts
+    ref: SNFR-AM-02 to SNFR-AM-06, SNFR-AM-09
+    source: hmcts-security
+  - id: SEC-11
+    category: security
+    requirement: Error pages, response headers and code comments give away nothing about how the service is built, and Swagger UIs are not hosted alongside the service.
+    ref: SNFR-AM-07, SNRF-AS-12, SNRF-AS-17
+    source: hmcts-security
+  - id: SEC-12
+    category: security
+    requirement: The service is designed to prevent common attacks such as the OWASP Top 10, and rejects any input that is not in the expected format, range or characters.
+    ref: SNRF-AS-01, SNRF-AS-11
+    source: hmcts-security
+  - id: SEC-13
+    category: security
+    requirement: Every page and resource checks that the user is allowed to see it, so typing in a URL cannot reach anything they should not.
+    ref: SNRF-AS-05
+    source: hmcts-security
+  - id: SEC-14
+    category: security
+    requirement: Inactive sessions expire and end fully, cookies are Secure, HttpOnly, not persistent and not cacheable, and pages with passwords or sensitive data are not cached.
+    target: 1 hour of inactivity, 15 minutes for admin accounts
+    ref: SNRF-AS-04, SNRF-AS-06 to SNRF-AS-10
+    source: hmcts-security
+  - id: SEC-15
+    category: security
+    requirement: 'Data is encrypted in transit and at rest to the HMCTS cryptographic standard: HTTP permanently redirects to HTTPS, no insecure protocols or weak ciphers are used, and production certificates match the full domain name, with no wildcards.'
+    target: Ciphers of at least 128 bits
+    ref: SNRF-AS-02, SNRF-AS-03, SNFR-EN-01 to SNFR-EN-04
+    source: hmcts-security
+  - id: SEC-16
+    category: security
+    requirement: All software is current and supported, servers run only the services they need, every component is in HMCTS vulnerability scanning, and security patches are applied in timescales that match the risk.
+    ref: SNFR-AS-20, SNFR-SO-01, SNFR-SO-03, SNFR-SO-04
+    source: hmcts-security
+  - id: SEC-17
+    category: security
+    requirement: Web applications are protected by a web application firewall (WAF) in prevention mode, and generated tokens avoid the special characters that trigger false WAF alerts.
+    ref: SNFR-SO-02, SNFR-AS-19
+    source: hmcts-security
+  - id: SEC-18
+    category: security
+    requirement: All inbound and outbound traffic is virus scanned in line.
+    ref: SNFR-AV-01
+    source: hmcts-security
+  - id: SEC-19
+    category: security
+    requirement: Development, test and production environments are kept separate, and testing happens only in test environments.
+    ref: SNRF-AS-16, SNFR-SO-05
+    source: hmcts-security
+
+  - id: DAT-06
+    category: data
+    requirement: Data is stored only in UK Azure data centres.
+    ref: SNFR-DM-01
+    source: hmcts-security
+  - id: DAT-07
+    category: data
+    requirement: Access to official data is limited to people with a business need, for a set time, third-party access needs a formal agreement, and test data is limited to what the test scenarios need.
+    ref: SNFR-DM-02 to SNFR-DM-04
+    source: hmcts-security
+  - id: DAT-08
+    category: data
+    requirement: Every change to data is time-stamped against the user who made it, and security events (sign-ins, permission changes, admin actions, data access, deletions and transfers, and lockouts) are logged with the user and time.
+    ref: SNRF-AS-13, SNFR-LG-02
+    source: hmcts-security
+  - id: DAT-09
+    category: data
+    requirement: Logs hold no sensitive data, are stored securely and separately from the application, are protected from tampering, and are kept in line with the records retention standard.
+    ref: SNRF-AS-14, SNRF-AS-15, SNFR-LG-03, SNFR-LG-06
+    source: hmcts-security
+
+  - id: SUP-05
+    category: support
+    requirement: Logs are sent to the HMCTS Security Operations Centre and correlated in its SIEM, which raises alerts, and use of privileged accounts is logged and reviewed by the security team.
+    ref: SNFR-LG-01, SNFR-LG-04, SNFR-LG-05
+    source: hmcts-security
 
   - id: QA-06
     category: quality
