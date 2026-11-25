@@ -2,7 +2,8 @@
 // the generator behind the /pcs:roadmap poster. Copy changes across by hand. Changed here since:
 // the optional config "end", the earliest date the timeline runs to; the start date falling
 // back to customfield_10269 (see twgQuery); and twgQuery's optional fields, which the QA
-// readiness report's Jira reader (scripts/lib/qa/sources/jira.ts) passes.
+// readiness report's Jira reader (scripts/lib/qa/sources/jira.ts) passes; and the stories and
+// tasks pages after the poster, with ticketOrder moved here from snapshot.ts.
 //
 // Release roadmap poster for HDPI epics: one row per epic, in rule-based swimlanes.
 //
@@ -14,9 +15,11 @@
 //       carries one of the swimlane labels, then all of those epics' child items.
 //
 //   build --config <lanes.json> --data <data.json> --out <roadmap.pdf> [--today YYYY-MM-DD]
-//       Draws a one-page A3 landscape PDF in the style of the Confluence Roadmap Planner:
-//       coloured swimlanes, a month/week header, a today marker, and one row per epic
-//       with its status, child-item progress and a bar from Start date to Due date.
+//       Draws an A3 landscape PDF in the style of the Confluence Roadmap Planner: a poster
+//       page with coloured swimlanes, a month/week header, a today marker, and one row per
+//       epic with its status, child-item progress and a bar from Start date to Due date;
+//       then as many pages as it takes listing each epic's stories and tasks (Tests left
+//       out) on the same timeline.
 //
 // Swimlane rule: an epic goes in the first lane whose `label` it carries and, when the
 // lane sets `component`, whose component name starts with that prefix. So each epic
@@ -175,6 +178,20 @@ const isEpic = (i: Issue) => i.issuetype.name === 'Epic'
 export const clean = (t: string): string => {
   const parts = t.split(/\(Product Cat Ref[^)]*\)?/)
   return parts.map((p, i) => (i < parts.length - 1 ? p.trimEnd() : p)).join('').trim()
+}
+
+const leadingNumber = (summary: string): number | null => {
+  const m = /^\s*(\d+)/.exec(summary)
+  return m ? Number(m[1]) : null
+}
+
+/** By the leading number in the summary ("12. Grounds…"), then unnumbered tickets by key. */
+export function ticketOrder(a: { key: string; summary: string }, b: { key: string; summary: string }): number {
+  const na = leadingNumber(a.summary)
+  const nb = leadingNumber(b.summary)
+  if (na !== null && nb !== null && na !== nb) return na - nb
+  if ((na === null) !== (nb === null)) return na === null ? 1 : -1
+  return a.key.localeCompare(b.key, 'en', { numeric: true })
 }
 
 export function buildModel(cfg: Config, all: Issue[], today: string): Model {
@@ -440,29 +457,73 @@ export function renderPdf(m: Model, out: string, opts: RenderOptions = {}): Prom
   const MONTH_H = 18
   const WEEK_H = 14
   const hdrBottom = HDR_TOP - MONTH_H - WEEK_H
-  rect(M, hdrBottom, BAND_W + LIST_W, MONTH_H + WEEK_H, { fill: '#f4f5f7', stroke: GRID, lw: 1 })
-  text('Epic', LIST_X + 6, hdrBottom + 11, BOLD, 9, INK)
-  text('Child items done', TL_X0 - 8, hdrBottom + 11, BOLD, 9, INK, 'right')
 
   const months: [string, string][] = []
   for (let mStart = m.start.slice(0, 8) + '01'; mStart <= m.end; mStart = addDays(endOfMonth(mStart), 1)) {
     months.push([mStart < m.start ? m.start : mStart, endOfMonth(mStart) > m.end ? m.end : endOfMonth(mStart)])
   }
-  months.forEach(([a, b], idx) => {
-    const x0 = xOf(a)
-    const x1 = xOf(b) + PX
-    rect(x0, HDR_TOP - MONTH_H, x1 - x0, MONTH_H, { fill: idx % 2 === 0 ? '#f4f5f7' : '#ffffff', stroke: GRID, lw: 1 })
-    const label = x1 - x0 > 90 ? fmt(a, 'Month yyyy') : x1 - x0 > 45 ? fmt(a, 'Mon yyyy') : ''
-    if (label) text(label, (x0 + x1) / 2, HDR_TOP - MONTH_H + 5.5, BOLD, 10, INK, 'center')
-  })
   const weeks: string[] = []
   const dow = (toDate(m.start).getUTCDay() + 6) % 7 // Monday = 0
   for (let wk = addDays(m.start, -dow); wk <= m.end; wk = addDays(wk, 7)) weeks.push(wk)
-  for (const wk of weeks) {
-    const x0 = xOf(wk < m.start ? m.start : wk)
-    rect(x0, hdrBottom, Math.min(7 * PX, TL_X1 - x0), WEEK_H, { fill: '#ffffff', stroke: GRID, lw: 1 })
-    if (7 * PX > 22) text(fmt(wk, 'd Mon'), x0 + 2.5, hdrBottom + 4, REG, 6.8, SUB)
+
+  const header = (left: string, right: string) => {
+    rect(M, hdrBottom, BAND_W + LIST_W, MONTH_H + WEEK_H, { fill: '#f4f5f7', stroke: GRID, lw: 1 })
+    text(left, LIST_X + 6, hdrBottom + 11, BOLD, 9, INK)
+    text(right, TL_X0 - 8, hdrBottom + 11, BOLD, 9, INK, 'right')
+    months.forEach(([a, b], idx) => {
+      const x0 = xOf(a)
+      const x1 = xOf(b) + PX
+      rect(x0, HDR_TOP - MONTH_H, x1 - x0, MONTH_H, { fill: idx % 2 === 0 ? '#f4f5f7' : '#ffffff', stroke: GRID, lw: 1 })
+      const label = x1 - x0 > 90 ? fmt(a, 'Month yyyy') : x1 - x0 > 45 ? fmt(a, 'Mon yyyy') : ''
+      if (label) text(label, (x0 + x1) / 2, HDR_TOP - MONTH_H + 5.5, BOLD, 10, INK, 'center')
+    })
+    for (const wk of weeks) {
+      const x0 = xOf(wk < m.start ? m.start : wk)
+      rect(x0, hdrBottom, Math.min(7 * PX, TL_X1 - x0), WEEK_H, { fill: '#ffffff', stroke: GRID, lw: 1 })
+      if (7 * PX > 22) text(fmt(wk, 'd Mon'), x0 + 2.5, hdrBottom + 4, REG, 6.8, SUB)
+    }
   }
+  const shadeMonths = (gridBottom: number) => months.forEach(([a, b], idx) => {
+    if (idx % 2 === 0) rect(xOf(a), gridBottom, xOf(b) + PX - xOf(a), hdrBottom - gridBottom, { fill: '#fafbfc' })
+  })
+  const weekLines = (gridBottom: number) => {
+    for (const wk of weeks) if (wk > m.start) line(xOf(wk), gridBottom, xOf(wk), hdrBottom, { stroke: '#ffffff', lw: 0.8 })
+  }
+  const todayLine = (gridBottom: number) => {
+    if (m.today < m.start || m.today > m.end) return
+    const tx = xOf(m.today) + PX / 2
+    line(tx, gridBottom, tx, HDR_TOP + 2, { stroke: RED, lw: 1.1 })
+    const label = `Today ${todayTxt}`
+    const w = width(label, BOLD, 7) + 8
+    rrect(tx - w / 2, HDR_TOP + 2, w, 11, 2, { fill: RED })
+    text(label, tx, HDR_TOP + 5.2, BOLD, 7, '#ffffff', 'center')
+  }
+  /** The coloured swimlane band, its title rotated to read bottom to top. */
+  const laneBand = (L: { title: string; subtitle: string; colour: string }, top: number, bot: number) => {
+    rrect(M, bot, BAND_W - 3, top - bot, 3, { fill: L.colour })
+    const cx = M + (BAND_W - 3) / 2 + 3.5
+    const cy = (top + bot) / 2
+    const room = top - bot - 8
+    let fs = 11
+    while (fs > 7 && width(L.title, BOLD, fs) > room) fs -= 0.5
+    let ss = 7.5
+    while (ss > 5.5 && width(L.subtitle, REG, ss) > room) ss -= 0.25
+    doc.save()
+    doc.rotate(-90, { origin: [cx, Y(cy)] })
+    text(fit(L.title, BOLD, fs, room), cx, cy - 2, BOLD, fs, '#ffffff', 'center')
+    text(fit(L.subtitle, REG, ss, room), cx, cy - 2 - 10, REG, ss, '#ffffff', 'center')
+    doc.restore()
+  }
+  const statusPill = (status: string, category: string, right: number, ymid: number): number => {
+    const cat = category in CAT ? category : 'new'
+    const st = status.toUpperCase()
+    const sw = width(st, BOLD, 5.8) + 6
+    rrect(right - sw, ymid - 3.6, sw, 7.4, 1.5, { fill: CAT_BG[cat] })
+    text(st, right - sw + 3, ymid - 1.7, BOLD, 5.8, CAT_TXT[cat])
+    return right - sw
+  }
+
+  header('Epic', 'Child items done')
 
   // ---- swimlane geometry
   const LANE_GAP = 5
@@ -480,25 +541,10 @@ export function renderPdf(m: Model, out: string, opts: RenderOptions = {}): Prom
   })
   const gridBottom = cur + LANE_GAP
 
-  months.forEach(([a, b], idx) => {
-    if (idx % 2 === 0) rect(xOf(a), gridBottom, xOf(b) + PX - xOf(a), hdrBottom - gridBottom, { fill: '#fafbfc' })
-  })
+  shadeMonths(gridBottom)
 
   for (const L of geo) {
-    rrect(M, L.bot, BAND_W - 3, L.top - L.bot, 3, { fill: L.colour })
-    // Rotated lane title, reading bottom to top.
-    const cx = M + (BAND_W - 3) / 2 + 3.5
-    const cy = (L.top + L.bot) / 2
-    const room = L.top - L.bot - 8
-    let fs = 11
-    while (fs > 7 && width(L.title, BOLD, fs) > room) fs -= 0.5
-    let ss = 7.5
-    while (ss > 5.5 && width(L.subtitle, REG, ss) > room) ss -= 0.25
-    doc.save()
-    doc.rotate(-90, { origin: [cx, Y(cy)] })
-    text(fit(L.title, BOLD, fs, room), cx, cy - 2 + 0, BOLD, fs, '#ffffff', 'center')
-    text(fit(L.subtitle, REG, ss, room), cx, cy - 2 - 10, REG, ss, '#ffffff', 'center')
-    doc.restore()
+    laneBand(L, L.top, L.bot)
     L.rows.forEach((r, i) => rect(LIST_X, r.ytop - ROW_H, TL_X1 - LIST_X, ROW_H, { fill: tint(L.colour, i % 2 === 0 ? 0.94 : 0.88) }))
     if (!L.rows.length) {
       rect(LIST_X, L.bot, TL_X1 - LIST_X, L.top - L.bot, { fill: tint(L.colour, 0.92) })
@@ -507,16 +553,8 @@ export function renderPdf(m: Model, out: string, opts: RenderOptions = {}): Prom
     line(TL_X0, L.bot, TL_X0, L.top, { stroke: GRID, lw: 0.6 })
   }
 
-  for (const wk of weeks) if (wk > m.start) line(xOf(wk), gridBottom, xOf(wk), hdrBottom, { stroke: '#ffffff', lw: 0.8 })
-
-  if (m.today >= m.start && m.today <= m.end) {
-    const tx = xOf(m.today) + PX / 2
-    line(tx, gridBottom, tx, HDR_TOP + 2, { stroke: RED, lw: 1.1 })
-    const label = `Today ${todayTxt}`
-    const w = width(label, BOLD, 7) + 8
-    rrect(tx - w / 2, HDR_TOP + 2, w, 11, 2, { fill: RED })
-    text(label, tx, HDR_TOP + 5.2, BOLD, 7, '#ffffff', 'center')
-  }
+  weekLines(gridBottom)
+  todayLine(gridBottom)
 
   // ---- rows
   const badges = new Map<string, number[]>()
@@ -545,12 +583,7 @@ export function renderPdf(m: Model, out: string, opts: RenderOptions = {}): Prom
         rect(px, ymid - 2, pw, 4, { stroke: '#c1c7d0', lw: 0.6 })
       }
       text(ptxt, px - 4, ymid - 2.5, REG, 7, SUB, 'right')
-      const cat = e.status.statusCategory.key in CAT ? e.status.statusCategory.key : 'new'
-      const st = e.status.name.toUpperCase()
-      const sw = width(st, BOLD, 5.8) + 6
-      const sx0 = px - 4 - width('00/000', REG, 7) - 6 - sw
-      rrect(sx0, ymid - 3.6, sw, 7.4, 1.5, { fill: CAT_BG[cat] })
-      text(st, sx0 + 3, ymid - 1.7, BOLD, 5.8, CAT_TXT[cat])
+      const sx0 = statusPill(e.status.name, e.status.statusCategory.key, px - 4 - width('00/000', REG, 7) - 6, ymid)
       text(fit(clean(e.summary), REG, 7.6, sx0 - (LIST_X + 22 + kw) - 4), LIST_X + 22 + kw, ymid - 2.7, REG, 7.6, INK)
       link(LIST_X, ytop - ROW_H, TL_X0 - LIST_X, ROW_H, browse(r.key))
 
@@ -652,6 +685,164 @@ export function renderPdf(m: Model, out: string, opts: RenderOptions = {}): Prom
     text(fit(t, REG, 6.9, pw2 - 16), x2 + 8, yy, REG, 6.9, SUB)
     yy -= 8.8
   }
+
+  // ---- stories and tasks: one row per epic, then one per child item, over as many pages as it takes
+  const kids = new Map<string, Issue[]>()
+  for (const i of m.issues.values()) {
+    const p = i.parent?.key
+    if (p && i.issuetype.name !== 'Test') kids.set(p, [...(kids.get(p) ?? []), i])
+  }
+  type Entry = { lane: number } & ({ kind: 'epic'; row: Row; continued?: boolean } | { kind: 'item'; issue: Issue } | { kind: 'none' })
+  const entries: Entry[] = []
+  m.lanes.forEach((L, lane) => {
+    for (const row of L.rows) {
+      entries.push({ kind: 'epic', lane, row })
+      const items = (kids.get(row.key) ?? []).sort((a, b) =>
+        ticketOrder({ key: a.key, summary: clean(a.summary) }, { key: b.key, summary: clean(b.summary) }))
+      if (items.length) for (const issue of items) entries.push({ kind: 'item', lane, issue })
+      else entries.push({ kind: 'none', lane })
+    }
+  })
+
+  const R = 15.5
+  const ROWS_TOP = hdrBottom - 4
+  const ROWS_BOT = M + 16
+  const perPage = Math.floor((ROWS_TOP - ROWS_BOT) / R)
+  const pages: Entry[][] = []
+  for (let n = 0; n < entries.length;) {
+    // A page that opens partway through an epic repeats the epic's row first.
+    const from = entries[n].kind === 'epic' ? null : entries.slice(0, n).findLast((e) => e.kind === 'epic')
+    const lead: Entry[] = from && from.kind === 'epic' ? [{ ...from, continued: true }] : []
+    let take = Math.min(perPage - lead.length, entries.length - n)
+    // Keep an epic's heading row with its first item.
+    if (take > 1 && n + take < entries.length && entries[n + take - 1].kind === 'epic') take--
+    pages.push([...lead, ...entries.slice(n, n + take)])
+    n += take
+  }
+
+  const typeIcon = (type: string, x: number, y: number, s = 8) => {
+    const colour = type === 'Story' ? '#63ba3c' : type === 'Task' ? '#4bade8' : type === 'Bug' ? '#e5493a' : '#8993a4'
+    rrect(x, y, s, s, 1.6, { fill: colour })
+    if (type === 'Story') {
+      poly([[x + s * 0.3, y + s * 0.8], [x + s * 0.7, y + s * 0.8], [x + s * 0.7, y + s * 0.18],
+        [x + s * 0.5, y + s * 0.36], [x + s * 0.3, y + s * 0.18]], { fill: '#ffffff' })
+    } else if (type === 'Task') {
+      doc.moveTo(x + s * 0.24, Y(y + s * 0.5)).lineTo(x + s * 0.43, Y(y + s * 0.3)).lineTo(x + s * 0.76, Y(y + s * 0.72))
+      paint({ stroke: '#ffffff', lw: 1.2 })
+    } else if (type === 'Bug') circle(x + s / 2, y + s / 2, s * 0.24, { fill: '#ffffff' })
+    else rect(x + s * 0.32, y + s * 0.32, s * 0.36, s * 0.36, { fill: '#ffffff' })
+  }
+  /** A bar from start to due on the timeline, or a note when it can't be drawn there. */
+  const span = (start: string | null, due: string | null, ymid: number, bh: number, fill: string, stroke: string,
+    dashed: boolean, url: string) => {
+    if (!(start && due)) {
+      rrect(TL_X0 + 6, ymid - bh / 2, 84, bh, 2.5, { stroke: '#a5adba', lw: 0.7, dash: [1, 1.5] })
+      text('No dates in Jira', TL_X0 + 11, ymid - 2.3, REG, 6.6, SUB)
+    } else if (due < m.start) {
+      text(`Ended ${fmt(due, 'dd Mon yyyy')} (ran from ${fmt(start, 'dd Mon')})`, TL_X0 + 6, ymid - 2.3, REG, 6.6, SUB)
+    } else if (start > m.end) {
+      text(`Starts ${fmt(start, 'dd Mon yyyy')}`, TL_X1 - 4, ymid - 2.3, REG, 6.6, SUB, 'right')
+    } else if (start === due) {
+      const mx = xOf(start) + PX / 2
+      const rr = bh / 2 + 1
+      poly([[mx, ymid + rr], [mx + rr, ymid], [mx, ymid - rr], [mx - rr, ymid]], { fill: stroke })
+      text(fmt(start, 'dd Mon yyyy'), mx + rr + 3, ymid - 2.3, REG, 6.6, INK)
+      link(mx - rr, ymid - rr, 2 * rr, 2 * rr, url)
+    } else {
+      const x0 = xOf(start < m.start ? m.start : start)
+      const x1 = xOf(due > m.end ? m.end : due) + PX
+      rrect(x0, ymid - bh / 2, x1 - x0, bh, 2.5, { fill, stroke, lw: 0.8, dash: dashed ? [2.5, 1.5] : undefined })
+      let label = `${fmt(start, 'dd Mon')} – ${fmt(due, 'dd Mon')}`
+      if (start < m.start) label = `from ${fmt(start, 'dd Mon yyyy')} – ${fmt(due, 'dd Mon')}`
+      const lw = width(label, REG, 6.6)
+      if (lw + 8 <= x1 - x0) text(label, x0 + 4, ymid - 2.3, REG, 6.6, INK)
+      else if (x1 + 3 + lw <= TL_X1) text(label, x1 + 3, ymid - 2.3, REG, 6.6, SUB)
+      else text(label, x0 - 3, ymid - 2.3, REG, 6.6, SUB, 'right')
+      link(x0, ymid - bh / 2, x1 - x0, bh, url)
+    }
+  }
+
+  const itemCount = entries.filter((e) => e.kind === 'item').length
+  pages.forEach((page, p) => {
+    doc.addPage({ size: [W, H], margin: 0 })
+    text(`${m.title}: stories and tasks`, M, top - 20, BOLD, 22, INK)
+    text(`${itemCount} child items in ${m.epics.length} ${m.project} epics, tests excluded  ·  ` +
+      `snapshot ${todayLong}  ·  page ${p + 2} of ${pages.length + 1}`, M, top - 36, REG, 10, SUB)
+    let kx = W - M
+    const key: [string, (x: number) => void][] = [
+      ['Story', (x) => typeIcon('Story', x, ly - 1.5)], ['Task', (x) => typeIcon('Task', x, ly - 1.5)],
+      ['Bug', (x) => typeIcon('Bug', x, ly - 1.5)], ['Other type', (x) => typeIcon('', x, ly - 1.5)],
+      ['Done', (x) => rrect(x - 6, ly - 1, 14, 8, 2, { fill: tint(CAT.done, 0.6), stroke: CAT.done })],
+      ['In progress', (x) => rrect(x - 6, ly - 1, 14, 8, 2, { fill: tint(CAT.indeterminate, 0.6), stroke: CAT.indeterminate })],
+      ['Not started', (x) => rrect(x - 6, ly - 1, 14, 8, 2, { fill: tint(CAT.new, 0.6), stroke: CAT.new })],
+    ]
+    for (const [label, draw] of key.reverse()) {
+      kx -= width(label, REG, 7.8)
+      text(label, kx, ly, REG, 7.8, SUB)
+      kx -= 12
+      draw(kx)
+      kx -= 12
+    }
+    header('Epic, then its stories and tasks', 'Status')
+
+    const rows = page.map((e, i) => ({ ...e, ytop: ROWS_TOP - i * R, ymid: ROWS_TOP - i * R - R / 2 }))
+    const gridBottom = ROWS_TOP - rows.length * R
+    shadeMonths(gridBottom)
+    rows.forEach((r, i) => {
+      const colour = m.lanes[r.lane].colour
+      rect(LIST_X, r.ytop - R, TL_X1 - LIST_X, R, { fill: tint(colour, r.kind === 'epic' ? 0.8 : i % 2 === 0 ? 0.95 : 0.91) })
+    })
+    for (let i = 0; i < rows.length;) {
+      let j = i
+      while (j + 1 < rows.length && rows[j + 1].lane === rows[i].lane) j++
+      laneBand(m.lanes[rows[i].lane], rows[i].ytop - (i ? 1.5 : 0), rows[j].ytop - R + (j < rows.length - 1 ? 1.5 : 0))
+      i = j + 1
+    }
+    line(TL_X0, gridBottom, TL_X0, ROWS_TOP, { stroke: GRID, lw: 0.6 })
+    weekLines(gridBottom)
+    todayLine(gridBottom)
+
+    for (const r of rows) {
+      const { ytop, ymid } = r
+      const bh = Math.min(11, R - 4.5)
+      if (r.kind === 'epic') {
+        const e = m.issues.get(r.row.key)!
+        epicIcon(LIST_X + 5, ymid - 4.5)
+        text(r.row.key, LIST_X + 18, ymid - 2.7, BOLD, 7.6, INK)
+        const kw = width(r.row.key, BOLD, 7.6)
+        const progress = r.row.total ? `${r.row.counts.done}/${r.row.total} done` : 'no child items'
+        text(progress, TL_X0 - 8, ymid - 2.5, REG, 7, SUB, 'right')
+        const sx0 = statusPill(e.status.name, e.status.statusCategory.key, TL_X0 - 14 - width(progress, REG, 7), ymid)
+        const more = r.continued ? ' (continued)' : ''
+        const tx = LIST_X + 22 + kw
+        const title = fit(clean(e.summary), BOLD, 7.6, sx0 - tx - 4 - width(more, REG, 7.6))
+        text(title, tx, ymid - 2.7, BOLD, 7.6, INK)
+        if (more) text(more, tx + width(title, BOLD, 7.6), ymid - 2.7, REG, 7.6, SUB)
+        link(LIST_X, ytop - R, TL_X0 - LIST_X, R, browse(r.row.key))
+        const d = m.dates.get(r.row.key)!
+        const colour = m.lanes[r.lane].colour
+        span(d.start, d.due, ymid, bh, tint(colour, d.derived ? 0.82 : 0.55), colour, d.derived > 0, browse(r.row.key))
+      } else if (r.kind === 'item') {
+        const c = r.issue
+        const ix = LIST_X + 16
+        typeIcon(c.issuetype.name, ix, ymid - 4)
+        text(c.key, ix + 12, ymid - 2.6, BOLD, 7.2, INK)
+        const kw = width(c.key, BOLD, 7.2)
+        const sx0 = statusPill(c.status.name, c.status.statusCategory.key, TL_X0 - 8, ymid)
+        text(fit(clean(c.summary), REG, 7.2, sx0 - (ix + 16 + kw) - 4), ix + 16 + kw, ymid - 2.6, REG, 7.2, INK)
+        link(LIST_X, ytop - R, TL_X0 - LIST_X, R, browse(c.key))
+        const cat = c.status.statusCategory.key in CAT ? c.status.statusCategory.key : 'new'
+        span(c.customfield_10015?.slice(0, 10) ?? null, c.duedate?.slice(0, 10) ?? null, ymid, bh,
+          tint(CAT[cat], 0.6), CAT[cat], false, browse(c.key))
+      } else {
+        text('No stories or tasks in Jira yet.', LIST_X + 16, ymid - 2.6, REG, 7.2, SUB)
+      }
+    }
+
+    text('Rows and bars link to Jira. Child bars run from the ticket\'s Start date to its Due date and are coloured ' +
+      'by status; epic bars are as on page 1. Items are in the order of the number their title starts with.',
+    M, M + 4, REG, 6.9, SUB)
+  })
 
   doc.end()
   return done

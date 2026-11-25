@@ -6,7 +6,7 @@
 // only the linked key, its status and the link wording. Descriptions, comments, assignees and
 // every other field are never kept.
 
-import { addDays, clean, daysBetween, type Config, type Issue, type Model } from './roadmap-runner.ts'
+import { addDays, clean, daysBetween, ticketOrder, type Config, type Issue, type Model } from './roadmap-runner.ts'
 
 export interface ItemRow {
   key: string
@@ -63,20 +63,6 @@ interface LinkedIssue { key: string; fields?: { status?: { name: string; statusC
 interface TwgLink { type: { name: string; inward?: string; outward?: string }; outwardIssue?: LinkedIssue; inwardIssue?: LinkedIssue }
 
 const projectOf = (key: string) => key.split('-')[0]
-
-const leadingNumber = (summary: string): number | null => {
-  const m = /^\s*(\d+)/.exec(summary)
-  return m ? Number(m[1]) : null
-}
-
-/** By the leading number in the summary ("12. Grounds…"), then unnumbered tickets by key. */
-export function ticketOrder(a: { key: string; summary: string }, b: { key: string; summary: string }): number {
-  const na = leadingNumber(a.summary)
-  const nb = leadingNumber(b.summary)
-  if (na !== null && nb !== null && na !== nb) return na - nb
-  if ((na === null) !== (nb === null)) return na === null ? 1 : -1
-  return a.key.localeCompare(b.key, 'en', { numeric: true })
-}
 
 /**
  * One epic's child tickets in ticketOrder, leaving out Tests. Tickets with both a Jira start and

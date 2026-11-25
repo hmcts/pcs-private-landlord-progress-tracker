@@ -8,7 +8,7 @@ description: The tickets in the epics labelled PrivateLandlord in the HDPI Jira 
 {% if not s or not s.totals.epics %}
 <p class="govuk-body">There are no epics labelled <code>PrivateLandlord</code> in HDPI yet. They will appear here the day after they are created.</p>
 {% else %}
-{% if roadmap.pdf %}<p class="govuk-body"><a class="govuk-link" href="/roadmap/roadmap.pdf" download>Download the A3 roadmap poster (PDF)</a></p>{% endif %}
+{% if roadmap.pdf %}<p class="govuk-body"><a class="govuk-link" href="/roadmap/roadmap.pdf" download>Download the A3 roadmap poster, with each epic's stories and tasks (PDF)</a></p>{% endif %}
 
 <div class="app-chart">{{ roadmap.svg }}</div>
 <p class="govuk-body-s">Each epic is followed by its tickets. Epic bars run from the epic's start date to its due date, and the dark part shows how many of its child items are done; a dashed epic bar means its dates come from its child items. Ticket bars are shaded by status: solid for done, mid-tone for in progress and pale for to do. A red outline marks a dependency clash.</p>
