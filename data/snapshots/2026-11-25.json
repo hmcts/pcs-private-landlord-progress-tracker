@@ -1,6 +1,6 @@
 {
   "date": "2026-11-25",
-  "generatedAt": "2026-11-25T12:27:29.525Z",
+  "generatedAt": "2026-11-25T14:21:22.029Z",
   "title": "PCS Private Landlord roadmap",
   "project": "HDPI",
   "jiraUrl": "https://hmcts.atlassian.net",
@@ -481,14 +481,125 @@
           "start": "2027-01-05",
           "due": "2027-02-28",
           "derived": 0,
-          "total": 0,
+          "total": 11,
           "counts": {
             "done": 0,
             "indeterminate": 0,
-            "new": 0
+            "new": 11
           },
           "clashes": [],
-          "items": []
+          "items": [
+            {
+              "key": "HDPI-10261",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10261",
+              "summary": "1. Start enforcing the order, choose what to apply for and say which language I used",
+              "status": "New",
+              "category": "new",
+              "start": "2026-11-30",
+              "due": "2026-12-10",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10262",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10262",
+              "summary": "2. Confirm the name and address, breathing space, missed payments and dates of birth",
+              "status": "New",
+              "category": "new",
+              "start": "2026-12-11",
+              "due": "2026-12-21",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10263",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10263",
+              "summary": "3. Tell the bailiff about risks, vulnerability, access to the property and anything else",
+              "status": "New",
+              "category": "new",
+              "start": "2026-12-22",
+              "due": "2027-01-01",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10264",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10264",
+              "summary": "4. Apply for a warrant of possession and pay the fee",
+              "status": "New",
+              "category": "new",
+              "start": "2027-01-02",
+              "due": "2027-01-12",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10266",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10266",
+              "summary": "5. Apply for a writ of possession: permission to transfer and the High Court Enforcement Officer",
+              "status": "New",
+              "category": "new",
+              "start": "2027-01-13",
+              "due": "2027-01-23",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10267",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10267",
+              "summary": "6. Check, submit and pay for a writ of possession, and the decision emails",
+              "status": "New",
+              "category": "new",
+              "start": "2027-01-24",
+              "due": "2027-02-03",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10268",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10268",
+              "summary": "7. Apply to transfer enforcement of the possession order to the High Court",
+              "status": "New",
+              "category": "new",
+              "start": "2027-02-04",
+              "due": "2027-02-14",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10269",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10269",
+              "summary": "8. Confirm the eviction details: the eviction date, attending and who the bailiff can contact",
+              "status": "New",
+              "category": "new",
+              "start": "2027-02-15",
+              "due": "2027-02-25",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10270",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10270",
+              "summary": "9. Confirm the eviction details: update the bailiff's questions, secure the property and submit",
+              "status": "New",
+              "category": "new",
+              "start": "2027-02-26",
+              "due": "2027-03-08",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10271",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10271",
+              "summary": "10. Apply for a warrant of restitution",
+              "status": "New",
+              "category": "new",
+              "start": "2027-03-09",
+              "due": "2027-03-19",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10272",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10272",
+              "summary": "11. Apply for a writ of restitution",
+              "status": "New",
+              "category": "new",
+              "start": "2027-03-20",
+              "due": "2027-03-31",
+              "forecast": true
+            }
+          ]
         },
         {
           "key": "HDPI-10260",
@@ -517,7 +628,7 @@
   "totals": {
     "epics": 3,
     "epicsDone": 0,
-    "items": 44,
+    "items": 55,
     "itemsDone": 0,
     "undated": 0
   }
