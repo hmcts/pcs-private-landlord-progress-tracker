@@ -18,9 +18,6 @@
 #     url: https://...         # optional, a more specific page than the standard's url
 
 standards:
-  - id: pcs-nfrs
-    title: PCS low-level non-functional requirements
-    url: https://hmcts.atlassian.net/wiki/spaces/RRFM/pages/272433247
   - id: pcs-performance
     title: PCS performance SLA and NFRs
     url: https://hmcts.atlassian.net/wiki/spaces/RRFM/pages/272433544
@@ -28,9 +25,9 @@ standards:
     title: PCS standard NFR acceptance criteria for stories
     url: https://hmcts.atlassian.net/wiki/spaces/RRFM/pages/367755875
     note: Draft
-  - id: pcs-qa
-    title: PCS QA standards and guidelines
-    url: https://hmcts.atlassian.net/wiki/spaces/RRFM/pages/272433241
+  - id: hmcts-qa
+    title: HMCTS Quality Assurance standards
+    url: https://hmcts.atlassian.net/wiki/pages/viewpage.action?pageId=268043682
   - id: hmcts-way
     title: HMCTS engineering standards (The HMCTS Way)
     url: https://hmcts.github.io/standards/
@@ -73,180 +70,93 @@ nfrs:
     requirement: The service is tested at peak load, not only normal load.
     target: 3 times the normal hourly volume for each user journey
     source: pcs-performance
-  - id: PERF-08
-    category: performance
-    requirement: Citizen-facing services meet the response time targets on a slow connection.
-    target: 1Mbps
-    ref: PER-03
-    source: pcs-nfrs
   - id: PERF-09
     category: performance
     requirement: Welsh journeys meet the same performance targets as English ones.
     source: pcs-performance
-  - id: PERF-10
+  - id: PERF-11
     category: performance
-    requirement: Performance is compared between releases, and any slowdown has a plan to fix it.
-    ref: PER-07
-    source: pcs-nfrs
+    requirement: Performance is tested during story development on the path to live, including in Preview, not only before release.
+    source: hmcts-qa
 
-  - id: A11Y-01
+  - id: A11Y-06
     category: accessibility
-    requirement: Every screen meets the Web Content Accessibility Guidelines.
-    target: WCAG 2.2 level AA
-    ref: ACC-01
-    source: pcs-nfrs
-  - id: A11Y-02
+    requirement: Every page is checked with Pa11y, with no outstanding WCAG A or AA failures.
+    source: hmcts-qa
+  - id: A11Y-07
     category: accessibility
-    requirement: Public-facing screens can be switched between English and Welsh.
-    ref: ACC-04
-    source: pcs-nfrs
-  - id: A11Y-03
+    requirement: The service meets WCAG 2.1 and is tested by hand with NVDA, JAWS and VoiceOver screen readers, with a keyboard only, and on iOS and Android phones and tablets.
+    source: hmcts-qa
+  - id: A11Y-08
     category: accessibility
-    requirement: The service works on the browsers and devices that GOV.UK services support.
-    ref: ACC-06
-    source: pcs-nfrs
-  - id: A11Y-04
+    requirement: A Digital Accessibility Centre (DAC) audit is done or booked, especially after major changes, and the accessibility statement is kept up to date.
+    source: hmcts-qa
+  - id: A11Y-09
     category: accessibility
-    requirement: Codes and abbreviations are shown with a plain-English description.
-    ref: ACC-02
-    source: pcs-nfrs
-  - id: A11Y-05
-    category: accessibility
-    requirement: Error messages say what went wrong and what the user should do next, and the user never sees an unhandled error.
-    ref: ACC-03, USE-01 to USE-03
-    source: pcs-nfrs
+    requirement: The service is tested across the browsers and devices the GOV.UK service standard requires.
+    source: hmcts-qa
 
-  - id: SEC-01
-    category: security
-    requirement: Users sign in through the HMCTS identity service with their own account. There are no shared accounts.
-    ref: SEC-01, SEC-07, SEC-20
-    source: pcs-nfrs
-  - id: SEC-02
-    category: security
-    requirement: Users and systems can only reach the data and functions their role allows.
-    ref: SEC-01, SEC-02, SEC-09 to SEC-11, SEC-22
-    source: pcs-nfrs
-  - id: SEC-03
-    category: security
-    requirement: Sessions end after a period of inactivity.
-    ref: SEC-06
-    source: pcs-nfrs
-  - id: SEC-04
-    category: security
-    requirement: Data sent across untrusted networks is encrypted.
-    ref: SEC-18
-    source: pcs-nfrs
-  - id: SEC-05
-    category: security
-    requirement: Automated emails contain no confidential or personal information.
-    ref: SEC-14
-    source: pcs-nfrs
   - id: SEC-06
     category: security
     requirement: Uploaded files are checked for type and size and stored through the HMCTS document store.
     ref: FILE-01
     source: pcs-story-nfrs
+  - id: SEC-07
+    category: security
+    requirement: Static and dynamic security scans run nightly, and dependency checks (OWASP, yarn audit) and Helmet are part of the pipeline.
+    source: hmcts-qa
+  - id: SEC-08
+    category: security
+    requirement: An IT health check (ITHC) penetration test is completed or booked before release to production, and its findings are tracked.
+    source: hmcts-qa
 
-  - id: REL-01
-    category: reliability
-    requirement: The service has no single point of failure.
-    ref: REL-02, AVL-09
-    source: pcs-nfrs
-  - id: REL-02
-    category: reliability
-    requirement: A failed or interrupted transaction never loses or duplicates data.
-    ref: REL-01, AVL-08, DAT-06
-    source: pcs-nfrs
-  - id: REL-03
-    category: reliability
-    requirement: The service scales up and down automatically, through configuration alone, and still meets the performance targets.
-    ref: SCA-01, SCA-03
-    source: pcs-nfrs
-  - id: REL-04
-    category: reliability
-    requirement: There is a tested disaster recovery plan, including recovery to another Azure region.
-    ref: AVL-03 to AVL-05, SER-01, SER-02
-    source: pcs-nfrs
-  - id: REL-05
-    category: reliability
-    requirement: Maintenance causes no downtime during working hours.
-    ref: MNT-02
-    source: pcs-nfrs
-
-  - id: DAT-01
-    category: data
-    requirement: Every create, update and delete is audited with who made it, when, and what changed.
-    ref: AUD-02, AUD-04
-    source: pcs-nfrs
-  - id: DAT-02
-    category: data
-    requirement: Failed sign-ins and unauthorised actions are recorded.
-    ref: AUD-03
-    source: pcs-nfrs
-  - id: DAT-03
-    category: data
-    requirement: Data is validated when it's entered or received, and invalid data is rejected with a reason.
-    ref: DAT-02, DAT-03
-    source: pcs-nfrs
-  - id: DAT-04
-    category: data
-    requirement: Times are stored in UTC and shown in UK time. Date calculations allow for bank holidays, leap years and British Summer Time.
-    ref: INT-02, OPR-4
-    source: pcs-nfrs
-  - id: DAT-05
-    category: data
-    requirement: Personal data is handled in line with UK GDPR.
-    ref: DAT-01, DAT-08
-    source: pcs-nfrs
-
-  - id: SUP-01
-    category: support
-    requirement: Key components are monitored, and support staff are alerted automatically when a threshold is crossed.
-    ref: SUP-04, SUP-07, SUP-14
-    source: pcs-nfrs
-  - id: SUP-02
-    category: support
-    requirement: Calls between services can be traced from end to end.
-    ref: SUP-15
-    source: pcs-nfrs
-  - id: SUP-03
-    category: support
-    requirement: Logs are searchable and categorised by severity.
-    ref: SUP-06, SUP-08
-    source: pcs-nfrs
-  - id: SUP-04
-    category: support
-    requirement: Performance metrics are kept for trend analysis.
-    target: 6 months
-    ref: SUP-12
-    source: pcs-nfrs
-
-  - id: QA-01
-    category: quality
-    requirement: For each story, the developer, tester and a business representative agree what will be tested at each layer (unit, integration, contract, functional and end to end) before work starts.
-    source: pcs-qa
-  - id: QA-02
-    category: quality
-    requirement: Test cases are recorded in Zephyr and linked to the story they test.
-    source: pcs-qa
-  - id: QA-03
-    category: quality
-    requirement: Automated tests for anything in regression scope are written before the story closes, and merged together with the code.
-    source: pcs-qa
-  - id: QA-04
-    category: quality
-    requirement: Before sign-off, each story has a summary of its manual, automated and accessibility testing.
-    source: pcs-qa
-  - id: QA-05
-    category: quality
-    requirement: Defects follow the QA defect workflow.
-    source: pcs-qa
-    url: https://hmcts.atlassian.net/wiki/spaces/RRFM/pages/272439809
   - id: QA-06
     category: quality
     requirement: Tests are automated, reliable, fast and repeatable. Most are unit tests, fewer are integration tests, and a small number are end-to-end tests.
     source: hmcts-way
     url: https://hmcts.github.io/standards/principles/test.html
+  - id: QA-07
+    category: quality
+    requirement: Before development starts, the BA, developer and tester meet (a three amigos session) to list the story's test scenarios and agree how it will be built and tested, and the story meets the definition of ready.
+    source: hmcts-qa
+  - id: QA-08
+    category: quality
+    requirement: New and refactored code is unit tested. Every test makes an assertion, and tests cover valid, invalid and edge cases.
+    target: Over 95% coverage, under 3% duplicated lines in SonarCloud
+    source: hmcts-qa
+  - id: QA-09
+    category: quality
+    requirement: Developers' tests are peer reviewed by another developer and by QA, and QA signs off coverage as part of the pull request review.
+    source: hmcts-qa
+  - id: QA-10
+    category: quality
+    requirement: Every integration with an external system, and every endpoint, has an integration or functional test, with results published in Jenkins.
+    source: hmcts-qa
+  - id: QA-11
+    category: quality
+    requirement: Every integration point with another service has a Pact contract test that is verified, never skipped, and checked with can-i-deploy before release.
+    target: Over 90% of integration points
+    source: hmcts-qa
+  - id: QA-12
+    category: quality
+    requirement: Smoke tests check for a real response to a GET request, not just a health check.
+    source: hmcts-qa
+  - id: QA-13
+    category: quality
+    requirement: Automated UI tests cover only the happy and critical paths, without repeating lower-level tests, and publish their report in Jenkins.
+    source: hmcts-qa
+  - id: QA-14
+    category: quality
+    requirement: Tests that cannot be automated are documented in Zephyr and run by hand.
+    source: hmcts-qa
+  - id: QA-15
+    category: quality
+    requirement: Every test runs in the pipeline with its report in Jenkins, the Jenkins dashboard is kept green, and defects and requirement traceability are tracked.
+    source: hmcts-qa
+  - id: QA-16
+    category: quality
+    requirement: QA joins production defect triage to reproduce the defect in a lower environment, and a test is added with the fix.
+    source: hmcts-qa
 
   - id: ENG-01
     category: engineering
