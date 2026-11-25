@@ -1,0 +1,13 @@
+---
+layout: page
+pagination:
+  data: reports.pages
+  size: 1
+  alias: report
+permalink: "/reports/qa/{{ report.name }}/"
+eleventyComputed:
+  title: "{{ report.title }}"
+description: A QA readiness report for the Private Landlord workstream, as published on Confluence.
+---
+<p class="govuk-body">This is a copy of the <a class="govuk-link" href="{{ report.url }}">report on Confluence</a>, which you need an HMCTS account to open. It is updated every weekday morning.</p>
+<div class="app-qa-report">{{ report.body | safe }}</div>

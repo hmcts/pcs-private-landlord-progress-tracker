@@ -9,6 +9,7 @@ active: true
 report_page: '382468869'
 layout: pcs-feature
 epics: [HDPI-10019]
+jira_board: https://hmcts.atlassian.net/jira/software/c/projects/HDPI/boards/1717
 bug_types: [Bug, Issue]
 
 repos:

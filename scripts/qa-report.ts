@@ -14,7 +14,8 @@
 // Jenkins build its config names, as Cosmos or GitHub records it (lib/qa/sources/e2e.ts). A row whose source couldn't be read
 // keeps what the page already says. It's a dry run unless --publish is given: the merged page and a diff are
 // written to the cache directory (see scripts/lib/qa/cache.ts) and nothing is written to
-// Confluence. --validate also has twg check the edits, without writing them. --evidence
+// Confluence. A publish also writes the page as it now stands to published.html there, for the
+// Publish workflow to put on the site. --validate also has twg check the edits, without writing them. --evidence
 // skips collecting and reuses the release's evidence.json from an earlier run. --judgement fills
 // rows a person answers from judgement.yaml (or .json) beside it (see scripts/lib/qa/judgement.ts).
 // --all-active runs every
@@ -32,7 +33,7 @@
 // only a fixed message for its kind (lib/qa/errors.ts); the error itself goes to errors.log
 // there. A --config file must be in config/qa-readiness or the cache directory.
 
-import { readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { parseArgs } from 'node:util'
 import { AGENT_INPUT_FILE, agentInput, agentRows, ANSWERS_FILE, answerItems, collectedName, hasAgentWork, loadAnswers, type Published, type SectionAnswers } from './lib/qa/answers.ts'
@@ -83,6 +84,8 @@ const values = args()
 
 const say = (s: string) => console.log(s)
 const EVIDENCE_FILE = 'evidence.json'
+/** The page as it stands after a publish, which the workflow copies to the site (data/qa-reports/). */
+const PUBLISHED_FILE = 'published.html'
 
 interface Options {
   /** The release or feature named on the command line, and which it was. */
@@ -242,8 +245,10 @@ async function report(path: string, o: Options): Promise<'done' | 'skipped'> {
       return 'skipped'
     }
     sayPublished(res)
+    if (o.publish) copyFileSync(join(dir, 'merged.html'), join(dir, PUBLISHED_FILE))
   } else if (createUnder) {
     const id = createPage(quietRunner, createUnder, releaseTitle(cfg, layout), page, dir, o.publish)
+    if (id) writeFileSync(join(dir, PUBLISHED_FILE), page)
     say(id ? `created page ${id}: set report_page: '${id}' in the config` : `a new page with ${rows.length} rows would be created`)
   } else {
     say('no report_page in the config, so the report was only rendered (use --create-under <pageId> to create one)')

@@ -1,0 +1,25 @@
+# The QA readiness report for the Private Landlord feature in epic HDPI-10260 (CUI Private Landlord - Respond to a defendant's response online).
+# The fields are explained in README.md, "QA readiness report". This file is public: put only
+# repo names, commit SHAs, PR numbers, Sonar keys, Jira keys, page ids, Jenkins job names, E2E tags and spec
+# paths in it.
+
+feature: private-landlord-respond-to-a-response
+active: true
+layout: pcs-feature
+epics: [HDPI-10260]
+jira_board: https://hmcts.atlassian.net/jira/software/c/projects/HDPI/boards/1717
+bug_types: [Bug, Issue]
+
+repos:
+  pcs-api:
+    github: hmcts/pcs-api
+    sonar: uk.gov.hmcts.reform:pcs-api-2
+    cosmos_product: pcs
+    cosmos_component: api
+    builder: gradle
+  pcs-frontend:
+    github: hmcts/pcs-frontend
+    sonar: pcs-frontend
+    cosmos_product: pcs
+    cosmos_component: frontend
+    builder: yarn

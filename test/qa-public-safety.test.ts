@@ -148,7 +148,7 @@ describe('the CLI, with the agent\'s input and answers', () => {
     for (const d of [out, fixtures]) rmSync(d, { recursive: true, force: true })
   })
   const AGENT_CANARY = ['Canary agent comment about HDPI-99999', 'https://canary.internal.example/agent/evidence', 'canary-agent-link-text', 'canary-row-key',
-    'Canary QA summary sentence', 'Canary risk wording', 'Canary Signer Name', 'Canary external dependency']
+    'Canary QA summary sentence', 'Canary risk wording', 'Canary external dependency']
   // The name of the account twg runs as: collected into agent-input.json, never printed.
   const NAME = 'Canary Account Holder'
 
@@ -184,13 +184,13 @@ describe('the CLI, with the agent\'s input and answers', () => {
     }
 
     const collected = quiet(cli('--evidence', '--collect-only'))
-    assert.match(collected, /^agent input: 23 rows, 6 sections, the account name, 3 evidence items, the page could not be read$/m)
+    assert.match(collected, /^agent input: 23 rows, 5 sections, the account name, 3 evidence items, the page could not be read$/m)
     assert.ok(!existsSync(join(out, 'answers.json')), 'an earlier answers.json is removed')
     const input = JSON.parse(readFileSync(join(out, 'agent-input.json'), 'utf8'))
     assert.equal(input.rows.length, 23)
     assert.equal(input.createdBy, NAME)
     assert.deepEqual(input.info.map((r: { key: string }) => r.key), ['Release Type', 'Test Environments', 'External Dependencies', 'External Risks'])
-    assert.equal(input.sections.length, 6)
+    assert.equal(input.sections.length, 5)
     assert.equal(input.rows[0].evidence[0].links[0].url, CANARY[3])
     assert.ok(!existsSync(join(out, 'report.html')), 'collect-only renders nothing')
 
@@ -203,12 +203,10 @@ describe('the CLI, with the agent\'s input and answers', () => {
       '2': { answer: 'Yes', comment: AGENT_CANARY[0] },
       [AGENT_CANARY[3]]: { answer: 'Yes', comment: AGENT_CANARY[0], links: link },
       sections: {
-        info: { 'External Dependencies': { text: AGENT_CANARY[7], links: link } },
+        info: { 'External Dependencies': { text: AGENT_CANARY[6], links: link } },
         qaSummary: AGENT_CANARY[4],
         recommendation: { approved: false, reason: AGENT_CANARY[0] },
         risks: [{ risk: AGENT_CANARY[5], mitigation: '', links: link }],
-        signOff: Object.fromEntries(['QA Manager', 'TCOE QA lead', 'Product Owner', 'Delivery Manager', 'Technical Lead']
-          .map((role, n) => [role, { name: n ? '' : AGENT_CANARY[6], status: n ? '' : '✅ Approved', links: [] }])),
         testingSummary: { 'Smoke Testing': 'To confirm' },
         [AGENT_CANARY[3]]: AGENT_CANARY[0],
       },
@@ -216,7 +214,7 @@ describe('the CLI, with the agent\'s input and answers', () => {
     // --answers alone reuses the evidence the answers were written against; it never collects afresh.
     const answered = quiet(cli('--answers'))
     assert.match(answered, /^evidence: 3 items from a file$/m)
-    assert.match(answered, /^agent: 3 items, 1 pass, 1 fail, 1 unknown, 20 rows without an answer, 5 section answers \(5 rejected: see answers-rejected\.txt in the cache directory\)$/m)
+    assert.match(answered, /^agent: 3 items, 1 pass, 1 fail, 1 unknown, 20 rows without an answer, 4 section answers \(5 rejected: see answers-rejected\.txt in the cache directory\)$/m)
     assert.match(answered, /^row 1   pass$/m)
     assert.match(answered, /^row 21  fail$/m)
     assert.match(answered, /^row 9   unknown$/m)

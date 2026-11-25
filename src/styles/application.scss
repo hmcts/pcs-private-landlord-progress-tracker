@@ -32,3 +32,8 @@
   font-family: inherit;
   text-decoration: none;
 }
+
+// Long words and links in the report's comments wrap rather than widen its tables.
+.app-qa-table {
+  overflow-wrap: break-word;
+}

@@ -91,6 +91,12 @@ export interface ReportLink {
   description?: string
 }
 
+export interface QaReportLink extends ReportLink {
+  name: string
+  /** The published page, copied from Confluence by the Publish workflow, once there is one. */
+  site?: string
+}
+
 type Rec = Record<string, unknown>
 const str = (o: Rec, k: string) => typeof o[k] === 'string' && (o[k] as string).trim() !== ''
 
@@ -219,7 +225,7 @@ export function validateReports(doc: unknown): string[] {
  * titled from its layout's title as its Confluence page is. Only the YAML is read, so the site
  * build doesn't load the report's collectors.
  */
-export function qaReports(dir = 'config/qa-readiness'): ReportLink[] {
+export function qaReports(dir = 'config/qa-readiness', siteDir = 'data/qa-reports'): QaReportLink[] {
   const files = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.yaml')).sort() : []
   return files.flatMap((f) => {
     const doc = loadYaml(join(dir, f)) as Rec | null
@@ -227,9 +233,10 @@ export function qaReports(dir = 'config/qa-readiness'): ReportLink[] {
     if (doc?.active !== true || !url) return []
     const name = typeof doc.feature === 'string' ? doc.feature : String(doc.release ?? '')
     const layout = String(doc.layout ?? '')
-    if (!name || !/^[\w-]+$/.test(layout)) return []
+    if (!/^[\w.-]+$/.test(name) || name.includes('..') || !/^[\w-]+$/.test(layout)) return []
     const template = (loadYaml(join(dir, 'layouts', `${layout}.yaml`)) as Rec | null)?.title
     if (typeof template !== 'string' || !template.trim()) return []
-    return [{ title: template.replace('{release}', name).replace('{feature}', name), url }]
+    const site = join(siteDir, `${name}.html`)
+    return [{ title: template.replace('{release}', name).replace('{feature}', name), url, name, ...(existsSync(site) ? { site } : {}) }]
   })
 }

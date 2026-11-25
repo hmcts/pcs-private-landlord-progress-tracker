@@ -192,8 +192,3 @@ sections:
     columns: [Risk, Mitigation]
   - { kind: qaSummary, heading: QA Summary, level: 1 }
   - { kind: recommendation, heading: QA Recommendation, level: 2 }
-  - kind: signOff
-    heading: Sign-off
-    level: 1
-    columns: [Role, Name, Status]
-    rows: [QA Manager, TCOE QA lead, Product Owner, Delivery Manager, Technical Lead]

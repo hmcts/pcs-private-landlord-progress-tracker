@@ -504,13 +504,14 @@ describe('a source that can\'t be read keeps what the page says', () => {
     assert.equal(absent.changes.find((c) => c.key === '9' && c.cell === 'status')?.action, 'update')
   })
 
-  test('service-wide rows say so, with the commit; the header names the feature and its epics', () => {
+  test('service-wide rows say so, with the commit; the header names the feature and its board, or its epics without one', () => {
     const e = ev([fact({ rule: 'sonar-coverage', status: 'pass', value: '96.2%', repo: 'pcs-api', sha: SHA.api2, candidate: SERVICE_WIDE })])
     const res = evaluate(cfg, mechanical, e)
     assert.equal(res.checklist.find((r) => r.key === '1')!.lines[0].text, `service-wide — pcs-api ${SHA.api2.slice(0, 7)}: 96.2%.`)
     const html = renderPage(cfg, mechanical, res)
     assert.match(html, /<h1>QA Readiness Report – private-landlord-make-a-claim<\/h1>/)
-    assert.match(html, /https:\/\/hmcts\.atlassian\.net\/browse\/HDPI-10019/)
+    assert.match(html, /<a href="https:\/\/hmcts\.atlassian\.net\/jira\/software\/c\/projects\/HDPI\/boards\/1717">HDPI board 1717<\/a>/)
+    assert.match(renderPage({ ...cfg, jira_board: undefined }, mechanical, evaluate({ ...cfg, jira_board: undefined }, mechanical, e)), /https:\/\/hmcts\.atlassian\.net\/browse\/HDPI-10019/)
   })
 })
 

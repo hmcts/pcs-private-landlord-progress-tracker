@@ -66,6 +66,8 @@ export interface ReleaseConfig {
   /** The release's name, or the feature's. */
   release: string
   epics?: string[]
+  /** A feature's Jira board, linked from its Jira Board row in place of its epics. */
+  jira_board?: string
   active: boolean
   layout: string
   report_page?: string
@@ -293,6 +295,7 @@ const RELEASE_FIELDS: FieldRule[] = [
 const FEATURE_FIELDS: FieldRule[] = [
   { key: 'feature', required: true, ok: (v) => nonEmpty(v) && RELEASE_NAME.test(v) && !v.includes('..'), message: `is required, and ${NAME_MESSAGE}` },
   { key: 'epics', required: true, ok: (v) => Array.isArray(v) && v.length > 0 && v.every((k) => JIRA_KEY.test(str(k))), message: 'must be a list of Jira epic keys' },
+  { key: 'jira_board', ok: (v) => /^https:\/\/hmcts\.atlassian\.net\/\S+$/.test(str(v)), message: 'must be an https://hmcts.atlassian.net/ URL' },
   { key: 'jql', ok: () => false, message: "is not used by a feature: its Jira scope is its epics' child tickets" },
   { key: 'candidates', ok: () => false, message: "is not used by a feature: each repo's commit is its `commit` or `pr`" },
   ...COMMON_RULES,

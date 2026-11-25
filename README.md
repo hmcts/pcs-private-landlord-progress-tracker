@@ -9,7 +9,7 @@ decisions. It's published with GitHub Pages and rebuilt every weekday morning.
 |---|---|
 | Overview | `src/_data/overview.yaml`, plus figures from the latest roadmap snapshot |
 | Roadmap | Epics labelled `PrivateLandlord` in the HDPI Jira project |
-| Reports | Links to the QA readiness reports in `config/qa-readiness/` with `active: true` and a `report_page`, and to the performance test reports in `src/_data/reports.yaml` |
+| Reports | The QA readiness reports in `config/qa-readiness/` with `active: true` and a `report_page`, each a copy of its Confluence page from `data/qa-reports/` once one has been published, and links to the performance test reports in `src/_data/reports.yaml` |
 | NFRs | `src/_data/nfrs.yaml`: PCS NFRs, QA standards and HMCTS engineering standards |
 | RAID log | `src/_data/raid.yaml` |
 | Decisions | `src/_data/decisions.yaml` |
@@ -43,8 +43,11 @@ This is a public site.
   tickets in an epic are laid end to end, in the order of the number their summary starts with,
   across the whole timeline. The site marks these as a forecast, never as Jira dates.
 - Any issue labelled `not-public` is left out.
-- From the QA readiness configs, the Reports page shows only each active report's title and
-  Confluence page id.
+- Each active QA readiness report is copied from Confluence to `data/qa-reports/<name>.html` after
+  the Publish workflow publishes it, and the site shows the whole report at
+  `/reports/qa/<name>/`: its checklist, comments, evidence links, risks and summary. Only an
+  allowlist of elements, classes and `https`/`mailto` links is kept, Confluence's macros are
+  dropped, and so is the "Created by" line, which names a person.
 - The RAID log, decisions log, NFRs, performance report links and ADRs change only through pull
   requests, so a person reviews everything before it's published. Write entries for a public audience, and use roles
   rather than people's names.
@@ -62,7 +65,7 @@ This is a public site.
   `src/_data/reports.yaml`. The file explains the fields.
 - **QA readiness report:** nothing to do on the site. A report is listed on the Reports page once
   its config in `config/qa-readiness/` has `active: true` and a `report_page`, under the title the
-  report has on Confluence.
+  report has on Confluence. Its page on the site appears after the Publish workflow next publishes it.
 - **Architecture decision:** copy `src/adr/template.md.txt` to the next number, for example
   `src/adr/0003-choose-x.md`.
 - **Roadmap:** change Jira. Label an HDPI epic `PrivateLandlord` and give it a start and due
@@ -91,8 +94,9 @@ npm run typecheck
 
 `npm run qa-report -- --release R1.3A` fills in a release's QA readiness report on Confluence, and
 `npm run qa-report -- --feature <name>` a feature's.
-It is internal, not part of the site: nothing it collects is committed, published or printed. The
-site's Reports page only links to each active report's Confluence page.
+Nothing it collects is committed or printed: the evidence stays in the cache directory. A
+`--publish` also writes the page as it then stands on Confluence to `published.html` there, and
+the Publish workflow copies that to `data/qa-reports/` for the site (see "In the Publish workflow").
 
 ```sh
 npm run qa-report -- --release R1.3A                 # dry run: collect, render, merge
@@ -121,12 +125,12 @@ names, E2E tags and spec paths).
 The Private Landlord workstream has no releases, so a report can cover a feature instead:
 `config/qa-readiness/<feature>.yaml` with `feature: <name>` in place of `release`, and no
 `candidates` or `jql`. It uses the `pcs-feature` layout, which reproduces the R1.3A report
-(Confluence page 311427238) exactly, and puts nothing on the page the template doesn't have:
+(Confluence page 311427238) without its Sign-off section, and puts nothing on the page the template doesn't have:
 the "Created by" and "Last Updated" lines, the title, the template's two intro paragraphs, the
 "Release Information" table (Release, Release Type, Jira Board, Jira Tickets, Test Environments,
 External Dependencies, External Risks, Outstanding Bugs, GIT and GIT Revision), the 23 checklist
-questions in the same order, and the Testing Summary, Defect Summary, Risks, QA Summary, QA
-Recommendation and Sign-off sections, at the template's heading levels. For a feature, Release
+questions in the same order, and the Testing Summary, Defect Summary, Risks, QA Summary and QA
+Recommendation sections, at the template's heading levels. For a feature, Release
 is the feature's name, Jira Board links its epics and Jira Tickets their child tickets (the
 first 15, then one link to the search for the rest). The QA agent (see "Agent answers") writes
 the checklist, Release Type, Test Environments, External Dependencies, External Risks and the
@@ -138,6 +142,7 @@ feature: private-landlord-make-a-claim
 active: false
 layout: pcs-feature
 epics: [HDPI-10019]                # Jira scope: these epics' child tickets
+jira_board: https://hmcts.atlassian.net/jira/software/c/projects/HDPI/boards/1717   # optional: the Jira Board row links this, not the epics
 repos:
   pcs-frontend:
     github: hmcts/pcs-frontend     # sonar, cosmos_product, cosmos_component, builder as for a release
@@ -298,9 +303,8 @@ It runs in three steps:
    `info` (the agent info rows' `text` and `links`),
    `testingSummary` (each activity: `✅ Completed`, `NA` or `""`), `defectSummary` (a count
    per severity and the sentence under the table), `risks` (up to 10 risks with their mitigations),
-   `qaSummary`, `recommendation` (`approved` and the reason, rendered as the template's bold
-   "✅ QA APPROVED FOR RELEASE" or "❌ QA NOT APPROVED FOR RELEASE" line and a paragraph) and
-   `signOff` (each role's name and `✅ Approved` or `""`).
+   `qaSummary` and `recommendation` (`approved` and the reason, rendered as the template's bold
+   "✅ QA APPROVED FOR RELEASE" or "❌ QA NOT APPROVED FOR RELEASE" line and a paragraph).
 3. `--answers` renders and merges from the cached evidence and the answers (it implies
    `--evidence`, so the answers meet the evidence they were written against). Each answer is
    checked on its own: a comment of up to 1500 characters, up to 12 https links, and at least
@@ -354,6 +358,12 @@ policy (a platform request, as for hmcts/cft-workspace's doc-drift).
 The job runs on GitHub's own runners (`ubuntu-latest`), each a fresh VM, only on the schedule
 and on a manual dispatch from `master`, never on a push or from another branch. It has its own
 concurrency group (`qa-report`) and nothing waits for it, so it never delays the site.
+
+The `qa-site` job then puts the published reports on the site. The `qa-report` job hands it each
+report's `published.html` as an artifact; `qa-site` commits them to `data/qa-reports/` and
+dispatches the Publish workflow with `qa: false`, which rebuilds the site without updating the
+reports again. It is a job of its own so the agent's job never holds a token that can push. A
+manual dispatch updates the reports too unless `qa` is unticked.
 
 Cosmos is read with the account's read-only key in the `COSMOS_PIPELINE_METRICS_KEY` repository
 secret. It's a copy of `cve-cosmos-readonly-key` in the `dtsse-aat` Key Vault, which

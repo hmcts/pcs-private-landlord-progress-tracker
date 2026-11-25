@@ -6,14 +6,14 @@ description: QA readiness and performance test reports for the Private Landlord 
 {% macro links(items) %}
 {% if items | length %}
 <ul class="govuk-list govuk-list--bullet">
-{% for r in items %}<li><a class="govuk-link" href="{{ r.url or (r.page | confluenceUrl) }}">{{ r.title }}</a>{% if r.description %}<br><span class="govuk-body-s">{{ r.description }}</span>{% endif %}</li>
+{% for r in items %}<li><a class="govuk-link" href="{{ r.href or r.url or (r.page | confluenceUrl) }}">{{ r.title }}</a>{% if r.href %} (<a class="govuk-link" href="{{ r.url }}">on Confluence</a>){% endif %}{% if r.description %}<br><span class="govuk-body-s">{{ r.description }}</span>{% endif %}</li>
 {% endfor %}</ul>
 {% else %}
 <p class="govuk-body">None yet.</p>
 {% endif %}
 {% endmacro %}
 
-<p class="govuk-body">These are the reports on the quality and performance of the Private Landlord work. They are on the HMCTS Confluence, so you need an HMCTS account to open them.</p>
+<p class="govuk-body">These are the reports on the quality and performance of the Private Landlord work. They are on the HMCTS Confluence, so you need an HMCTS account to open them. The QA readiness reports are also copied to this site.</p>
 
 <h2 class="govuk-heading-l">QA readiness reports</h2>
 <p class="govuk-body">Each report is a checklist of tests, scans and sign-offs, updated every weekday morning.</p>

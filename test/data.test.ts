@@ -105,12 +105,14 @@ describe('validateReports', () => {
 
 describe('qaReports', () => {
   test('lists the committed active configs that have a report page', () => {
-    assert.deepEqual(qaReports(), [{
+    const make = qaReports('config/qa-readiness', 'no-such-dir').find((r) => r.name === 'private-landlord-make-a-claim')
+    assert.deepEqual(make, {
       title: 'QA Readiness Report – private-landlord-make-a-claim',
       url: 'https://hmcts.atlassian.net/wiki/pages/viewpage.action?pageId=382468869',
-    }])
+      name: 'private-landlord-make-a-claim',
+    })
   })
-  test('skips inactive configs and those with no page, and titles releases from their layout', () => {
+  test('skips inactive configs and those with no page, titles releases from their layout, and finds their site copies', () => {
     const dir = mkdtempSync(join(tmpdir(), 'qa-reports-'))
     try {
       mkdirSync(join(dir, 'layouts'))
@@ -120,9 +122,11 @@ describe('qaReports', () => {
       writeFileSync(join(dir, 'R1.3A.yaml'), "release: R1.3A\nactive: false\nlayout: pcs\nreport_page: '311427238'\n")
       writeFileSync(join(dir, 'no-page.yaml'), 'feature: no-page\nactive: true\nlayout: pcs-feature\n')
       writeFileSync(join(dir, 'feature-x.yaml'), "feature: feature-x\nactive: true\nlayout: pcs-feature\nreport_page: '99'\nepics: [HDPI-1]\n")
-      assert.deepEqual(qaReports(dir), [
-        { title: 'QA Readiness Report – R1.4', url: 'https://hmcts.atlassian.net/wiki/pages/viewpage.action?pageId=12345' },
-        { title: 'QA Readiness Report – feature-x', url: 'https://hmcts.atlassian.net/wiki/pages/viewpage.action?pageId=99' },
+      mkdirSync(join(dir, 'site'))
+      writeFileSync(join(dir, 'site', 'feature-x.html'), '<h1>x</h1>')
+      assert.deepEqual(qaReports(dir, join(dir, 'site')), [
+        { title: 'QA Readiness Report – R1.4', url: 'https://hmcts.atlassian.net/wiki/pages/viewpage.action?pageId=12345', name: 'R1.4' },
+        { title: 'QA Readiness Report – feature-x', url: 'https://hmcts.atlassian.net/wiki/pages/viewpage.action?pageId=99', name: 'feature-x', site: join(dir, 'site', 'feature-x.html') },
       ])
     } finally {
       rmSync(dir, { recursive: true, force: true })

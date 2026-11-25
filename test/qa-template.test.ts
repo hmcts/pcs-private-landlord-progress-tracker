@@ -45,7 +45,6 @@ const SECTIONS = {
   risks: [{ risk: 'None', mitigation: '', links: [] }],
   qaSummary: 'Unit and integration testing are complete.',
   recommendation: { approved: false, reason: 'The E2E tests have not passed.' },
-  signOff: Object.fromEntries(layout.sections![5].rows!.map((r) => [r, { name: '', status: '', links: [] }])),
 }
 const NAME = 'Test Person'
 const DAY = new Date('2026-11-17T09:00:00Z')
@@ -130,7 +129,7 @@ describe('a page the generator wrote before the template layout', () => {
   test('the sections are added after the checklist, in order', () => {
     assert.deepEqual(m.changes.filter((c) => c.action === 'add-part').map((c) => c.key), layout.sections!.map((s) => s.heading))
     const headings = blocksOf(parse(m.html)).filter(isHeading).map(textOf)
-    assert.deepEqual(headings.slice(-7), ['QA Readiness Checklist', ...layout.sections!.map((s) => s.heading)])
+    assert.deepEqual(headings.slice(-(layout.sections!.length + 1)), ['QA Readiness Checklist', ...layout.sections!.map((s) => s.heading)])
   })
 
   test('merging the result again changes nothing', () => {

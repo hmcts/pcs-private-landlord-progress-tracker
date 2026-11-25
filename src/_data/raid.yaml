@@ -47,12 +47,12 @@
 
 - id: A-001
   type: assumption
-  title: The project starts on 30 November 2026
+  title: The project starts on 1 December 2026
   owner: Delivery lead
   rag: green
   status: open
   raised: "2026-11-16"
-  review: "2026-11-30"
+  review: "2026-12-01"
 
 - id: A-002
   type: assumption
@@ -64,3 +64,14 @@
   raised: "2026-11-16"
   review: "2026-11-30"
   mitigation: Test the prototype with users and policy colleagues early, and record any significant change as a decision.
+
+- id: I-001
+  type: issue
+  title: The agreed QA approach is being revisited
+  description: A QA approach for the project was agreed, but it is now being revisited, so how features will be tested and signed off before release is not settled.
+  owner: Delivery lead
+  rag: amber
+  status: open
+  raised: "2026-11-25"
+  review: "2026-12-01"
+  mitigation: Agree the revised QA approach before the project starts, and record it as a decision.

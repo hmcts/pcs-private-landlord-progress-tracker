@@ -18,9 +18,8 @@ statuses or wording of your own around them. The page is:
 4. **QA Readiness Checklist**: the 23 questions (`rows`), each with a Status (Yes, No, N/A or
    blank) and Comments / Evidence.
 5. **Testing Summary** (Test Activity, Status), **Defect Summary** (Severity, Outstanding, and a
-   sentence under the table), **Risks** (Risk, Mitigation), **QA Summary** (paragraphs), **QA
-   Recommendation** (approved or not, and why) and **Sign-off** (Role, Name, Status), as
-   `sections` in `agent-input.json` lists them.
+   sentence under the table), **Risks** (Risk, Mitigation), **QA Summary** (paragraphs) and **QA
+   Recommendation** (approved or not, and why), as `sections` in `agent-input.json` lists them.
 
 The message that pointed you here names the **cache directory**. Each scope to answer is a
 directory in it holding an `agent-input.json`. Answer every scope you find, one at a time.
@@ -97,7 +96,7 @@ replaces it, so answer those first, even if only with a blank status.
 - `info`: the Release Information rows you write, each with its `guide`, `evidence` and
   `published` text.
 - `sections`: each section's `kind`, `heading`, its table's `columns` and the fixed first
-  column (`rows`: the test activities, the severities, the sign-off roles), and its
+  column (`rows`: the test activities and the severities), and its
   `published` text.
 
 For each row:
@@ -163,9 +162,6 @@ tickets. Keep to what the template has:
   Yes or N/A with evidence and nothing outstanding prevents release; otherwise false. The
   `reason` is one paragraph in the template's style. The pipeline writes the bold
   "✅ QA APPROVED FOR RELEASE" or "❌ QA NOT APPROVED FOR RELEASE" line.
-- **Sign-off**: for each role, the person's name only if a ticket or page records them in that
-  role for this feature, and `✅ Approved` only with a recorded sign-off from them, linked.
-  Otherwise `""`. You never sign off for anyone.
 
 ## answers.json
 
@@ -201,14 +197,7 @@ A JSON object keyed by row number, one entry per row you answer, and `sections`:
     "defectSummary": { "counts": { "Critical": "0", "High": "0", "Medium": "1", "Low": "0" }, "comment": "No outstanding defects prevent this feature from progressing to Production." },
     "risks": [{ "risk": "None", "mitigation": "", "links": [] }],
     "qaSummary": "Unit, integration and contract testing have been completed on the feature's pull requests.\n\nThe feature's E2E tests have not yet passed.",
-    "recommendation": { "approved": false, "reason": "The feature's E2E tests have not passed, so QA can't yet recommend it for release." },
-    "signOff": {
-      "QA Manager": { "name": "", "status": "", "links": [] },
-      "TCOE QA lead": { "name": "", "status": "", "links": [] },
-      "Product Owner": { "name": "", "status": "", "links": [] },
-      "Delivery Manager": { "name": "", "status": "", "links": [] },
-      "Technical Lead": { "name": "", "status": "", "links": [] }
-    }
+    "recommendation": { "approved": false, "reason": "The feature's E2E tests have not passed, so QA can't yet recommend it for release." }
   }
 }
 ```
@@ -220,10 +209,10 @@ A JSON object keyed by row number, one entry per row you answer, and `sections`:
 - No other fields. Keys are the rows' `key` values from `agent-input.json`, and `sections`.
 - `sections`: any of the fields above, each checked on its own. `info` keys are the `info`
   rows' keys; `text` 1 to 1500 characters.
-  `testingSummary`, `defectSummary.counts` and `signOff` need every one of the section's
+  `testingSummary` and `defectSummary.counts` need every one of the section's
   `rows`, and no others. Counts are digits, or `""` if not known. The defect sentence, each
   risk and each mitigation are at most 500 characters; `qaSummary` at most 3000; the
-  recommendation's `reason` 1 to 1500; a sign-off `name` one line of at most 100. Links follow
+  recommendation's `reason` 1 to 1500. Links follow
   the rules above.
 
 An answer that breaks these rules is dropped and its row or section keeps what the page said. Write the

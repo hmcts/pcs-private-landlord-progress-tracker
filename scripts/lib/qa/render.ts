@@ -130,6 +130,12 @@ export function evaluateRow(row: LayoutRow, table: 'info' | 'checklist', cfg: Re
   return { table, key: row.key, label: row.question ?? row.key, rule: row.rule, status, answer, needsJudgement, lines, keep }
 }
 
+/** "HDPI board 1717" for a board URL, or the URL itself. */
+function boardText(url: string): string {
+  const m = /\/projects\/([A-Z][A-Z0-9]+)\/boards\/(\d+)/.exec(url)
+  return m ? `${m[1]} board ${m[2]}` : url
+}
+
 /** The info table's rows that come from the config rather than evidence. */
 function infoLines(row: LayoutRow, cfg: ReleaseConfig, ev: Evidence): Line[] | null {
   switch (row.rule) {
@@ -137,7 +143,8 @@ function infoLines(row: LayoutRow, cfg: ReleaseConfig, ev: Evidence): Line[] | n
     case 'feature':
       return [{ text: cfg.release, links: [] }]
     case 'epics':
-      return [{ text: '', links: (cfg.epics ?? []).map(browse) }]
+      return cfg.jira_board ? [{ text: '', links: [{ text: boardText(cfg.jira_board), url: cfg.jira_board }] }]
+        : [{ text: '', links: (cfg.epics ?? []).map(browse) }]
     case 'epic-tickets': {
       const it = ev.items.find((i) => i.row === `info:${row.key}` && i.status !== 'unknown')
       return it ? [{ text: '', links: it.links }] : null

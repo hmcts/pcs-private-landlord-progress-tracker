@@ -23,6 +23,11 @@ on:
   schedule:
     - cron: '0 6 * * 1-5' # 06:00 UTC, Monday to Friday
   workflow_dispatch:
+    inputs:
+      qa:
+        description: Update the QA readiness reports too
+        type: boolean
+        default: true
   push:
     branches: [master]
 
@@ -151,7 +156,7 @@ jobs:
     concurrency:
       group: qa-report
       cancel-in-progress: false
-    if: github.ref == 'refs/heads/master' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    if: github.ref == 'refs/heads/master' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.qa))
     runs-on: ubuntu-latest
     timeout-minutes: 75
     permissions:
@@ -290,6 +295,26 @@ jobs:
           QA_CACHE_DIR: ${{ runner.temp }}/qa
         run: npm run qa-report -- --all-active --answers --publish
 
+      # Each report as it now stands on Confluence, for the qa-site job to put on the site.
+      - name: Keep the published reports for the site
+        if: ${{ !cancelled() && steps.clean.outcome == 'success' }}
+        env:
+          QA_CACHE_DIR: ${{ runner.temp }}/qa
+        run: |
+          mkdir -p "$RUNNER_TEMP/qa-site"
+          for f in "$QA_CACHE_DIR"/*/published.html; do
+            [[ -f "$f" ]] || continue
+            cp "$f" "$RUNNER_TEMP/qa-site/$(basename "$(dirname "$f")").html"
+          done
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() && steps.clean.outcome == 'success' }}
+        with:
+          name: qa-site
+          path: ${{ runner.temp }}/qa-site/*.html
+          if-no-files-found: ignore
+          retention-days: 1
+
       # Fails the job so it's seen; it never affects the site. An unseeded secret stands down in
       # the sign-in step without spending anything.
       - name: Fail if twg could not sign in
@@ -325,3 +350,39 @@ jobs:
         run: |
           az logout > /dev/null 2>&1 || true
           rm -rf "${HOME:?}/.azure" "${XDG_CONFIG_HOME:-${HOME:?}/.config}/twg" "${RUNNER_TEMP:?}/qa"
+
+  # Commits the reports the qa-report job published to data/qa-reports/, so the site shows them,
+  # then rebuilds the site without the QA job. It is a job of its own so that the QA agent's job
+  # never holds a token that can push. A commit pushed with the workflow's token starts no run of
+  # its own, so the rebuild is a dispatch.
+  qa-site:
+    needs: qa-report
+    if: ${{ !cancelled() && needs.qa-report.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: qa-site
+      cancel-in-progress: false
+    permissions:
+      contents: write # commit data/qa-reports
+      actions: write # dispatch the site rebuild
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        id: reports
+        continue-on-error: true
+        with:
+          name: qa-site
+          path: data/qa-reports
+
+      - name: Commit the reports and rebuild the site
+        if: steps.reports.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git add data/qa-reports
+          if git diff --cached --quiet; then exit 0; fi
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit -m "QA readiness reports $(date -u +%F)"
+          git pull --rebase --quiet && git push
+          gh workflow run publish.yml --ref master -f qa=false

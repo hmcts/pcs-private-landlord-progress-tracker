@@ -10,7 +10,9 @@ section explains the config fields, the sources and how a merge keeps what peopl
 
 **This repo, its site and its Actions logs are public.** Evidence, judgements and diffs stay in
 `.cache/qa/<release>/` (gitignored). Never commit them, paste them into a PR or an issue, or move
-them anywhere under `src/`, `data/`, `config/` or `_site/`. Release configs hold only page ids,
+them anywhere under `src/`, `data/`, `config/` or `_site/`. The one exception is the published page
+itself: the Publish workflow's `qa-site` job copies each report's `published.html` to `data/qa-reports/`
+for the site, so never hand-copy anything else there. Release configs hold only page ids,
 repo names, SHAs, Sonar keys and Jira keys; feature configs also Jenkins job names, E2E tags and
 spec paths.
 
