@@ -1,10 +1,12 @@
 # The QA readiness report for the Private Landlord feature in epic HDPI-10221 (CUI Private Landlord - Enforce a possession order online).
+# Its report is page 398786602.
 # The fields are explained in README.md, "QA readiness report". This file is public: put only
 # repo names, commit SHAs, PR numbers, Sonar keys, Jira keys, page ids, Jenkins job names, E2E tags and spec
 # paths in it.
 
 feature: private-landlord-enforce-an-order
 active: true
+report_page: '398786602'
 layout: pcs-feature
 epics: [HDPI-10221]
 jira_board: https://hmcts.atlassian.net/jira/software/c/projects/HDPI/boards/1717
