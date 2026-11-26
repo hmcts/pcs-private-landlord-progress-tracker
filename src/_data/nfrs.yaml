@@ -27,7 +27,7 @@ standards:
     note: Draft
   - id: hmcts-qa
     title: HMCTS Quality Assurance standards
-    url: https://hmcts.atlassian.net/wiki/pages/viewpage.action?pageId=268043682
+    url: https://hmcts.atlassian.net/wiki/spaces/RQA/pages/273551977/Testing+Standards
   - id: hmcts-security
     title: HMCTS baseline security requirements for applications (F6f)
     url: https://hmcts.atlassian.net/wiki/spaces/DACS/pages/279758773
@@ -84,15 +84,15 @@ nfrs:
 
   - id: A11Y-06
     category: accessibility
-    requirement: Every page is checked with Pa11y, with no outstanding WCAG A or AA failures.
+    requirement: Every page is checked with automated accessibility tests (axe-core, Pa11y), issues found are added to Jira, and there are no outstanding WCAG A or AA failures.
     source: hmcts-qa
   - id: A11Y-07
     category: accessibility
-    requirement: The service meets WCAG 2.1 and is tested by hand with NVDA, JAWS and VoiceOver screen readers, with a keyboard only, and on iOS and Android phones and tablets.
+    requirement: The service meets the latest WCAG version and is tested with assistive technology, including NVDA, JAWS and VoiceOver screen readers, Dragon, a keyboard only, and iOS and Android phones and tablets.
     source: hmcts-qa
   - id: A11Y-08
     category: accessibility
-    requirement: A Digital Accessibility Centre (DAC) audit is done or booked, especially after major changes, and the accessibility statement is kept up to date.
+    requirement: A Digital Accessibility Centre (DAC) audit is done or booked, especially after major changes, outstanding issues are planned for fixing, and the accessibility statement lists any that remain.
     source: hmcts-qa
   - id: A11Y-09
     category: accessibility
@@ -106,7 +106,7 @@ nfrs:
     source: pcs-story-nfrs
   - id: SEC-07
     category: security
-    requirement: Static and dynamic security scans run nightly, and dependency checks (OWASP, yarn audit) and Helmet are part of the pipeline.
+    requirement: Static and dynamic security scans, including ZAP, run nightly, and yarn audit and Helmet are in place.
     source: hmcts-qa
   - id: SEC-08
     category: security
@@ -210,7 +210,7 @@ nfrs:
   - id: QA-08
     category: quality
     requirement: New and refactored code is unit tested. Every test makes an assertion, and tests cover valid, invalid and edge cases.
-    target: Over 95% coverage, under 3% duplicated lines in SonarCloud
+    target: Over 80% coverage, under 3% duplicated lines in SonarCloud
     source: hmcts-qa
   - id: QA-09
     category: quality
@@ -218,7 +218,8 @@ nfrs:
     source: hmcts-qa
   - id: QA-10
     category: quality
-    requirement: Every integration with an external system, and every endpoint, has an integration or functional test, with results published in Jenkins.
+    requirement: Every integration with an external system has an integration test, every API controller has a functional test, and their results are published separately in Jenkins.
+    target: Functional tests cover over 80% of functional points
     source: hmcts-qa
   - id: QA-11
     category: quality
