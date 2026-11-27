@@ -1,0 +1,815 @@
+{
+  "date": "2026-11-27",
+  "generatedAt": "2026-11-27T06:02:21.277Z",
+  "title": "PCS Private Landlord roadmap",
+  "project": "HDPI",
+  "jiraUrl": "https://hmcts.atlassian.net",
+  "start": "2026-11-30",
+  "end": "2027-03-31",
+  "lanes": [
+    {
+      "title": "Private Landlord",
+      "subtitle": "PrivateLandlord label (HDPI)",
+      "colour": "#1d70b8",
+      "rule": "PrivateLandlord",
+      "rows": [
+        {
+          "key": "HDPI-10019",
+          "url": "https://hmcts.atlassian.net/browse/HDPI-10019",
+          "summary": "CUI Private Landlord - Make a possession claim online",
+          "status": "New",
+          "category": "new",
+          "start": "2026-12-01",
+          "due": "2027-01-29",
+          "derived": 0,
+          "total": 46,
+          "counts": {
+            "done": 1,
+            "indeterminate": 35,
+            "new": 10
+          },
+          "clashes": [],
+          "items": [
+            {
+              "key": "HDPI-10042",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10042",
+              "summary": "1. Start page, sign-in, and the private landlord and trespass checks",
+              "status": "In Progress",
+              "category": "indeterminate",
+              "start": "2026-12-01",
+              "due": "2026-12-02",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10043",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10043",
+              "summary": "2. Property address and eligibility check",
+              "status": "In Progress",
+              "category": "indeterminate",
+              "start": "2026-12-02",
+              "due": "2026-12-03",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10044",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10044",
+              "summary": "3. Create the claim and tell the claimant they're eligible",
+              "status": "In Progress",
+              "category": "indeterminate",
+              "start": "2026-12-03",
+              "due": "2026-12-04",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10222",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10222",
+              "summary": "3. Type of claimant for a property in Wales",
+              "status": "In Progress",
+              "category": "indeterminate",
+              "start": "2026-12-03",
+              "due": "2026-12-03",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10045",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10045",
+              "summary": "4. Task list showing each section of the claim and its status",
+              "status": "In Progress",
+              "category": "indeterminate",
+              "start": "2026-12-04",
+              "due": "2026-12-07",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10046",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10046",
+              "summary": "5. Save for later, without overwriting changes made in another tab",
+              "status": "In Progress",
+              "category": "indeterminate",
+              "start": "2026-12-07",
+              "due": "2026-12-08",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10047",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10047",
+              "summary": "6. Your details: individual or company, and the claimant's name",
+              "status": "In Progress",
+              "category": "indeterminate",
+              "start": "2026-12-08",
+              "due": "2026-12-09",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10048",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10048",
+              "summary": "7. Contact details: postal address, email, telephone and text message",
+              "status": "In Progress",
+              "category": "indeterminate",
+              "start": "2026-12-09",
+              "due": "2026-12-10",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10049",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10049",
+              "summary": "8. Other claimants and check your answers for About you",
+              "status": "In Progress",
+              "category": "indeterminate",
+              "start": "2026-12-10",
+              "due": "2026-12-11",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10050",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10050",
+              "summary": "9. Defendant names and addresses for service",
+              "status": "In Progress",
+              "category": "indeterminate",
+              "start": "2026-12-15",
+              "due": "2026-12-15",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10051",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10051",
+              "summary": "10. Add, remove and check the defendants",
+              "status": "In Progress",
+              "category": "indeterminate",
+              "start": "2026-12-15",
+              "due": "2026-12-16",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10223",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10223",
+              "summary": "10. Additional claimants",
+              "status": "In Progress",
+              "category": "indeterminate",
+              "start": "2026-12-11",
+              "due": "2026-12-15",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10052",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10052",
+              "summary": "11. Tenancy or licence type, start date and agreement upload",
+              "status": "In Progress",
+              "category": "indeterminate",
+              "start": "2026-12-16",
+              "due": "2026-12-17",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10053",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10053",
+              "summary": "12. Grounds for possession",
+              "status": "In Progress",
+              "category": "indeterminate",
+              "start": "2026-12-18",
+              "due": "2027-01-05",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10054",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10054",
+              "summary": "13. Reason for each ground and check your answers for tenancy and grounds",
+              "status": "In Progress",
+              "category": "indeterminate",
+              "start": "2027-01-06",
+              "due": "2027-01-07",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10055",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10055",
+              "summary": "14. Notice served, notice type, date and method",
+              "status": "In Progress",
+              "category": "indeterminate",
+              "start": "2027-01-07",
+              "due": "2027-01-08",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10224",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10224",
+              "summary": "14. Occupation contract or licence for a property in Wales",
+              "status": "In Progress",
+              "category": "indeterminate",
+              "start": "2026-12-17",
+              "due": "2026-12-18",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10056",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10056",
+              "summary": "15. Upload the notice and check your answers for notice",
+              "status": "In Progress",
+              "category": "indeterminate",
+              "start": "2027-01-08",
+              "due": "2027-01-08",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10294",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10294",
+              "summary": "15. Mandatory documents for a property in Wales",
+              "status": "In Progress",
+              "category": "indeterminate",
+              "start": "2026-11-30",
+              "due": "2026-12-29",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10057",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10057",
+              "summary": "16. Rent amount, how often it is paid and the rent due day",
+              "status": "In Progress",
+              "category": "indeterminate",
+              "start": "2027-01-08",
+              "due": "2027-01-11",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10225",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10225",
+              "summary": "16. Grounds for possession on an excluded tenancy",
+              "status": "In Progress",
+              "category": "indeterminate",
+              "start": "2027-01-05",
+              "due": "2027-01-06",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10295",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10295",
+              "summary": "16. Grounds for possession for a property in Wales",
+              "status": "In Progress",
+              "category": "indeterminate",
+              "start": "2026-12-30",
+              "due": "2027-01-28",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10058",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10058",
+              "summary": "17. Rent arrears on the notice date and today, and how they are proved",
+              "status": "In Progress",
+              "category": "indeterminate",
+              "start": "2027-01-11",
+              "due": "2027-01-12",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10059",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10059",
+              "summary": "18. Ledger rent history: add, check and remove transactions",
+              "status": "Closed",
+              "category": "done",
+              "start": "2027-01-29",
+              "due": "2027-02-27",
+              "forecast": true
+            },
+            {
+              "key": "HDPI-10060",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10060",
+              "summary": "19. Table rent history: statement period, rent periods and payments",
+              "status": "In Progress",
+              "category": "indeterminate",
+              "start": "2027-01-12",
+              "due": "2027-01-14",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10061",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10061",
+              "summary": "20. Money judgment, steps to recover the arrears and check your answers",
+              "status": "In Progress",
+              "category": "indeterminate",
+              "start": "2027-01-14",
+              "due": "2027-01-14",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10062",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10062",
+              "summary": "21. Defendant and claimant circumstances",
+              "status": "In Progress",
+              "category": "indeterminate",
+              "start": "2027-01-15",
+              "due": "2027-01-15",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10063",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10063",
+              "summary": "22. Sub-tenants and mortgage lenders, and check your answers for circumstances",
+              "status": "In Progress",
+              "category": "indeterminate",
+              "start": "2027-01-15",
+              "due": "2027-01-15",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10064",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10064",
+              "summary": "23. Upload files and other information",
+              "status": "In Progress",
+              "category": "indeterminate",
+              "start": "2027-01-15",
+              "due": "2027-01-18",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10065",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10065",
+              "summary": "24. Hand-offs to Your Support and the PCQ equality questions",
+              "status": "In Progress",
+              "category": "indeterminate",
+              "start": "2027-01-18",
+              "due": "2027-01-19",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10066",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10066",
+              "summary": "25. Check your answers, statement of truth and submit",
+              "status": "In Progress",
+              "category": "indeterminate",
+              "start": "2027-01-19",
+              "due": "2027-01-20",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10067",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10067",
+              "summary": "26. Pay the claim fee and the claim submitted page",
+              "status": "In Progress",
+              "category": "indeterminate",
+              "start": "2027-01-20",
+              "due": "2027-01-22",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10068",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10068",
+              "summary": "27. The claimant can still see and return to their claim after submission",
+              "status": "In Progress",
+              "category": "indeterminate",
+              "start": "2027-01-22",
+              "due": "2027-01-25",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10069",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10069",
+              "summary": "28. A claimant who needs a general application can make one within 24 hours",
+              "status": "New",
+              "category": "new",
+              "start": "2027-01-25",
+              "due": "2027-01-27",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10070",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10070",
+              "summary": "29. Help with Fees for the claim fee",
+              "status": "New",
+              "category": "new",
+              "start": "2027-01-27",
+              "due": "2027-01-28",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10071",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10071",
+              "summary": "30. Change an answer from a check your answers page",
+              "status": "In Progress",
+              "category": "indeterminate",
+              "start": "2027-01-29",
+              "due": "2027-01-29",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10205",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10205",
+              "summary": "30. Claim pack posted to each defendant, and no posted pack for the claimant",
+              "status": "In Progress",
+              "category": "indeterminate",
+              "start": "2027-01-28",
+              "due": "2027-01-29",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10072",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10072",
+              "summary": "31. Pages opened out of order or from an old link",
+              "status": "In Progress",
+              "category": "indeterminate",
+              "start": "2027-01-29",
+              "due": "2027-01-29",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10073",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10073",
+              "summary": "Update the claim form template for a self-represented private landlord",
+              "status": "New",
+              "category": "new",
+              "start": "2026-11-25",
+              "due": "2026-12-11",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10074",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10074",
+              "summary": "Add the rent history to the claim pack",
+              "status": "New",
+              "category": "new",
+              "start": "2026-12-11",
+              "due": "2026-12-22",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10075",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10075",
+              "summary": "Citizen \"claim issued\" email that links to the citizen service",
+              "status": "New",
+              "category": "new",
+              "start": "2026-12-22",
+              "due": "2026-12-31",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10076",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10076",
+              "summary": "Citizen \"claim saved for later\" email",
+              "status": "New",
+              "category": "new",
+              "start": "2026-12-31",
+              "due": "2027-01-08",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10077",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10077",
+              "summary": "\"Claim submitted / payment received\" and \"payment failed\" emails",
+              "status": "New",
+              "category": "new",
+              "start": "2027-01-08",
+              "due": "2027-01-14",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10206",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10206",
+              "summary": "Add the HLPAS legal advice leaflet to the defendant's claim pack",
+              "status": "New",
+              "category": "new",
+              "start": "2027-01-14",
+              "due": "2027-01-21",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10220",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10220",
+              "summary": "Close a private landlord claim whose fee is still unpaid after 90 days",
+              "status": "New",
+              "category": "new",
+              "start": "2027-01-21",
+              "due": "2027-02-01",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10256",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10256",
+              "summary": "Load a postcode-to-court mapping for all of England and Wales",
+              "status": "New",
+              "category": "new",
+              "start": "2027-02-28",
+              "due": "2027-03-31",
+              "forecast": true
+            }
+          ]
+        },
+        {
+          "key": "HDPI-10221",
+          "url": "https://hmcts.atlassian.net/browse/HDPI-10221",
+          "summary": "CUI Private Landlord - Enforce a possession order online",
+          "status": "New",
+          "category": "new",
+          "start": "2027-01-05",
+          "due": "2027-02-28",
+          "derived": 0,
+          "total": 27,
+          "counts": {
+            "done": 0,
+            "indeterminate": 0,
+            "new": 27
+          },
+          "clashes": [],
+          "items": [
+            {
+              "key": "HDPI-10261",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10261",
+              "summary": "1. Find the case and start enforcing the possession order",
+              "status": "New",
+              "category": "new",
+              "start": "2027-01-05",
+              "due": "2027-01-05",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10262",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10262",
+              "summary": "2. Choose to apply for a warrant, a writ or restitution",
+              "status": "New",
+              "category": "new",
+              "start": "2027-01-05",
+              "due": "2027-01-06",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10263",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10263",
+              "summary": "3. Say which language I used to complete the application",
+              "status": "New",
+              "category": "new",
+              "start": "2027-01-06",
+              "due": "2027-01-07",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10264",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10264",
+              "summary": "4. Confirm the name and address for the eviction",
+              "status": "New",
+              "category": "new",
+              "start": "2027-01-07",
+              "due": "2027-01-11",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10266",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10266",
+              "summary": "5. Missed payments under a suspended possession order",
+              "status": "New",
+              "category": "new",
+              "start": "2027-01-11",
+              "due": "2027-01-13",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10267",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10267",
+              "summary": "6. Defendants' dates of birth",
+              "status": "New",
+              "category": "new",
+              "start": "2027-01-13",
+              "due": "2027-01-14",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10268",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10268",
+              "summary": "7. Risks the defendants pose to the bailiff",
+              "status": "New",
+              "category": "new",
+              "start": "2027-01-14",
+              "due": "2027-01-15",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10269",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10269",
+              "summary": "8. Vulnerability, access to the property and anything else for the bailiff",
+              "status": "New",
+              "category": "new",
+              "start": "2027-01-15",
+              "due": "2027-01-20",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10270",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10270",
+              "summary": "9. Apply for a warrant of possession: the start page and the order of the questions",
+              "status": "New",
+              "category": "new",
+              "start": "2027-01-20",
+              "due": "2027-01-21",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10271",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10271",
+              "summary": "10. Check your answers and the statement of truth for a warrant",
+              "status": "New",
+              "category": "new",
+              "start": "2027-01-21",
+              "due": "2027-01-25",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10272",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10272",
+              "summary": "11. Pay the warrant fee and the application submitted page",
+              "status": "New",
+              "category": "new",
+              "start": "2027-01-25",
+              "due": "2027-01-26",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10273",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10273",
+              "summary": "12. Apply for a writ of possession: the start page and permission to transfer to the High Court",
+              "status": "New",
+              "category": "new",
+              "start": "2027-01-26",
+              "due": "2027-01-27",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10274",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10274",
+              "summary": "13. Say whether I have hired a High Court Enforcement Officer",
+              "status": "New",
+              "category": "new",
+              "start": "2027-01-27",
+              "due": "2027-01-28",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10275",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10275",
+              "summary": "14. Check your answers and the statement of truth for a writ",
+              "status": "New",
+              "category": "new",
+              "start": "2027-01-28",
+              "due": "2027-01-29",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10276",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10276",
+              "summary": "15. Pay the writ fee, the application received page and the decision emails",
+              "status": "New",
+              "category": "new",
+              "start": "2027-01-29",
+              "due": "2027-02-01",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10277",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10277",
+              "summary": "16. Told to transfer enforcement first, and choose the transfer application",
+              "status": "New",
+              "category": "new",
+              "start": "2027-02-01",
+              "due": "2027-02-02",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10278",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10278",
+              "summary": "17. Transfer enforcement: the start page, the other parties' agreement, my reasons and supporting documents",
+              "status": "New",
+              "category": "new",
+              "start": "2027-02-02",
+              "due": "2027-02-05",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10279",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10279",
+              "summary": "18. Check your answers, statement of truth and the transfer application submitted page",
+              "status": "New",
+              "category": "new",
+              "start": "2027-02-05",
+              "due": "2027-02-09",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10280",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10280",
+              "summary": "19. Say whether any defendant is in breathing space, and what to do if I'm not sure",
+              "status": "New",
+              "category": "new",
+              "start": "2027-02-09",
+              "due": "2027-02-10",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10281",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10281",
+              "summary": "20. Stopped from applying while a defendant is in breathing space",
+              "status": "New",
+              "category": "new",
+              "start": "2027-02-10",
+              "due": "2027-02-11",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10282",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10282",
+              "summary": "21. Told the eviction date, and start confirming the eviction details",
+              "status": "New",
+              "category": "new",
+              "start": "2027-02-11",
+              "due": "2027-02-12",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10283",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10283",
+              "summary": "22. Say whether I can attend the eviction, the dates I cannot attend and who the bailiff can contact",
+              "status": "New",
+              "category": "new",
+              "start": "2027-02-12",
+              "due": "2027-02-15",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10284",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10284",
+              "summary": "23. Review the risks, describe the defendants who pose a risk, and arrange to secure the property",
+              "status": "New",
+              "category": "new",
+              "start": "2027-02-15",
+              "due": "2027-02-17",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10285",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10285",
+              "summary": "24. Check your answers, statement of truth and the eviction date confirmed page",
+              "status": "New",
+              "category": "new",
+              "start": "2027-02-17",
+              "due": "2027-02-18",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10286",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10286",
+              "summary": "25. Apply for a warrant of restitution: the start page, how the defendants returned and the evidence",
+              "status": "New",
+              "category": "new",
+              "start": "2027-02-18",
+              "due": "2027-02-22",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10287",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10287",
+              "summary": "26. Review the bailiff's questions, check your answers and the warrant of restitution received page",
+              "status": "New",
+              "category": "new",
+              "start": "2027-02-22",
+              "due": "2027-02-24",
+              "forecast": false
+            },
+            {
+              "key": "HDPI-10288",
+              "url": "https://hmcts.atlassian.net/browse/HDPI-10288",
+              "summary": "27. Apply for a writ of restitution",
+              "status": "New",
+              "category": "new",
+              "start": "2027-02-24",
+              "due": "2027-02-26",
+              "forecast": false
+            }
+          ]
+        },
+        {
+          "key": "HDPI-10260",
+          "url": "https://hmcts.atlassian.net/browse/HDPI-10260",
+          "summary": "CUI Private Landlord - Respond to a defendant's response online",
+          "status": "New",
+          "category": "new",
+          "start": "2027-02-01",
+          "due": "2027-03-31",
+          "derived": 0,
+          "total": 0,
+          "counts": {
+            "done": 0,
+            "indeterminate": 0,
+            "new": 0
+          },
+          "clashes": [],
+          "items": []
+        }
+      ]
+    }
+  ],
+  "clashes": [],
+  "withdrawn": [],
+  "dependencies": [],
+  "totals": {
+    "epics": 3,
+    "epicsDone": 0,
+    "items": 73,
+    "itemsDone": 1,
+    "undated": 0
+  }
+}
